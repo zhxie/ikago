@@ -1,6 +1,6 @@
 # IkaGo
 
-**IkaGo** is a tunnel proxy which turns UDP traffic to TCP traffic written in Go.
+**IkaGo** is a proxy which turns UDP traffic to TCP traffic written in Go.
 
 *IkaGo is currently under development and is not suitable for production.*
 
