@@ -3,6 +3,7 @@ package pcap
 import (
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
@@ -11,19 +12,25 @@ type Pcap struct {
 	Device       string
 	LocalPort    uint16
 	RemotePort   uint16
+	gateway      Device
 	localHandle  *pcap.Handle
 	remoteHandle *pcap.Handle
 }
 
 // Open implements a method opens the pcap
 func (p *Pcap) Open() error {
-	var err error
+	gateway, err := FindGateway(p.Device)
+	if err != nil {
+		return err
+	}
+	p.gateway = *gateway
+	fmt.Printf("Route upstream to %s: %s\n", p.gateway.Addrs[0], p.gateway.HardwareAddr)
 
 	p.localHandle, err = pcap.OpenLive(LoopDev().Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return err
 	}
-	err = p.localHandle.SetBPFFilter(fmt.Sprintf("tcp and port %d", p.LocalPort))
+	err = p.localHandle.SetBPFFilter(fmt.Sprintf("tcp and dst port %d", p.LocalPort))
 	if err != nil {
 		return err
 	}
@@ -38,7 +45,7 @@ func (p *Pcap) Open() error {
 	if err != nil {
 		return err
 	}
-	err = p.remoteHandle.SetBPFFilter(fmt.Sprintf("tcp and port %d", p.RemotePort))
+	err = p.remoteHandle.SetBPFFilter(fmt.Sprintf("tcp and src port %d", p.RemotePort))
 	if err != nil {
 		return err
 	}
@@ -59,5 +66,11 @@ func (p *Pcap) Close() {
 }
 
 func handle(packet gopacket.Packet) {
-	fmt.Println(packet)
+	packet.LinkLayer()
+	switch t := packet.TransportLayer().LayerType(); t {
+	case layers.LayerTypeTCP:
+		fmt.Println(packet)
+	default:
+		fmt.Printf("Received packet with invalid transport protocol: %s\n", t)
+	}
 }
