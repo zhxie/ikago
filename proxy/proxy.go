@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-// Proxy is a struct for proxy
+// Proxy describes a proxy
 type Proxy struct {
 	LocalPort  uint16
 	RemoteAddr string
