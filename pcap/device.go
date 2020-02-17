@@ -14,13 +14,13 @@ import (
 	"../proxy"
 )
 
-// Addr describes an address of an Dev
+// Addr describes an address of an device
 type Addr struct {
 	IP   net.IP
 	Mask net.IPMask
 }
 
-// Device describes an network Dev
+// Device describes an network device
 type Device struct {
 	Name         string
 	FriendlyName string
@@ -38,7 +38,7 @@ func FindAllDevs() ([]Device, error) {
 
 	inters, err := net.Interfaces()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find all devs: %w", err)
 	}
 	for _, inter := range inters {
 		if inter.Flags&net.FlagUp == 0 && inter.Flags&net.FlagLoopback == 0 {
@@ -50,14 +50,14 @@ func FindAllDevs() ([]Device, error) {
 		}
 		addrs, err := inter.Addrs()
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println(fmt.Errorf("find all devs: %w", err))
 			continue
 		}
 		as := make([]Addr, 0)
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
-				fmt.Println("address is invalid")
+				fmt.Println(fmt.Errorf("find all devs: %w", errors.New("invalid address")))
 				continue
 			}
 			as = append(as, Addr{IP:ipnet.IP, Mask:ipnet.Mask})
@@ -67,7 +67,7 @@ func FindAllDevs() ([]Device, error) {
 
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find all devs: %w", err)
 	}
 	for _, dev := range devs {
 		if dev.Flags&flagPcapLoopback != 0 {
@@ -76,7 +76,7 @@ func FindAllDevs() ([]Device, error) {
 				continue
 			}
 			if d.Name != "" {
-				return nil, errors.New("multiple loopback devices")
+				return nil, fmt.Errorf("find all devs: %w", errors.New("multiple loopback devices"))
 			}
 			d.Name = dev.Name
 			result = append(result, *d)
@@ -91,7 +91,7 @@ func FindAllDevs() ([]Device, error) {
 				continue
 			}
 			if d.Name != "" {
-				return nil, errors.New("multiple devices with same address")
+				return nil,fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
 			}
 			d.Name = dev.Name
 			result = append(result, *d)
@@ -122,11 +122,11 @@ func findDev(devs *[]Device, ip net.IP) *Device {
 	return nil
 }
 
-// FindLoopDev returns the loop Dev in current computer
+// FindLoopDev returns the loop device in current computer
 func FindLoopDev() (*Device, error) {
 	devs, err := FindAllDevs()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find loop dev: %w", err)
 	}
 	return findLoopDev(&devs), nil
 }
@@ -135,25 +135,25 @@ func FindLoopDev() (*Device, error) {
 func FindGatewayAddr() (*Addr, error) {
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find gateway addr: %w", err)
 	}
 	return &Addr{IP:ip}, nil
 }
 
-// FindGatewayDev returns the gatewayDev Dev
+// FindGatewayDev returns the gatewayDev device
 func FindGatewayDev(dev string) (*Device, error) {
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
 
 	handle, err := pcap.OpenLive(dev, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
 	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip.String()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
 	localPacketSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 	c := make(chan gopacket.Packet, 1)
@@ -170,20 +170,20 @@ func FindGatewayDev(dev string) (*Device, error) {
 
 	err = proxy.SendUDPPacket(ip.String()+":65535", []byte("0"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
 
 	packet := <-c
 	if packet == nil {
-		return nil, errors.New("timeout")
+		return nil, fmt.Errorf("find gateway dev: %w", errors.New("timeout"))
 	}
 	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
 	if ethernetLayer == nil {
-		return nil, errors.New("layer type is out of range")
+		return nil, fmt.Errorf("find gateway dev: %w", errors.New("layer type out of range"))
 	}
 	ethernetPacket, ok := ethernetLayer.(*layers.Ethernet)
 	if !ok {
-		return nil, errors.New("ethernet packet is invalid")
+		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
 	}
 	addrs := append(make([]Addr, 0), Addr{IP:ip})
 	return &Device{Addrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil

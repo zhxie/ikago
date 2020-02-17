@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"io"
 	"net"
 )
@@ -11,11 +12,11 @@ func Bypass(from, to net.Conn) error {
 
 	go func() {
 		_, err := io.Copy(from, to)
-		chanErr <- err
+		chanErr <- fmt.Errorf("bypass from: %w", err)
 	}()
 	go func() {
 		_, err := io.Copy(to, from)
-		chanErr <- err
+		chanErr <- fmt.Errorf("bypass to: %w", err)
 	}()
 
 	err := <-chanErr

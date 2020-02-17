@@ -18,21 +18,21 @@ func (p *Proxy) Open() error {
 
 	p.tcpListener, err = net.Listen("tcp", fmt.Sprintf(":%d", p.LocalPort))
 	if err != nil {
-		return err
+		return fmt.Errorf("open: %w", err)
 	}
 
 	go func() {
 		for {
 			conn, err := p.tcpListener.Accept()
 			if err != nil {
-				fmt.Println(err)
+				fmt.Println(fmt.Errorf("open: %w", err))
 				continue
 			}
 			fmt.Printf("tcp connect from %s\n", conn.RemoteAddr())
 			go func() {
 				err := p.handleTcpConnection(conn)
 				if err != nil {
-					fmt.Println(err)
+					fmt.Println(fmt.Errorf("open: %w", err))
 				}
 			}()
 		}
@@ -51,14 +51,14 @@ func (p *Proxy) handleTcpConnection(conn net.Conn) error {
 
 	remoteConn, err := net.Dial("tcp", p.RemoteAddr)
 	if err != nil {
-		return err
+		return fmt.Errorf("handle tcp connection: %w", err)
 	}
 	fmt.Printf("tcp connect to %s from %s\n", remoteConn.RemoteAddr(), conn.RemoteAddr())
 	defer remoteConn.Close()
 
 	err = Bypass(conn, remoteConn)
 	if err != nil {
-		return err
+		return fmt.Errorf("handle tcp connection: %w", err)
 	}
 	return nil
 }
