@@ -12,8 +12,10 @@ import (
 // Pcap describes a packet capture
 type Pcap struct {
 	LocalPort    uint16
+	RemoteAddr   net.IP
 	RemotePort   uint16
-	Dev          *Device
+	LocalDev     *Device
+	RemoteDev    *Device
 	gatewayDev   *Device
 	localHandle  *pcap.Handle
 	remoteHandle *pcap.Handle
@@ -21,14 +23,45 @@ type Pcap struct {
 
 // Open implements a method opens the pcap
 func (p *Pcap) Open() error {
-	if p.Dev == nil {
+	if p.LocalDev == nil {
 		gatewayAddr, err := FindGatewayAddr()
 		if err != nil {
-			return err
+			return fmt.Errorf("open: %w", err)
 		}
 		devs, err := FindAllDevs()
 		if err != nil {
-			return err
+			return fmt.Errorf("open: %w", err)
+		}
+		for _, dev := range devs {
+			if dev.IsLoop {
+				continue
+			}
+			for _, addr := range dev.Addrs {
+				ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
+				if ipnet.Contains(gatewayAddr.IP) {
+					p.LocalDev = &Device{
+						Name:         dev.Name,
+						FriendlyName: dev.FriendlyName,
+						Addrs:        append(make([]Addr, 0), addr),
+						HardwareAddr: dev.HardwareAddr,
+						IsLoop:       dev.IsLoop,
+					}
+					break
+				}
+			}
+			if p.LocalDev != nil {
+				break
+			}
+		}
+	}
+	if p.RemoteDev == nil {
+		gatewayAddr, err := FindGatewayAddr()
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
+		devs, err := FindAllDevs()
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
 		}
 		for _, dev := range devs {
 			if dev.IsLoop {
@@ -41,58 +74,75 @@ func (p *Pcap) Open() error {
 					if err != nil {
 						continue
 					}
-					p.Dev = &dev
+					p.RemoteDev = &Device{
+						Name:         dev.Name,
+						FriendlyName: dev.FriendlyName,
+						Addrs:        append(make([]Addr, 0), addr),
+						HardwareAddr: dev.HardwareAddr,
+						IsLoop:       dev.IsLoop,
+					}
 					break
 				}
 			}
-			if p.Dev != nil {
+			if p.RemoteDev != nil {
 				break
 			}
 		}
-		if p.gatewayDev == nil {
-			return errors.New("can not determine device")
-		}
 	} else {
-		var err error
-		p.gatewayDev, err = FindGatewayDev(p.Dev.Name)
-		if err != nil {
-			return err
+		if p.RemoteDev.IsLoop {
+			p.gatewayDev = p.RemoteDev
+		} else {
+			var err error
+			p.gatewayDev, err = FindGatewayDev(p.RemoteDev.Name)
+			if err != nil {
+				return fmt.Errorf("open: %w", err)
+			}
 		}
 	}
-	fmt.Printf("Route upstream from %s [%s] to gateway %s [%s]\n", p.Dev.FriendlyName, p.Dev.HardwareAddr,
-		p.gatewayDev.Addrs[0].IP, p.gatewayDev.HardwareAddr)
-
-	loopDev, err := FindLoopDev()
-	if err != nil {
-		return err
+	if p.LocalDev == nil || p.RemoteDev == nil || p.gatewayDev == nil {
+		return fmt.Errorf("open: %w", errors.New("can not determine device"))
 	}
-	p.localHandle, err = pcap.OpenLive(loopDev.Name, 1600, true, pcap.BlockForever)
+	if !p.LocalDev.IsLoop {
+		fmt.Printf("Listen on %s %s [%s]\n", p.LocalDev.FriendlyName, p.LocalDev.Addrs[0].IP,
+			p.LocalDev.HardwareAddr)
+	} else {
+		fmt.Printf("Listen on loopback %s\n", p.LocalDev.FriendlyName)
+	}
+	if !p.gatewayDev.IsLoop {
+		fmt.Printf("Route upstream from %s %s [%s] to gateway %s [%s]\n", p.RemoteDev.FriendlyName,
+			p.RemoteDev.Addrs[0].IP, p.RemoteDev.HardwareAddr, p.gatewayDev.Addrs[0].IP, p.gatewayDev.HardwareAddr)
+	} else {
+		fmt.Printf("Route upstream to loopback %s\n", p.RemoteDev.FriendlyName)
+	}
+
+	var err error
+	p.localHandle, err = pcap.OpenLive(p.LocalDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return err
+		return fmt.Errorf("open: %w", err)
 	}
 	err = p.localHandle.SetBPFFilter(fmt.Sprintf("tcp and dst port %d", p.LocalPort))
 	if err != nil {
-		return err
+		return fmt.Errorf("open: %w", err)
 	}
 	localPacketSrc := gopacket.NewPacketSource(p.localHandle, p.localHandle.LinkType())
 	go func() {
 		for packet := range localPacketSrc.Packets() {
-			handle(packet)
+			p.handle(packet)
 		}
 	}()
 
-	p.remoteHandle, err = pcap.OpenLive(p.Dev.Name, 1600, true, pcap.BlockForever)
+	p.remoteHandle, err = pcap.OpenLive(p.RemoteDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return err
+		return fmt.Errorf("open: %w", err)
 	}
-	err = p.remoteHandle.SetBPFFilter(fmt.Sprintf("tcp and src port %d", p.RemotePort))
+	err = p.remoteHandle.SetBPFFilter(fmt.Sprintf("tcp and src host %s and dst port %d", p.RemoteAddr, p.LocalPort))
 	if err != nil {
-		return err
+		return fmt.Errorf("open: %w", err)
 	}
 	remotePacketSrc := gopacket.NewPacketSource(p.remoteHandle, p.remoteHandle.LinkType())
 	go func() {
 		for packet := range remotePacketSrc.Packets() {
-			handle(packet)
+			p.handle(packet)
 		}
 	}()
 
@@ -105,7 +155,7 @@ func (p *Pcap) Close() {
 	p.remoteHandle.Close()
 }
 
-func handle(packet gopacket.Packet) {
+func (p *Pcap) handle(packet gopacket.Packet) {
 	packet.LinkLayer()
 	switch t := packet.TransportLayer().LayerType(); t {
 	case layers.LayerTypeTCP:
