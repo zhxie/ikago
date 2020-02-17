@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/google/gopacket"
@@ -16,79 +14,134 @@ import (
 	"../proxy"
 )
 
-type Device struct {
-	Name         string
-	Addrs        []string
-	HardwareAddr string
+// Addr describes an address of an Dev
+type Addr struct {
+	IP   net.IP
+	Mask net.IPMask
 }
 
-// FindAllDevs implements a method enumerates all valid network devices in current computer
-func FindAllDevs() ([]Device, error) {
-	devs, err := pcap.FindAllDevs()
-	if err != nil {
-		return nil, err
-	}
+// Device describes an network Dev
+type Device struct {
+	Name         string
+	FriendlyName string
+	Addrs        []Addr
+	HardwareAddr net.HardwareAddr
+	IsLoop       bool
+}
 
-	m := make(map[string]string)
+const flagPcapLoopback = 1
+
+// FindAllDevs returns all valid network devices in current computer
+func FindAllDevs() ([]Device, error) {
+	t := make([]Device, 0)
+	result := make([]Device, 0)
+
 	inters, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
 	for _, inter := range inters {
+		if inter.Flags&net.FlagUp == 0 && inter.Flags&net.FlagLoopback == 0 {
+			continue
+		}
+		var isLoop bool
+		if inter.Flags&net.FlagLoopback != 0 {
+			isLoop = true
+		}
 		addrs, err := inter.Addrs()
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
+		as := make([]Addr, 0)
 		for _, addr := range addrs {
-			addrSplit := strings.Split(addr.String(), "/")
-			_, exist := m[addrSplit[0]]
-			if exist {
-				return nil, errors.New("same address in multiple net interfaces")
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok {
+				fmt.Println("address is invalid")
+				continue
 			}
-			m[addrSplit[0]] = inter.HardwareAddr.String()
+			as = append(as, Addr{IP:ipnet.IP, Mask:ipnet.Mask})
 		}
+		t = append(t, Device{FriendlyName:inter.Name, Addrs:as, HardwareAddr:inter.HardwareAddr, IsLoop:isLoop})
 	}
 
-	result := make([]Device, 0)
-	if runtime.GOOS == "windows" {
-		result = append(result, LoopDev())
+	devs, err := pcap.FindAllDevs()
+	if err != nil {
+		return nil, err
 	}
 	for _, dev := range devs {
+		if dev.Flags&flagPcapLoopback != 0 {
+			d := findLoopDev(&t)
+			if d == nil {
+				continue
+			}
+			if d.Name != "" {
+				return nil, errors.New("multiple loopback devices")
+			}
+			d.Name = dev.Name
+			result = append(result, *d)
+			continue
+		}
 		if len(dev.Addresses) <= 0 {
 			continue
 		}
-		var hardwareAddr string
-		addrs := make([]string, 0)
 		for _, addr := range dev.Addresses {
-			if hardwareAddr == "" {
-				elem, exist := m[addr.IP.String()]
-				if exist {
-					hardwareAddr = elem
-				}
+			d := findDev(&t, addr.IP)
+			if d == nil {
+				continue
 			}
-			addrs = append(addrs, addr.IP.String())
+			if d.Name != "" {
+				return nil, errors.New("multiple devices with same address")
+			}
+			d.Name = dev.Name
+			result = append(result, *d)
+			break
 		}
-		if hardwareAddr == "" {
-			continue
-		}
-		result = append(result, Device{Name: dev.Name, Addrs: addrs, HardwareAddr: hardwareAddr})
 	}
 
-	return result, err
+	return result, nil
 }
 
-// LoopDev returns loopback network device in current computer
-func LoopDev() Device {
-	if runtime.GOOS == "windows" {
-		addresses := append(make([]string, 0), "::1", "127.0.0.1")
-		return Device{Name: "\\Device\\NPF_Loopback", Addrs: addresses}
+func findLoopDev(devs *[]Device) *Device {
+	for i := 0; i < len(*devs); i++ {
+		if (*devs)[i].IsLoop {
+			return &(*devs)[i]
+		}
 	}
-	return Device{Name: "lo"}
+	return nil
 }
 
-// FindGateway implements a method finds the gateway
-func FindGateway(dev string) (*Device, error) {
+func findDev(devs *[]Device, ip net.IP) *Device {
+	for i := 0; i < len(*devs); i++ {
+		for j := 0; j < len((*devs)[i].Addrs); j++ {
+			if (*devs)[i].Addrs[j].IP.Equal(ip) {
+				return &(*devs)[i]
+			}
+		}
+	}
+	return nil
+}
+
+// FindLoopDev returns the loop Dev in current computer
+func FindLoopDev() (*Device, error) {
+	devs, err := FindAllDevs()
+	if err != nil {
+		return nil, err
+	}
+	return findLoopDev(&devs), nil
+}
+
+// FindGatewayAddr returns the gatewayDev address
+func FindGatewayAddr() (*Addr, error) {
+	ip, err := gateway.DiscoverGateway()
+	if err != nil {
+		return nil, err
+	}
+	return &Addr{IP:ip}, nil
+}
+
+// FindGatewayDev returns the gatewayDev Dev
+func FindGatewayDev(dev string) (*Device, error) {
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
 		return nil, err
@@ -132,20 +185,25 @@ func FindGateway(dev string) (*Device, error) {
 	if !ok {
 		return nil, errors.New("ethernet packet is invalid")
 	}
-	addrs := append(make([]string, 0), ip.String())
-	return &Device{Addrs: addrs, HardwareAddr: ethernetPacket.SrcMAC.String()}, nil
+	addrs := append(make([]Addr, 0), Addr{IP:ip})
+	return &Device{Addrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil
 }
 
 func (dev Device) String() string {
-	result := dev.Name + ": "
-	if dev.HardwareAddr != "" {
-		result = result + dev.HardwareAddr + ", "
+	var result string
+	if dev.HardwareAddr != nil {
+		result = dev.Name + " [" + dev.HardwareAddr.String() + "]: "
+	} else {
+		result = dev.Name + ": "
 	}
-	for i, address := range dev.Addrs {
-		result = result + address
+	for i, addr := range dev.Addrs {
+		result = result + addr.IP.String()
 		if i < len(dev.Addrs)-1 {
 			result = result + ", "
 		}
+	}
+	if dev.IsLoop {
+		result = result + " (Loopback)"
 	}
 	return result
 }

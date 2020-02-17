@@ -1,32 +1,72 @@
 package pcap
 
 import (
+	"errors"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"net"
 )
 
-// Pcap is a struct for packet capture
+// Pcap describes a packet capture
 type Pcap struct {
-	Device       string
 	LocalPort    uint16
 	RemotePort   uint16
-	gateway      Device
+	Dev          *Device
+	gatewayDev   *Device
 	localHandle  *pcap.Handle
 	remoteHandle *pcap.Handle
 }
 
 // Open implements a method opens the pcap
 func (p *Pcap) Open() error {
-	gateway, err := FindGateway(p.Device)
+	if p.Dev == nil {
+		gatewayAddr, err := FindGatewayAddr()
+		if err != nil {
+			return err
+		}
+		devs, err := FindAllDevs()
+		if err != nil {
+			return err
+		}
+		for _, dev := range devs {
+			if dev.IsLoop {
+				continue
+			}
+			for _, addr := range dev.Addrs {
+				ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
+				if ipnet.Contains(gatewayAddr.IP) {
+					p.gatewayDev, err = FindGatewayDev(dev.Name)
+					if err != nil {
+						continue
+					}
+					p.Dev = &dev
+					break
+				}
+			}
+			if p.Dev != nil {
+				break
+			}
+		}
+		if p.gatewayDev == nil {
+			return errors.New("can not determine device")
+		}
+	} else {
+		var err error
+		p.gatewayDev, err = FindGatewayDev(p.Dev.Name)
+		if err != nil {
+			return err
+		}
+	}
+	fmt.Printf("Route upstream from %s [%s] to gateway %s [%s]\n", p.Dev.FriendlyName, p.Dev.HardwareAddr,
+		p.gatewayDev.Addrs[0].IP, p.gatewayDev.HardwareAddr)
+
+	loopDev, err := FindLoopDev()
 	if err != nil {
 		return err
 	}
-	p.gateway = *gateway
-	fmt.Printf("Route upstream to %s: %s\n", p.gateway.Addrs[0], p.gateway.HardwareAddr)
-
-	p.localHandle, err = pcap.OpenLive(LoopDev().Name, 1600, true, pcap.BlockForever)
+	p.localHandle, err = pcap.OpenLive(loopDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return err
 	}
@@ -41,7 +81,7 @@ func (p *Pcap) Open() error {
 		}
 	}()
 
-	p.remoteHandle, err = pcap.OpenLive(p.Device, 1600, true, pcap.BlockForever)
+	p.remoteHandle, err = pcap.OpenLive(p.Dev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return err
 	}
