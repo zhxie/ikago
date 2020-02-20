@@ -22,6 +22,13 @@ var localPort = flag.Int("p", 0, "Port")
 var server = flag.String("s", "", "Server")
 
 func main() {
+	var (
+		remoteIP   net.IP
+		remotePort uint64
+		err        error
+	)
+
+	// Parse arguments
 	flag.Parse()
 	if *listDevs {
 		fmt.Println("Available devices are listed below, use -d [device] to designate remote device:")
@@ -44,6 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Verify parameters
 	if *localPort <= 0 || *localPort >= 65536 {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("local port out of range")))
 		os.Exit(1)
@@ -54,13 +62,13 @@ func main() {
 			fmt.Errorf("server: %w", errors.New("invalid"))))
 		os.Exit(1)
 	}
-	remoteIP := net.ParseIP(serverSplit[0])
+	remoteIP = net.ParseIP(serverSplit[0])
 	if remoteIP == nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
 			fmt.Errorf("server: %w", errors.New("invalid ip"))))
 		os.Exit(1)
 	}
-	remotePort, err := strconv.ParseUint(serverSplit[len(serverSplit) - 1], 10, 16)
+	remotePort, err = strconv.ParseUint(serverSplit[len(serverSplit) - 1], 10, 16)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
 			fmt.Errorf("server: %w", errors.New("invalid port"))))
@@ -73,6 +81,7 @@ func main() {
 	}
 	fmt.Printf("Starting proxying from :%d to %s...\n", *localPort, *server)
 
+	// Packet capture
 	var remoteD *pcap.Device
 	if *remoteDev != "" {
 		devs, err := pcap.FindAllDevs()
@@ -94,12 +103,13 @@ func main() {
 		RemoteDev:   remoteD,
 		IsLocalOnly: *localOnly,
 	}
-	// This is a tcp proxy for debug
+	// Proxy, for debug use
 	p := proxy.Proxy{
 		LocalPort:  uint16(*localPort),
 		RemoteAddr: *server,
 	}
 
+	// Wait signals
 	sig := make(chan os.Signal)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	go func() {

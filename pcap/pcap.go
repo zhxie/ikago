@@ -28,6 +28,7 @@ type Pcap struct {
 
 // Open implements a method opens the pcap
 func (p *Pcap) Open() error {
+	// Find local devices for listening
 	devs, err := FindAllDevs()
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -43,6 +44,7 @@ func (p *Pcap) Open() error {
 		}
 	}
 
+	// Find remote and gateway device
 	if p.RemoteDev == nil {
 		gatewayAddr, err := FindGatewayAddr()
 		if err != nil {
@@ -56,6 +58,7 @@ func (p *Pcap) Open() error {
 			if dev.IsLoop {
 				continue
 			}
+			// Test if device's IP is in the same domain of the gateway's
 			for _, addr := range dev.IPAddrs {
 				ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
 				if ipnet.Contains(gatewayAddr.IP) {
@@ -88,6 +91,7 @@ func (p *Pcap) Open() error {
 			}
 		}
 	}
+
 	if p.localDevs == nil || len(p.localDevs) <= 0 || p.RemoteDev == nil || p.gatewayDev == nil {
 		return fmt.Errorf("open: %w", errors.New("can not determine device"))
 	}
@@ -118,6 +122,7 @@ func (p *Pcap) Open() error {
 		fmt.Printf("Route upstream to loopback %s\n", p.RemoteDev.FriendlyName)
 	}
 
+	// Local handle for listening
 	p.localHandles = make([]*pcap.Handle, 0)
 	for _, dev := range p.localDevs {
 		localHandle, err := pcap.OpenLive(dev.Name, 1600, true, pcap.BlockForever)
@@ -136,6 +141,7 @@ func (p *Pcap) Open() error {
 		}()
 	}
 
+	// Remote handle for listening and sending
 	p.remoteHandle, err = pcap.OpenLive(p.RemoteDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -172,35 +178,74 @@ func (p *Pcap) gatewayDevIP() net.IP {
 }
 
 func (p *Pcap) handleLocal(packet gopacket.Packet) {
-	networkLayer := packet.NetworkLayer()
+	var (
+		networkLayer        gopacket.NetworkLayer
+		networkLayerType    gopacket.LayerType
+		srcIP               net.IP
+		ttl                 uint8
+		transportLayer      gopacket.TransportLayer
+		transportLayerType  gopacket.LayerType
+		srcPort             uint16
+		isSrcPortUnknown    bool
+		applicationLayer    gopacket.ApplicationLayer
+		newTransportLayer   *layers.TCP
+		newNetworkLayer     gopacket.NetworkLayer
+		newNetworkLayerType gopacket.LayerType
+		newLinkLayer        gopacket.Layer
+		newLinkLayerType    gopacket.LayerType
+	)
+
+	// Parse packet
+	networkLayer = packet.NetworkLayer()
 	if networkLayer == nil {
 		fmt.Println(fmt.Errorf("handle local: %w", errors.New("missing network layer")))
 		return
 	}
-	networkLayerType := networkLayer.LayerType()
+	networkLayerType = networkLayer.LayerType()
 	switch networkLayerType {
-	case layers.LayerTypeIPv4, layers.LayerTypeIPv6:
+	case layers.LayerTypeIPv4:
+		ipv4 := networkLayer.(*layers.IPv4)
+		srcIP = ipv4.SrcIP
+		ttl = ipv4.TTL
+		break
+	case layers.LayerTypeIPv6:
+		srcIP = networkLayer.(*layers.IPv6).SrcIP
 		break
 	default:
 		fmt.Println(fmt.Errorf("handle local: %w", fmt.Errorf("not support %s", networkLayerType)))
 		return
 	}
-	transportLayer := packet.TransportLayer()
+	transportLayer = packet.TransportLayer()
 	if transportLayer == nil {
 		fmt.Println(fmt.Errorf("handle local: %w", errors.New("missing transport layer")))
 		return
 	}
-	applicationLayer := packet.ApplicationLayer()
+	transportLayerType = transportLayer.LayerType()
+	switch transportLayerType {
+	case layers.LayerTypeTCP:
+		srcPort = uint16(transportLayer.(*layers.TCP).SrcPort)
+		break
+	case layers.LayerTypeUDP:
+		srcPort = uint16(transportLayer.(*layers.UDP).SrcPort)
+		break
+	default:
+		isSrcPortUnknown = true
+	}
+	applicationLayer = packet.ApplicationLayer()
 
-	contents := append(make([]byte, 0), networkLayer.LayerContents()...)
-	contents = append(make([]byte, 0), transportLayer.LayerContents()...)
+	// Construct contents of new application layer
+	contents := make([]byte, 0)
+	contents = append(contents, networkLayer.LayerContents()...)
+	contents = append(contents, transportLayer.LayerContents()...)
 	if applicationLayer != nil {
-		contents = append(make([]byte, 0), applicationLayer.LayerContents()...)
+		contents = append(contents, applicationLayer.LayerContents()...)
 	}
 
-	newTransportLayer := createTCP(p.LocalPort, p.RemotePort, p.remoteSeq)
+	// Create new transport layer in TCP
+	newTransportLayer = createTCP(p.LocalPort, p.RemotePort, p.remoteSeq)
 	p.remoteSeq++
 
+	// Decide IPv4 of IPv6
 	isRemoteDevIPv4 := p.remoteDevIP().To4() != nil
 	isGatewayDevIPv4 := p.gatewayDevIP().To4() != nil
 	var isIPv4 bool
@@ -213,15 +258,18 @@ func (p *Pcap) handleLocal(packet gopacket.Packet) {
 		return
 	}
 
-	var newNetworkLayer gopacket.NetworkLayer
+	// Create new network layer
 	if isIPv4 {
-		newNetworkLayer = createIPv4(p.remoteDevIP(), p.RemoteIP, p.remoteId, 64)
+		// Create in IPv4
+		newNetworkLayer = createIPv4(p.remoteDevIP(), p.RemoteIP, p.remoteId, ttl-1)
 		p.remoteId++
 
 		ipv4 := newNetworkLayer.(*layers.IPv4)
 
+		// Checksum of transport layer
 		newTransportLayer.Checksum = CheckTCPIPv4Sum(newTransportLayer, contents, ipv4)
 
+		// Fill length and checksum of network layer
 		ipv4.Length = (uint16(ipv4.IHL) + uint16(len(newTransportLayer.LayerContents())) + uint16(len(contents))) * 8
 		ipv4.Checksum = checkSum(ipv4.LayerContents())
 	} else {
@@ -229,11 +277,13 @@ func (p *Pcap) handleLocal(packet gopacket.Packet) {
 		return
 	}
 
-	var newLinkLayer gopacket.Layer
-	newNetworkLayerType := newNetworkLayer.LayerType()
+	// Create new link layer
+	newNetworkLayerType = newNetworkLayer.LayerType()
 	if p.RemoteDev.IsLoop {
+		// Create in loopback
 		newLinkLayer = &layers.Loopback{}
 	} else {
+		// Create in Ethernet
 		var t layers.EthernetType
 		switch newNetworkLayerType {
 		case layers.LayerTypeIPv4:
@@ -249,10 +299,11 @@ func (p *Pcap) handleLocal(packet gopacket.Packet) {
 		}
 	}
 
+	// Serialize layers
 	options := gopacket.SerializeOptions{}
 	buffer := gopacket.NewSerializeBuffer()
 	var err error
-	newLinkLayerType := newLinkLayer.LayerType()
+	newLinkLayerType = newLinkLayer.LayerType()
 	switch newLinkLayerType {
 	case layers.LayerTypeLoopback:
 		switch newNetworkLayerType {
@@ -289,9 +340,18 @@ func (p *Pcap) handleLocal(packet gopacket.Packet) {
 		return
 	}
 
-	err = p.remoteHandle.WritePacketData(buffer.Bytes())
+	// Write packet data
+	data := buffer.Bytes()
+	err = p.remoteHandle.WritePacketData(data)
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle local: %w", errors.New("cannot write packet data")))
+	}
+	if isSrcPortUnknown {
+		fmt.Printf("Redirect a %s packet from %s of size %d Bytes\n",
+			transportLayerType, srcIP, packet.Metadata().Length)
+	} else {
+		fmt.Printf("Redirect a %s packet from %s:%d of size %d Bytes\n",
+			transportLayerType, srcIP, srcPort, packet.Metadata().Length)
 	}
 }
 

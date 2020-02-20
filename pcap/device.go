@@ -24,6 +24,11 @@ func (addr *IPAddr) IsIPv4() bool {
 	return addr.IP.To4() != nil
 }
 
+func (addr IPAddr) String() string {
+	ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
+	return ipnet.String()
+}
+
 // Device describes an network device
 type Device struct {
 	Name         string
@@ -40,11 +45,13 @@ func FindAllDevs() ([]*Device, error) {
 	t := make([]*Device, 0)
 	result := make([]*Device, 0)
 
+	// Enumerate system's network interfaces
 	inters, err := net.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("find all devs: %w", err)
 	}
 	for _, inter := range inters {
+		// Ignore not up and not loopback interfaces
 		if inter.Flags&net.FlagUp == 0 && inter.Flags&net.FlagLoopback == 0 {
 			continue
 		}
@@ -69,11 +76,13 @@ func FindAllDevs() ([]*Device, error) {
 		t = append(t, &Device{FriendlyName:inter.Name, IPAddrs:as, HardwareAddr:inter.HardwareAddr, IsLoop:isLoop})
 	}
 
+	// Enumerate pcap devices
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
 		return nil, fmt.Errorf("find all devs: %w", err)
 	}
 	for _, dev := range devs {
+		// Match pcap device with interface
 		if dev.Flags&flagPcapLoopback != 0 {
 			d := findLoopDev(t)
 			if d == nil {
@@ -84,22 +93,22 @@ func FindAllDevs() ([]*Device, error) {
 			}
 			d.Name = dev.Name
 			result = append(result, d)
-			continue
-		}
-		if len(dev.Addresses) <= 0 {
-			continue
-		}
-		for _, addr := range dev.Addresses {
-			d := findDev(t, addr.IP)
-			if d == nil {
+		} else {
+			if len(dev.Addresses) <= 0 {
 				continue
 			}
-			if d.Name != "" {
-				return nil,fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
+			for _, addr := range dev.Addresses {
+				d := findDev(t, addr.IP)
+				if d == nil {
+					continue
+				}
+				if d.Name != "" {
+					return nil,fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
+				}
+				d.Name = dev.Name
+				result = append(result, d)
+				break
 			}
-			d.Name = dev.Name
-			result = append(result, d)
-			break
 		}
 	}
 
@@ -146,11 +155,13 @@ func FindGatewayAddr() (*IPAddr, error) {
 
 // FindGatewayDev returns the gatewayDev device
 func FindGatewayDev(dev string) (*Device, error) {
+	// Find gateway's IP
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
 		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
 
+	// Create a packet capture for testing
 	handle, err := pcap.OpenLive(dev, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return nil, fmt.Errorf("find gateway dev: %w", err)
@@ -172,11 +183,13 @@ func FindGatewayDev(dev string) (*Device, error) {
 		c <- nil
 	}()
 
+	// Attempt to send and capture a UDP packet
 	err = proxy.SendUDPPacket(ip.String()+":65535", []byte("0"))
 	if err != nil {
 		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
 
+	// Analyze the packet and get gateway's hardware address
 	packet := <-c
 	if packet == nil {
 		return nil, fmt.Errorf("find gateway dev: %w", errors.New("timeout"))

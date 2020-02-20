@@ -7,11 +7,14 @@ import (
 
 // SendTCPPacket implements a method sends a TCP packet
 func SendTCPPacket(addr string, data []byte) error {
+	// Create connection
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("send tcp packet: %w", err)
 	}
 	defer conn.Close()
+
+	// Write data
 	_, err = conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("send tcp packet: %w", err)
@@ -21,11 +24,14 @@ func SendTCPPacket(addr string, data []byte) error {
 
 // SendUDPPacket implements a method sends a UDP packet
 func SendUDPPacket(addr string, data []byte) error {
+	// Create connection
 	conn, err := net.Dial("udp", addr)
 	if err != nil {
 		return fmt.Errorf("send udp packet: %w", err)
 	}
 	defer conn.Close()
+
+	// Write data
 	_, err = conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("send udp packet: %w", err)
