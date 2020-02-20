@@ -14,7 +14,7 @@ type Pcap struct {
 	LocalPort    uint16
 	RemoteIP     net.IP
 	RemotePort   uint16
-	localDevs    []Device
+	localDevs    []*Device
 	RemoteDev    *Device
 	IsLocalOnly  bool
 	gatewayDev   *Device
@@ -32,7 +32,7 @@ func (p *Pcap) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	p.localDevs = make([]Device, 0)
+	p.localDevs = make([]*Device, 0)
 	for _, dev := range devs {
 		if p.IsLocalOnly {
 			if dev.IsLoop {

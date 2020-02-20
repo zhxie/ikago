@@ -86,12 +86,12 @@ func checkSum(data []byte) uint16 {
 	var index int
 
 	for length > 1 {
-		sum += uint32(data[index])<<8 + uint32(data[index+1])
+		sum += uint32((data)[index])<<8 + uint32((data)[index+1])
 		index += 2
 		length -= 2
 	}
 	if length > 0 {
-		sum += uint32(data[index])
+		sum += uint32((data)[index])
 	}
 	sum += sum >> 16
 	return uint16(^sum)

@@ -36,9 +36,9 @@ type Device struct {
 const flagPcapLoopback = 1
 
 // FindAllDevs returns all valid network devices in current computer
-func FindAllDevs() ([]Device, error) {
-	t := make([]Device, 0)
-	result := make([]Device, 0)
+func FindAllDevs() ([]*Device, error) {
+	t := make([]*Device, 0)
+	result := make([]*Device, 0)
 
 	inters, err := net.Interfaces()
 	if err != nil {
@@ -64,9 +64,9 @@ func FindAllDevs() ([]Device, error) {
 				fmt.Println(fmt.Errorf("find all devs: %w", errors.New("invalid address")))
 				continue
 			}
-			as = append(as, IPAddr{IP: ipnet.IP, Mask:ipnet.Mask})
+			as = append(as, IPAddr{IP:ipnet.IP, Mask:ipnet.Mask})
 		}
-		t = append(t, Device{FriendlyName:inter.Name, IPAddrs:as, HardwareAddr:inter.HardwareAddr, IsLoop:isLoop})
+		t = append(t, &Device{FriendlyName:inter.Name, IPAddrs:as, HardwareAddr:inter.HardwareAddr, IsLoop:isLoop})
 	}
 
 	devs, err := pcap.FindAllDevs()
@@ -75,7 +75,7 @@ func FindAllDevs() ([]Device, error) {
 	}
 	for _, dev := range devs {
 		if dev.Flags&flagPcapLoopback != 0 {
-			d := findLoopDev(&t)
+			d := findLoopDev(t)
 			if d == nil {
 				continue
 			}
@@ -83,14 +83,14 @@ func FindAllDevs() ([]Device, error) {
 				return nil, fmt.Errorf("find all devs: %w", errors.New("multiple loopback devices"))
 			}
 			d.Name = dev.Name
-			result = append(result, *d)
+			result = append(result, d)
 			continue
 		}
 		if len(dev.Addresses) <= 0 {
 			continue
 		}
 		for _, addr := range dev.Addresses {
-			d := findDev(&t, addr.IP)
+			d := findDev(t, addr.IP)
 			if d == nil {
 				continue
 			}
@@ -98,7 +98,7 @@ func FindAllDevs() ([]Device, error) {
 				return nil,fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
 			}
 			d.Name = dev.Name
-			result = append(result, *d)
+			result = append(result, d)
 			break
 		}
 	}
@@ -106,20 +106,20 @@ func FindAllDevs() ([]Device, error) {
 	return result, nil
 }
 
-func findLoopDev(devs *[]Device) *Device {
-	for i := 0; i < len(*devs); i++ {
-		if (*devs)[i].IsLoop {
-			return &(*devs)[i]
+func findLoopDev(devs []*Device) *Device {
+	for _, dev := range devs {
+		if dev.IsLoop {
+			return dev
 		}
 	}
 	return nil
 }
 
-func findDev(devs *[]Device, ip net.IP) *Device {
-	for i := 0; i < len(*devs); i++ {
-		for j := 0; j < len((*devs)[i].IPAddrs); j++ {
-			if (*devs)[i].IPAddrs[j].IP.Equal(ip) {
-				return &(*devs)[i]
+func findDev(devs []*Device, ip net.IP) *Device {
+	for _, dev := range devs {
+		for _, addr := range dev.IPAddrs {
+			if addr.IP.Equal(ip) {
+				return dev
 			}
 		}
 	}
@@ -132,7 +132,7 @@ func FindLoopDev() (*Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("find loop dev: %w", err)
 	}
-	return findLoopDev(&devs), nil
+	return findLoopDev(devs), nil
 }
 
 // FindGatewayAddr returns the gatewayDev address
@@ -141,7 +141,7 @@ func FindGatewayAddr() (*IPAddr, error) {
 	if err != nil {
 		return nil, fmt.Errorf("find gateway addr: %w", err)
 	}
-	return &IPAddr{IP: ip}, nil
+	return &IPAddr{IP:ip}, nil
 }
 
 // FindGatewayDev returns the gatewayDev device
@@ -189,8 +189,8 @@ func FindGatewayDev(dev string) (*Device, error) {
 	if !ok {
 		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
 	}
-	addrs := append(make([]IPAddr, 0), IPAddr{IP: ip})
-	return &Device{IPAddrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil
+	addrs := append(make([]IPAddr, 0), IPAddr{IP:ip})
+	return &Device{IPAddrs:addrs, HardwareAddr:ethernetPacket.DstMAC}, nil
 }
 
 func (dev Device) String() string {

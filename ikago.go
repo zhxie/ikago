@@ -82,7 +82,7 @@ func main() {
 		}
 		for _, dev := range devs {
 			if dev.Name == *remoteDev {
-				remoteD = &dev
+				remoteD = dev
 				break
 			}
 		}
