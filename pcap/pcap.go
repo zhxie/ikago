@@ -14,10 +14,11 @@ type Pcap struct {
 	LocalPort    uint16
 	RemoteIP     net.IP
 	RemotePort   uint16
-	LocalDev     *Device
+	localDevs    []Device
 	RemoteDev    *Device
+	IsLocalOnly  bool
 	gatewayDev   *Device
-	localHandle  *pcap.Handle
+	localHandles []*pcap.Handle
 	remoteHandle *pcap.Handle
 	remoteSeq    uint32
 	remoteId     uint16
@@ -27,37 +28,21 @@ type Pcap struct {
 
 // Open implements a method opens the pcap
 func (p *Pcap) Open() error {
-	if p.LocalDev == nil {
-		gatewayAddr, err := FindGatewayAddr()
-		if err != nil {
-			return fmt.Errorf("open: %w", err)
-		}
-		devs, err := FindAllDevs()
-		if err != nil {
-			return fmt.Errorf("open: %w", err)
-		}
-		for _, dev := range devs {
+	devs, err := FindAllDevs()
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	p.localDevs = make([]Device, 0)
+	for _, dev := range devs {
+		if p.IsLocalOnly {
 			if dev.IsLoop {
-				continue
+				p.localDevs = append(p.localDevs, dev)
 			}
-			for _, addr := range dev.IPAddrs {
-				ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
-				if ipnet.Contains(gatewayAddr.IP) {
-					p.LocalDev = &Device{
-						Name:         dev.Name,
-						FriendlyName: dev.FriendlyName,
-						IPAddrs:      append(make([]IPAddr, 0), addr),
-						HardwareAddr: dev.HardwareAddr,
-						IsLoop:       dev.IsLoop,
-					}
-					break
-				}
-			}
-			if p.LocalDev != nil {
-				break
-			}
+		} else {
+			p.localDevs = append(p.localDevs, dev)
 		}
 	}
+
 	if p.RemoteDev == nil {
 		gatewayAddr, err := FindGatewayAddr()
 		if err != nil {
@@ -103,36 +88,53 @@ func (p *Pcap) Open() error {
 			}
 		}
 	}
-	if p.LocalDev == nil || p.RemoteDev == nil || p.gatewayDev == nil {
+	if p.localDevs == nil || len(p.localDevs) <= 0 || p.RemoteDev == nil || p.gatewayDev == nil {
 		return fmt.Errorf("open: %w", errors.New("can not determine device"))
 	}
-	if !p.LocalDev.IsLoop {
-		fmt.Printf("Listen on %s %s [%s]\n", p.LocalDev.FriendlyName, p.localDevIP(), p.LocalDev.HardwareAddr)
-	} else {
-		fmt.Printf("Listen on loopback %s\n", p.LocalDev.FriendlyName)
+	strDevs := ""
+	for i, dev := range p.localDevs {
+		if i != 0 {
+			strDevs = strDevs + ", "
+		}
+		strIPs := ""
+		for j, addr := range dev.IPAddrs {
+			if j != 0 {
+				strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
+			} else {
+				strIPs = strIPs + addr.IP.String()
+			}
+		}
+		if dev.IsLoop {
+			strDevs = strDevs + fmt.Sprintf("%s: %s", dev.FriendlyName, strIPs)
+		} else {
+			strDevs = strDevs + fmt.Sprintf("%s [%s]: %s", dev.FriendlyName, dev.HardwareAddr, strIPs)
+		}
 	}
+	fmt.Printf("Listen on %s\n", strDevs)
 	if !p.gatewayDev.IsLoop {
-		fmt.Printf("Route upstream from %s %s [%s] to gateway %s [%s]\n", p.RemoteDev.FriendlyName,
-			p.remoteDevIP(), p.RemoteDev.HardwareAddr, p.gatewayDevIP(), p.gatewayDev.HardwareAddr)
+		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.RemoteDev.FriendlyName,
+			p.RemoteDev.HardwareAddr, p.remoteDevIP(), p.gatewayDev.HardwareAddr, p.gatewayDevIP())
 	} else {
 		fmt.Printf("Route upstream to loopback %s\n", p.RemoteDev.FriendlyName)
 	}
 
-	var err error
-	p.localHandle, err = pcap.OpenLive(p.LocalDev.Name, 1600, true, pcap.BlockForever)
-	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-	err = p.localHandle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d", p.LocalPort))
-	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-	localPacketSrc := gopacket.NewPacketSource(p.localHandle, p.localHandle.LinkType())
-	go func() {
-		for packet := range localPacketSrc.Packets() {
-			p.handleLocal(packet)
+	p.localHandles = make([]*pcap.Handle, 0)
+	for _, dev := range p.localDevs {
+		localHandle, err := pcap.OpenLive(dev.Name, 1600, true, pcap.BlockForever)
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
 		}
-	}()
+		err = localHandle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d", p.LocalPort))
+		p.localHandles = append(p.localHandles, localHandle)
+	}
+	for _, handle := range p.localHandles {
+		localPacketSrc := gopacket.NewPacketSource(handle, handle.LinkType())
+		go func() {
+			for packet := range localPacketSrc.Packets() {
+				p.handleLocal(packet)
+			}
+		}()
+	}
 
 	p.remoteHandle, err = pcap.OpenLive(p.RemoteDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
@@ -155,12 +157,10 @@ func (p *Pcap) Open() error {
 
 // Close implements a method closes the pcap
 func (p *Pcap) Close() {
-	p.localHandle.Close()
+	for _, handle := range p.localHandles {
+		handle.Close()
+	}
 	p.remoteHandle.Close()
-}
-
-func (p *Pcap) localDevIP() net.IP {
-	return p.LocalDev.IPAddrs[1].IP
 }
 
 func (p *Pcap) remoteDevIP() net.IP {
