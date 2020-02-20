@@ -18,7 +18,7 @@ go run ikago.go [-list-devices] [-local-only] [-d device] -p [port] -s [address:
 
 `-local-only`: (Optional) Use loopback devices for listening only.
 
-`-d device`: (Optional) Remote device for sending and listening packets to and from server.
+`-d device`: (Optional) Remote pcap device for sending packets to server and local devices, and listening packets from server.
 
 `-p port`: Local port for listening.
 
