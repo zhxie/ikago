@@ -1,4 +1,4 @@
-package proxy
+package pcap
 
 import (
 	"fmt"

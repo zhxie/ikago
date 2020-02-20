@@ -10,8 +10,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/jackpal/gateway"
-
-	"../proxy"
 )
 
 // IPAddr describes address with ip and mask
@@ -184,7 +182,7 @@ func FindGatewayDev(dev string) (*Device, error) {
 	}()
 
 	// Attempt to send and capture a UDP packet
-	err = proxy.SendUDPPacket(ip.String()+":65535", []byte("0"))
+	err = SendUDPPacket(ip.String()+":65535", []byte("0"))
 	if err != nil {
 		return nil, fmt.Errorf("find gateway dev: %w", err)
 	}
