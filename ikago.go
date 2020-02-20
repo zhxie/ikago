@@ -55,10 +55,10 @@ func main() {
 			fmt.Errorf("server: %w", errors.New("invalid"))))
 		os.Exit(1)
 	}
-	remoteAddr := net.ParseIP(serverSplit[0])
-	if remoteAddr == nil {
+	remoteIP := net.ParseIP(serverSplit[0])
+	if remoteIP == nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
-			fmt.Errorf("server: %w", errors.New("invalid address"))))
+			fmt.Errorf("server: %w", errors.New("invalid ip"))))
 		os.Exit(1)
 	}
 	remotePort, err := strconv.ParseUint(serverSplit[len(serverSplit) - 1], 10, 16)
@@ -104,7 +104,7 @@ func main() {
 	}
 	pc := pcap.Pcap{
 		LocalPort:  uint16(*localPort),
-		RemoteAddr: remoteAddr,
+		RemoteIP:   remoteIP,
 		RemotePort: uint16(remotePort),
 		LocalDev:   localD,
 		RemoteDev:  remoteD,
