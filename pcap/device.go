@@ -87,7 +87,7 @@ func FindAllDevs() ([]*Device, error) {
 				continue
 			}
 			if d.Name != "" {
-				return nil, fmt.Errorf("find all devs: %w", errors.New("multiple loopback devices"))
+				return nil, fmt.Errorf("find all devs: %w", errors.New("too many loopback devices"))
 			}
 			d.Name = dev.Name
 			result = append(result, d)
@@ -201,7 +201,7 @@ func FindGatewayDev(dev string) (*Device, error) {
 		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
 	}
 	addrs := append(make([]IPAddr, 0), IPAddr{IP:ip})
-	return &Device{IPAddrs:addrs, HardwareAddr:ethernetPacket.DstMAC}, nil
+	return &Device{FriendlyName:"Gateway", IPAddrs:addrs, HardwareAddr:ethernetPacket.DstMAC}, nil
 }
 
 func (dev Device) String() string {

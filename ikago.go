@@ -15,23 +15,24 @@ import (
 	"./proxy"
 )
 
-var listDevs = flag.Bool("list-devices", false, "List Devices")
-var localOnly = flag.Bool("local-only", false, "Local Only")
-var remoteDev = flag.String("d", "", "Remote Device")
-var localPort = flag.Int("p", 0, "Port")
-var server = flag.String("s", "", "Server")
+var listDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
+var listenLocal = flag.Bool("listen-local", false, "Listen loopback device only.")
+var local = flag.Bool("local", false, "Route upstream to loopback device.")
+var dev = flag.String("d", "", "Route upstream to designated pcap device.")
+var listenPort = flag.Int("p", 0, "Port for listening.")
+var server = flag.String("s", "", "Server.")
 
 func main() {
 	var (
-		remoteIP   net.IP
-		remotePort uint64
+		serverIP   net.IP
+		serverPort uint64
 		err        error
 	)
 
 	// Parse arguments
 	flag.Parse()
 	if *listDevs {
-		fmt.Println("Available devices are listed below, use -d [device] to designate remote device:")
+		fmt.Println("Available devices are listed below, use -d [device] to designate device:")
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("list devices: %w", err))
@@ -42,18 +43,18 @@ func main() {
 		}
 		os.Exit(0)
 	}
-	if *localPort == 0 {
-		fmt.Fprintln(os.Stderr, "Please provide local port by -l [port].")
+	if *listenPort == 0 {
+		fmt.Fprintln(os.Stderr, "Please provide listen port by -p [port].")
 		os.Exit(1)
 	}
 	if *server == "" {
-		fmt.Fprintln(os.Stderr, "Please provide server by -r [address:port].")
+		fmt.Fprintln(os.Stderr, "Please provide server by -s [address:port].")
 		os.Exit(1)
 	}
 
 	// Verify parameters
-	if *localPort <= 0 || *localPort >= 65536 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("local port out of range")))
+	if *listenPort <= 0 || *listenPort >= 65536 {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("listen port out of range")))
 		os.Exit(1)
 	}
 	serverSplit := strings.Split(*server, ":")
@@ -62,50 +63,51 @@ func main() {
 			fmt.Errorf("server: %w", errors.New("invalid"))))
 		os.Exit(1)
 	}
-	remoteIP = net.ParseIP(serverSplit[0])
-	if remoteIP == nil {
+	serverIP = net.ParseIP(serverSplit[0])
+	if serverIP == nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
 			fmt.Errorf("server: %w", errors.New("invalid ip"))))
 		os.Exit(1)
 	}
-	remotePort, err = strconv.ParseUint(serverSplit[len(serverSplit) - 1], 10, 16)
+	serverPort, err = strconv.ParseUint(serverSplit[len(serverSplit) - 1], 10, 16)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
 			fmt.Errorf("server: %w", errors.New("invalid port"))))
 		os.Exit(1)
 	}
-	if remotePort <= 0 || remotePort >= 65535 {
+	if serverPort <= 0 || serverPort >= 65535 {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
 			fmt.Errorf("server: %w", errors.New("port out of range"))))
 		os.Exit(1)
 	}
-	fmt.Printf("Starting proxying from :%d to %s...\n", *localPort, *server)
+	fmt.Printf("Starting proxying from :%d to %s...\n", *listenPort, *server)
 
 	// Packet capture
-	var remoteD *pcap.Device
-	if *remoteDev != "" {
+	var d *pcap.Device
+	if *dev != "" {
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
 			os.Exit(1)
 		}
-		for _, dev := range devs {
-			if dev.Name == *remoteDev {
-				remoteD = dev
+		for _, de := range devs {
+			if de.Name == *dev {
+				d = de
 				break
 			}
 		}
 	}
 	pc := pcap.Pcap{
-		LocalPort:   uint16(*localPort),
-		RemoteIP:    remoteIP,
-		RemotePort:  uint16(remotePort),
-		RemoteDev:   remoteD,
-		IsLocalOnly: *localOnly,
+		ListenPort:    uint16(*listenPort),
+		ServerIP:      serverIP,
+		ServerPort:    uint16(serverPort),
+		IsLocal:       *local,
+		Dev:           d,
+		IsListenLocal: *listenLocal,
 	}
 	// Proxy, for debug use
 	p := proxy.Proxy{
-		LocalPort:  uint16(*localPort),
+		LocalPort:  uint16(*listenPort),
 		RemoteAddr: *server,
 	}
 

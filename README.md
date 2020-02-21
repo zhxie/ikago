@@ -14,13 +14,15 @@
 go run ikago.go [-list-devices] [-local-only] [-d device] -p [port] -s [address:port]
 ```
 
-`-list-devices`: (Optional, Exclusively) List all valid network devices in current computer.
+`-list-devices`: (Optional, Exclusively) List all valid pcap devices in current computer.
 
-`-local-only`: (Optional) Use loopback devices for listening only.
+`-listen-local`: (Optional) Listen loopback device only.
 
-`-d device`: (Optional) Remote pcap device for sending packets to server and local devices, and listening packets from server.
+`-local`: (Optional) Route upstream to loopback device.
 
-`-p port`: Local port for listening.
+`-d device`: (Optional) Route upstream to designated pcap device.
+
+`-p port`: Port for listening.
 
 `-s address:port`: Server.
 
