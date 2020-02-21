@@ -177,7 +177,8 @@ func (p *Pcap) Open() error {
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
-		err = handle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d", p.ListenPort))
+		err = handle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d && not src host %s",
+			p.ListenPort, p.ServerIP))
 		p.listenHandles = append(p.listenHandles, handle)
 	}
 	for _, handle := range p.listenHandles {
