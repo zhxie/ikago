@@ -41,7 +41,7 @@ func main() {
 			os.Exit(1)
 		}
 		for _, d := range devs {
-			fmt.Println(d)
+			fmt.Printf("  %s\n", d)
 		}
 		os.Exit(0)
 	}

@@ -135,26 +135,39 @@ func (p *Pcap) Open() error {
 	if p.gatewayDev == nil {
 		return fmt.Errorf("open: %w", errors.New("can not determine gateway"))
 	}
-	strDevs := ""
-	for i, dev := range p.ListenDevs {
-		if i != 0 {
-			strDevs = strDevs + ", "
-		}
+	if len(p.ListenDevs) == 1 {
+		dev := p.ListenDevs[0]
 		strIPs := ""
-		for j, addr := range dev.IPAddrs {
-			if j != 0 {
+		for i, addr := range dev.IPAddrs {
+			if i != 0 {
 				strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
 			} else {
 				strIPs = strIPs + addr.IP.String()
 			}
 		}
 		if dev.IsLoop {
-			strDevs = strDevs + fmt.Sprintf("%s: %s", dev.FriendlyName, strIPs)
+			fmt.Printf("Listen on %s: %s\n", dev.FriendlyName, strIPs)
 		} else {
-			strDevs = strDevs + fmt.Sprintf("%s [%s]: %s", dev.FriendlyName, dev.HardwareAddr, strIPs)
+			fmt.Printf("Listen on %s [%s]: %s\n", dev.FriendlyName, dev.HardwareAddr, strIPs)
+		}
+	} else {
+		fmt.Println("Listen on:")
+		for _, dev := range p.ListenDevs {
+			strIPs := ""
+			for j, addr := range dev.IPAddrs {
+				if j != 0 {
+					strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
+				} else {
+					strIPs = strIPs + addr.IP.String()
+				}
+			}
+			if dev.IsLoop {
+				fmt.Printf("  %s: %s\n", dev.FriendlyName, strIPs)
+			} else {
+				fmt.Printf("  %s [%s]: %s\n", dev.FriendlyName, dev.HardwareAddr, strIPs)
+			}
 		}
 	}
-	fmt.Printf("Listen on %s\n", strDevs)
 	strUpIPs := ""
 	for i, addr := range p.UpDev.IPAddrs {
 		if i != 0 {
