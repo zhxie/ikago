@@ -6,6 +6,7 @@ import (
 	"net"
 )
 
+// Quintuple describes a tuple with source and destination IP and port and protocol in a packet
 type Quintuple struct {
 	SrcIP    string
 	SrcPort  uint16

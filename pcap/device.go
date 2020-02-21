@@ -18,10 +18,6 @@ type IPAddr struct {
 	Mask net.IPMask
 }
 
-func (addr *IPAddr) IsIPv4() bool {
-	return addr.IP.To4() != nil
-}
-
 func (addr IPAddr) String() string {
 	ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
 	return ipnet.String()
@@ -36,6 +32,7 @@ type Device struct {
 	IsLoop       bool
 }
 
+// IPv4 returns the first IPv4 address of the device
 func (dev *Device) IPv4() *IPAddr {
 	for _, addr := range dev.IPAddrs {
 		if addr.IP.To4() != nil {
@@ -45,6 +42,7 @@ func (dev *Device) IPv4() *IPAddr {
 	return nil
 }
 
+// IPv6 returns the first IPv6 address of the device
 func (dev *Device) IPv6() *IPAddr {
 	for _, addr := range dev.IPAddrs {
 		if addr.IP.To4() == nil && addr.IP.To16() != nil {
