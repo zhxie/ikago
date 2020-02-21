@@ -2,8 +2,17 @@ package pcap
 
 import (
 	"fmt"
+	"github.com/google/gopacket"
 	"net"
 )
+
+type Quintuple struct {
+	SrcIP    string
+	SrcPort  uint16
+	DstIP    string
+	DstPort  uint16
+	Protocol gopacket.LayerType
+}
 
 // SendTCPPacket implements a method sends a TCP packet
 func SendTCPPacket(addr string, data []byte) error {

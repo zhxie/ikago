@@ -21,13 +21,17 @@ type Pcap struct {
 	gatewayDev    *Device
 	listenHandles []*pcap.Handle
 	upHandle      *pcap.Handle
-	// TODO: attempt to initialize values below to reduce the possibility of collision
 	seq           uint32
+	// TODO: attempt to initialize IPv4 id to reduce the possibility of collision
 	id            uint16
+	nat           map[Quintuple]*pcap.Handle
 }
 
 // Open implements a method opens the pcap
 func (p *Pcap) Open() error {
+	p.id = 0
+	p.nat = make(map[Quintuple]*pcap.Handle)
+
 	// Find devices for listening
 	if p.IsListenLocal {
 		loopDev, err := FindLoopDev()
@@ -178,7 +182,7 @@ func (p *Pcap) Open() error {
 		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 		go func() {
 			for packet := range packetSrc.Packets() {
-				p.handleListen(packet)
+				p.handleListen(packet, handle)
 			}
 		}()
 	}
@@ -216,16 +220,18 @@ func (p *Pcap) gatewayDevIP() net.IP {
 	return p.gatewayDev.IPAddrs[0].IP
 }
 
-func (p *Pcap) handleListen(packet gopacket.Packet) {
+func (p *Pcap) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	var (
 		networkLayer        gopacket.NetworkLayer
 		networkLayerType    gopacket.LayerType
 		srcIP               net.IP
+		dstIP               net.IP
 		ttl                 uint8
 		transportLayer      gopacket.TransportLayer
 		transportLayerType  gopacket.LayerType
 		srcPort             uint16
-		isSrcPortUnknown    bool
+		dstPort             uint16
+		isPortUnknown       bool
 		applicationLayer    gopacket.ApplicationLayer
 		newTransportLayer   *layers.TCP
 		upDevIP             *IPAddr
@@ -244,13 +250,14 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 	networkLayerType = networkLayer.LayerType()
 	switch networkLayerType {
 	case layers.LayerTypeIPv4:
-		ipv4 := networkLayer.(*layers.IPv4)
-		srcIP = ipv4.SrcIP
-		ttl = ipv4.TTL
-		break
+		ipv4Layer := networkLayer.(*layers.IPv4)
+		srcIP = ipv4Layer.SrcIP
+		dstIP = ipv4Layer.DstIP
+		ttl = ipv4Layer.TTL
 	case layers.LayerTypeIPv6:
-		srcIP = networkLayer.(*layers.IPv6).SrcIP
-		break
+		ipv6Layer := networkLayer.(*layers.IPv6)
+		srcIP = ipv6Layer.SrcIP
+		dstIP = ipv6Layer.DstIP
 	default:
 		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("%s not support", networkLayerType)))
 		return
@@ -263,14 +270,16 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 	transportLayerType = transportLayer.LayerType()
 	switch transportLayerType {
 	case layers.LayerTypeTCP:
-		srcPort = uint16(transportLayer.(*layers.TCP).SrcPort)
-		break
+		tcpLayer := transportLayer.(*layers.TCP)
+		srcPort = uint16(tcpLayer.SrcPort)
+		dstPort = uint16(tcpLayer.DstPort)
 	case layers.LayerTypeUDP:
-		srcPort = uint16(transportLayer.(*layers.UDP).SrcPort)
-		break
+		udpLayer := transportLayer.(*layers.UDP)
+		srcPort = uint16(udpLayer.SrcPort)
+		dstPort = uint16(udpLayer.DstPort)
 	case layers.LayerTypeICMPv4, layers.LayerTypeICMPv6:
 	default:
-		isSrcPortUnknown = true
+		isPortUnknown = true
 	}
 	applicationLayer = packet.ApplicationLayer()
 
@@ -343,6 +352,16 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 		}
 	}
 
+	// Append quintuple
+	q := Quintuple{
+		SrcIP:    srcIP.String(),
+		SrcPort:  srcPort,
+		DstIP:    dstIP.String(),
+		DstPort:  dstPort,
+		Protocol: transportLayerType,
+	}
+	p.nat[q] = handle
+
 	// Serialize layers
 	options := gopacket.SerializeOptions{}
 	buffer := gopacket.NewSerializeBuffer()
@@ -390,16 +409,13 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle listen: %w", err))
 	}
-	if isSrcPortUnknown {
-		fmt.Printf("Redirect a %s packet from %s of size %d Bytes\n",
-			transportLayerType, srcIP, packet.Metadata().Length)
+	if isPortUnknown {
+		fmt.Printf("Redirect a %s packet from %s to %s of size %d Bytes\n",
+			transportLayerType, srcIP, dstIP, packet.Metadata().Length)
 	} else {
-		fmt.Printf("Redirect a %s packet from %s:%d of size %d Bytes\n",
-			transportLayerType, srcIP, srcPort, packet.Metadata().Length)
+		fmt.Printf("Redirect a %s packet from %s:%d to %s:%d of size %d Bytes\n",
+			transportLayerType, srcIP, srcPort, dstIP, dstPort, packet.Metadata().Length)
 	}
-
-	pp := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
-	p.handle(pp)
 }
 
 func (p *Pcap) handle(packet gopacket.Packet) {
@@ -408,9 +424,11 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 		encappedNetworkLayer       gopacket.NetworkLayer
 		encappedNetworkLayerType   gopacket.LayerType
 		encappedDstIP              net.IP
+		encappedSrcIP              net.IP
 		encappedTransportLayer     gopacket.TransportLayer
 		encappedTransportLayerType gopacket.LayerType
 		encappedDstPort            uint16
+		encappedSrcPort            uint16
 		isEncappedDstPortUnknown   bool
 		newLinkLayer               gopacket.Layer
 		newLinkLayerType           gopacket.LayerType
@@ -438,6 +456,9 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 	switch ipVersion {
 	case 4:
 		encappedNetworkLayerType = layers.LayerTypeIPv4
+		encappedIPv4Layer := encappedNetworkLayer.(*layers.IPv4)
+		encappedDstIP = encappedIPv4Layer.DstIP
+		encappedSrcIP = encappedIPv4Layer.SrcIP
 	case 6:
 		// Not IPv4, but IPv6
 		encappedPacket := gopacket.NewPacket(applicationLayer.LayerContents(), layers.LayerTypeIPv6, gopacket.Default)
@@ -451,6 +472,9 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 			return
 		}
 		encappedNetworkLayerType = layers.LayerTypeIPv6
+		encappedIPv6Layer := encappedNetworkLayer.(*layers.IPv6)
+		encappedDstIP = encappedIPv6Layer.DstIP
+		encappedSrcIP = encappedIPv6Layer.SrcIP
 	default:
 		fmt.Println(fmt.Errorf("handle: %w", fmt.Errorf("IP version %d not support", ipVersion)))
 		return
@@ -463,9 +487,13 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 	encappedTransportLayerType = encappedTransportLayer.LayerType()
 	switch encappedTransportLayerType {
 	case layers.LayerTypeTCP:
-		encappedDstPort = uint16(encappedTransportLayer.(*layers.TCP).DstPort)
+		encappedTCPLayer := encappedTransportLayer.(*layers.TCP)
+		encappedDstPort = uint16(encappedTCPLayer.DstPort)
+		encappedSrcPort = uint16(encappedTCPLayer.SrcPort)
 	case layers.LayerTypeUDP:
-		encappedDstPort = uint16(encappedTransportLayer.(*layers.UDP).DstPort)
+		encappedUDPLayer := encappedTransportLayer.(*layers.UDP)
+		encappedDstPort = uint16(encappedUDPLayer.DstPort)
+		encappedSrcPort = uint16(encappedUDPLayer.SrcPort)
 	case layers.LayerTypeICMPv4, layers.LayerTypeICMPv6:
 	default:
 		isEncappedDstPortUnknown = true
@@ -517,18 +545,31 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 		return
 	}
 
+	// Check map
+	q := Quintuple{
+		SrcIP:    encappedDstIP.String(),
+		SrcPort:  encappedDstPort,
+		DstIP:    encappedSrcIP.String(),
+		DstPort:  encappedSrcPort,
+		Protocol: encappedTransportLayerType,
+	}
+	handle, ok := p.nat[q]
+	if !ok {
+		handle = p.upHandle
+	}
+
 	// Write packet data
 	data := buffer.Bytes()
-	err = p.upHandle.WritePacketData(data)
+	err = handle.WritePacketData(data)
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle: %w", err))
 	}
 	if isEncappedDstPortUnknown {
-		fmt.Printf("Redirect a %s packet to %s of size %d Bytes\n",
-			encappedTransportLayerType, encappedDstIP, packet.Metadata().Length)
+		fmt.Printf("Redirect a %s packet from %s to %s of size %d Bytes\n",
+			encappedTransportLayerType, encappedSrcIP, encappedDstIP, len(data))
 	} else {
-		fmt.Printf("Redirect a %s packet to %s:%d of size %d Bytes\n",
-			encappedTransportLayerType, encappedDstIP, encappedDstPort, packet.Metadata().Length)
+		fmt.Printf("Redirect a %s packet from %s:%d to %s:%d of size %d Bytes\n",
+			encappedTransportLayerType, encappedSrcIP, encappedSrcPort, encappedDstIP, encappedDstPort, len(data))
 	}
 }
 
