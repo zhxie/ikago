@@ -18,7 +18,7 @@ import (
 var listDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
 var listenLocal = flag.Bool("listen-local", false, "Listen loopback device only.")
 var local = flag.Bool("local", false, "Route upstream to loopback device.")
-var dev = flag.String("d", "", "Route upstream to designated pcap device.")
+var upDev = flag.String("d", "", "Route upstream to designated pcap device.")
 var listenPort = flag.Int("p", 0, "Port for listening.")
 var server = flag.String("s", "", "Server.")
 
@@ -84,14 +84,14 @@ func main() {
 
 	// Packet capture
 	var d *pcap.Device
-	if *dev != "" {
+	if *upDev != "" {
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
 			os.Exit(1)
 		}
 		for _, de := range devs {
-			if de.Name == *dev {
+			if de.Name == *upDev {
 				d = de
 				break
 			}
@@ -102,7 +102,7 @@ func main() {
 		ServerIP:      serverIP,
 		ServerPort:    uint16(serverPort),
 		IsLocal:       *local,
-		Dev:           d,
+		UpDev:         d,
 		IsListenLocal: *listenLocal,
 	}
 	// Proxy, for debug use

@@ -17,10 +17,10 @@ type Pcap struct {
 	IsListenLocal bool
 	listenDevs    []*Device
 	IsLocal       bool
-	Dev           *Device
+	UpDev         *Device
 	gatewayDev    *Device
 	listenHandles []*pcap.Handle
-	handles       *pcap.Handle
+	upHandle      *pcap.Handle
 	// TODO: attempt to initialize values below to reduce the possibility of collision
 	seq           uint32
 	id            uint16
@@ -43,15 +43,15 @@ func (p *Pcap) Open() error {
 		p.listenDevs = devs
 	}
 
-	// Find dev and gateway device
-	if p.Dev == nil {
+	// Find route upstream and gateway device
+	if p.UpDev == nil {
 		if p.IsLocal {
 			loopDev, err := FindLoopDev()
 			if err != nil {
 				return fmt.Errorf("open: %w", err)
 			}
-			p.Dev = loopDev
-			p.gatewayDev = p.Dev
+			p.UpDev = loopDev
+			p.gatewayDev = p.UpDev
 		} else {
 			gatewayAddr, err := FindGatewayAddr()
 			if err != nil {
@@ -73,7 +73,7 @@ func (p *Pcap) Open() error {
 						if err != nil {
 							continue
 						}
-						p.Dev = &Device{
+						p.UpDev = &Device{
 							Name:         dev.Name,
 							FriendlyName: dev.FriendlyName,
 							IPAddrs:      append(make([]IPAddr, 0), addr),
@@ -83,44 +83,51 @@ func (p *Pcap) Open() error {
 						break
 					}
 				}
-				if p.Dev != nil {
+				if p.UpDev != nil {
 					break
 				}
 			}
 		}
 	} else {
-		if p.Dev.IsLoop {
-			p.gatewayDev = p.Dev
+		if p.UpDev.IsLoop {
+			p.gatewayDev = p.UpDev
 		} else {
 			var err error
-			p.gatewayDev, err = FindGatewayDev(p.Dev.Name)
+			p.gatewayDev, err = FindGatewayDev(p.UpDev.Name)
 			if err != nil {
 				return fmt.Errorf("open: %w", err)
 			}
 			// Test if device's IP is in the same domain of the gateway's
 			var newDev *Device
-			for _, addr := range p.Dev.IPAddrs {
+			for _, addr := range p.UpDev.IPAddrs {
 				ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
 				if ipnet.Contains(p.gatewayDevIP()) {
 					newDev = &Device{
-						Name:         p.Dev.Name,
-						FriendlyName: p.Dev.FriendlyName,
+						Name:         p.UpDev.Name,
+						FriendlyName: p.UpDev.FriendlyName,
 						IPAddrs:      append(make([]IPAddr, 0), addr),
-						HardwareAddr: p.Dev.HardwareAddr,
-						IsLoop:       p.Dev.IsLoop,
+						HardwareAddr: p.UpDev.HardwareAddr,
+						IsLoop:       p.UpDev.IsLoop,
 					}
 					break
 				}
 			}
 			if newDev == nil {
-				return fmt.Errorf("open: %w", errors.New("different domain in device and gateway"))
+				return fmt.Errorf("open: %w",
+					errors.New("different domain in upstream device and gateway"))
 			}
-			p.Dev = newDev
+			p.UpDev = newDev
 		}
 	}
 
-	if p.listenDevs == nil || len(p.listenDevs) <= 0 || p.Dev == nil || p.gatewayDev == nil {
-		return fmt.Errorf("open: %w", errors.New("can not determine device"))
+	if p.listenDevs == nil || len(p.listenDevs) <= 0 {
+		return fmt.Errorf("open: %w", errors.New("can not listen device"))
+	}
+	if p.UpDev == nil {
+		return fmt.Errorf("open: %w", errors.New("can not determine upstream device"))
+	}
+	if p.gatewayDev == nil {
+		return fmt.Errorf("open: %w", errors.New("can not determine gateway"))
 	}
 	strDevs := ""
 	for i, dev := range p.listenDevs {
@@ -142,11 +149,19 @@ func (p *Pcap) Open() error {
 		}
 	}
 	fmt.Printf("Listen on %s\n", strDevs)
+	strUpIPs := ""
+	for i, addr := range p.UpDev.IPAddrs {
+		if i != 0 {
+			strUpIPs = strUpIPs + fmt.Sprintf(", %s", addr.IP)
+		} else {
+			strUpIPs = strUpIPs + addr.IP.String()
+		}
+	}
 	if !p.gatewayDev.IsLoop {
-		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.Dev.FriendlyName,
-			p.Dev.HardwareAddr, p.devIP(), p.gatewayDev.HardwareAddr, p.gatewayDevIP())
+		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.FriendlyName,
+			p.UpDev.HardwareAddr, strUpIPs, p.gatewayDev.HardwareAddr, p.gatewayDevIP())
 	} else {
-		fmt.Printf("Route upstream to loopback %s\n", p.Dev.FriendlyName)
+		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.FriendlyName)
 	}
 
 	// Handles for listening
@@ -170,16 +185,16 @@ func (p *Pcap) Open() error {
 
 	// Handles for listening and sending
 	var err error
-	p.handles, err = pcap.OpenLive(p.Dev.Name, 1600, true, pcap.BlockForever)
+	p.upHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	err = p.handles.SetBPFFilter(fmt.Sprintf("tcp && src host %s && src port %d && dst port %d",
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("tcp && src host %s && src port %d && dst port %d",
 		p.ServerIP, p.ServerPort, p.ListenPort))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	packetSrc := gopacket.NewPacketSource(p.handles, p.handles.LinkType())
+	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
 	go func() {
 		for packet := range packetSrc.Packets() {
 			p.handle(packet)
@@ -194,12 +209,7 @@ func (p *Pcap) Close() {
 	for _, handle := range p.listenHandles {
 		handle.Close()
 	}
-	p.handles.Close()
-}
-
-func (p *Pcap) devIP() net.IP {
-	// TODO: device may owns multiple IPs
-	return p.Dev.IPAddrs[0].IP
+	p.upHandle.Close()
 }
 
 func (p *Pcap) gatewayDevIP() net.IP {
@@ -218,6 +228,7 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 		isSrcPortUnknown    bool
 		applicationLayer    gopacket.ApplicationLayer
 		newTransportLayer   *layers.TCP
+		upDevIP             *IPAddr
 		newNetworkLayer     gopacket.NetworkLayer
 		newNetworkLayerType gopacket.LayerType
 		newLinkLayer        gopacket.Layer
@@ -276,22 +287,25 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 	p.seq++
 
 	// Decide IPv4 of IPv6
-	isDevIPv4 := p.devIP().To4() != nil
-	isGatewayDevIPv4 := p.gatewayDevIP().To4() != nil
-	var isIPv4 bool
-	if isDevIPv4 && isGatewayDevIPv4 {
-		isIPv4 = true
-	} else if !isDevIPv4 && !isGatewayDevIPv4 {
-		isIPv4 = false
+	isIPv4 := p.gatewayDevIP().To4() != nil
+	if isIPv4 {
+		upDevIP = p.UpDev.IPv4()
+		if upDevIP == nil {
+			fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
+			return
+		}
 	} else {
-		fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ipv6 transition not support")))
-		return
+		upDevIP = p.UpDev.IPv6()
+		if upDevIP == nil {
+			fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
+			return
+		}
 	}
 
 	// Create new network layer
 	if isIPv4 {
 		// Create in IPv4
-		newNetworkLayer = createIPv4(p.devIP(), p.ServerIP, p.id, ttl-1)
+		newNetworkLayer = createIPv4(upDevIP.IP, p.ServerIP, p.id, ttl-1)
 		p.id++
 
 		ipv4 := newNetworkLayer.(*layers.IPv4)
@@ -309,7 +323,7 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 
 	// Create new link layer
 	newNetworkLayerType = newNetworkLayer.LayerType()
-	if p.Dev.IsLoop {
+	if p.UpDev.IsLoop {
 		// Create in loopback
 		newLinkLayer = &layers.Loopback{}
 	} else {
@@ -323,7 +337,7 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 			return
 		}
 		newLinkLayer = &layers.Ethernet{
-			SrcMAC:       p.Dev.HardwareAddr,
+			SrcMAC:       p.UpDev.HardwareAddr,
 			DstMAC:       p.gatewayDev.HardwareAddr,
 			EthernetType: t,
 		}
@@ -372,7 +386,7 @@ func (p *Pcap) handleListen(packet gopacket.Packet) {
 
 	// Write packet data
 	data := buffer.Bytes()
-	err = p.handles.WritePacketData(data)
+	err = p.upHandle.WritePacketData(data)
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle listen: %w", err))
 	}
@@ -458,7 +472,7 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 	}
 
 	// Create new link layer
-	if p.Dev.IsLoop {
+	if p.UpDev.IsLoop {
 		// Create in loopback
 		newLinkLayer = &layers.Loopback{}
 	} else {
@@ -472,7 +486,7 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 			return
 		}
 		newLinkLayer = &layers.Ethernet{
-			SrcMAC:       p.Dev.HardwareAddr,
+			SrcMAC:       p.UpDev.HardwareAddr,
 			DstMAC:       p.gatewayDev.HardwareAddr,
 			EthernetType: t,
 		}
@@ -505,7 +519,7 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 
 	// Write packet data
 	data := buffer.Bytes()
-	err = p.handles.WritePacketData(data)
+	err = p.upHandle.WritePacketData(data)
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle: %w", err))
 	}

@@ -36,6 +36,43 @@ type Device struct {
 	IsLoop       bool
 }
 
+func (dev *Device) IPv4() *IPAddr {
+	for _, addr := range dev.IPAddrs {
+		if addr.IP.To4() != nil {
+			return &addr
+		}
+	}
+	return nil
+}
+
+func (dev *Device) IPv6() *IPAddr {
+	for _, addr := range dev.IPAddrs {
+		if addr.IP.To4() == nil && addr.IP.To16() != nil {
+			return &addr
+		}
+	}
+	return nil
+}
+
+func (dev Device) String() string {
+	var result string
+	if dev.HardwareAddr != nil {
+		result = dev.Name + " [" + dev.HardwareAddr.String() + "]: "
+	} else {
+		result = dev.Name + ": "
+	}
+	for i, addr := range dev.IPAddrs {
+		result = result + addr.IP.String()
+		if i < len(dev.IPAddrs)-1 {
+			result = result + ", "
+		}
+	}
+	if dev.IsLoop {
+		result = result + " (Loopback)"
+	}
+	return result
+}
+
 const flagPcapLoopback = 1
 
 // FindAllDevs returns all valid network devices in current computer
@@ -202,23 +239,4 @@ func FindGatewayDev(dev string) (*Device, error) {
 	}
 	addrs := append(make([]IPAddr, 0), IPAddr{IP:ip})
 	return &Device{FriendlyName:"Gateway", IPAddrs:addrs, HardwareAddr:ethernetPacket.DstMAC}, nil
-}
-
-func (dev Device) String() string {
-	var result string
-	if dev.HardwareAddr != nil {
-		result = dev.Name + " [" + dev.HardwareAddr.String() + "]: "
-	} else {
-		result = dev.Name + ": "
-	}
-	for i, addr := range dev.IPAddrs {
-		result = result + addr.IP.String()
-		if i < len(dev.IPAddrs)-1 {
-			result = result + ", "
-		}
-	}
-	if dev.IsLoop {
-		result = result + " (Loopback)"
-	}
-	return result
 }
