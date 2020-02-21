@@ -73,8 +73,7 @@ func (p *Pcap) Open() error {
 				}
 				// Test if device's IP is in the same domain of the gateway's
 				for _, addr := range dev.IPAddrs {
-					ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
-					if ipnet.Contains(gatewayAddr.IP) {
+					if addr.Contains(gatewayAddr.IP) {
 						p.gatewayDev, err = FindGatewayDev(dev.Name)
 						if err != nil {
 							continue
@@ -82,7 +81,7 @@ func (p *Pcap) Open() error {
 						p.UpDev = &Device{
 							Name:         dev.Name,
 							FriendlyName: dev.FriendlyName,
-							IPAddrs:      append(make([]IPAddr, 0), addr),
+							IPAddrs:      append(make([]net.IPNet, 0), addr),
 							HardwareAddr: dev.HardwareAddr,
 							IsLoop:       dev.IsLoop,
 						}
@@ -106,12 +105,11 @@ func (p *Pcap) Open() error {
 			// Test if device's IP is in the same domain of the gateway's
 			var newDev *Device
 			for _, addr := range p.UpDev.IPAddrs {
-				ipnet := net.IPNet{IP:addr.IP, Mask:addr.Mask}
-				if ipnet.Contains(p.gatewayDevIP()) {
+				if addr.Contains(p.gatewayDevIP()) {
 					newDev = &Device{
 						Name:         p.UpDev.Name,
 						FriendlyName: p.UpDev.FriendlyName,
-						IPAddrs:      append(make([]IPAddr, 0), addr),
+						IPAddrs:      append(make([]net.IPNet, 0), addr),
 						HardwareAddr: p.UpDev.HardwareAddr,
 						IsLoop:       p.UpDev.IsLoop,
 					}
@@ -250,7 +248,7 @@ func (p *Pcap) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		isPortUnknown       bool
 		applicationLayer    gopacket.ApplicationLayer
 		newTransportLayer   *layers.TCP
-		upDevIP             *IPAddr
+		upDevIP             net.IP
 		newNetworkLayer     gopacket.NetworkLayer
 		newNetworkLayerType gopacket.LayerType
 		newLinkLayer        gopacket.Layer
@@ -314,13 +312,13 @@ func (p *Pcap) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	// Decide IPv4 of IPv6
 	isIPv4 := p.gatewayDevIP().To4() != nil
 	if isIPv4 {
-		upDevIP = p.UpDev.IPv4()
+		upDevIP = p.UpDev.IPv4().IP
 		if upDevIP == nil {
 			fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
 			return
 		}
 	} else {
-		upDevIP = p.UpDev.IPv6()
+		upDevIP = p.UpDev.IPv6().IP
 		if upDevIP == nil {
 			fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
 			return
@@ -330,7 +328,7 @@ func (p *Pcap) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	// Create new network layer
 	if isIPv4 {
 		// Create in IPv4
-		newNetworkLayer = createIPv4(upDevIP.IP, p.ServerIP, p.id, ttl-1)
+		newNetworkLayer = createIPv4(upDevIP, p.ServerIP, p.id, ttl-1)
 		p.id++
 
 		ipv4 := newNetworkLayer.(*layers.IPv4)
