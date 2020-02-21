@@ -17,8 +17,9 @@ import (
 
 var listDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
 var listenLocal = flag.Bool("listen-local", false, "Listen loopback device only.")
-var local = flag.Bool("local", false, "Route upstream to loopback device.")
-var upDev = flag.String("d", "", "Route upstream to designated pcap device.")
+var listenDev = flag.String("listen-device", "", "Designated pcap device for listening.")
+var local = flag.Bool("upstream-local", false, "Route upstream to loopback device only.")
+var upDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
 var listenPort = flag.Int("p", 0, "Port for listening.")
 var server = flag.String("s", "", "Server.")
 
@@ -32,7 +33,8 @@ func main() {
 	// Parse arguments
 	flag.Parse()
 	if *listDevs {
-		fmt.Println("Available devices are listed below, use -d [device] to designate device:")
+		fmt.Println("Available devices are listed below, use -listen-device [device] or " +
+			"-upstream-device [device] to designate device:")
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("list devices: %w", err))
@@ -83,16 +85,30 @@ func main() {
 	fmt.Printf("Starting proxying from :%d to %s...\n", *listenPort, *server)
 
 	// Packet capture
-	var d *pcap.Device
+	var listenDevs []*pcap.Device
+	if *listenDev != "" {
+		devs, err := pcap.FindAllDevs()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
+			os.Exit(1)
+		}
+		for _, dev := range devs {
+			if dev.Name == *listenDev {
+				listenDevs = append(listenDevs, dev)
+				break
+			}
+		}
+	}
+	var upD *pcap.Device
 	if *upDev != "" {
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
 			os.Exit(1)
 		}
-		for _, de := range devs {
-			if de.Name == *upDev {
-				d = de
+		for _, dev := range devs {
+			if dev.Name == *upDev {
+				upD = dev
 				break
 			}
 		}
@@ -101,9 +117,10 @@ func main() {
 		ListenPort:    uint16(*listenPort),
 		ServerIP:      serverIP,
 		ServerPort:    uint16(serverPort),
-		IsLocal:       *local,
-		UpDev:         d,
 		IsListenLocal: *listenLocal,
+		ListenDevs:    listenDevs,
+		IsLocal:       *local,
+		UpDev:         upD,
 	}
 	// Proxy, for debug use
 	p := proxy.Proxy{

@@ -15,7 +15,7 @@ type Pcap struct {
 	ServerIP      net.IP
 	ServerPort    uint16
 	IsListenLocal bool
-	listenDevs    []*Device
+	ListenDevs    []*Device
 	IsLocal       bool
 	UpDev         *Device
 	gatewayDev    *Device
@@ -33,18 +33,20 @@ func (p *Pcap) Open() error {
 	p.nat = make(map[Quintuple]*pcap.Handle)
 
 	// Find devices for listening
-	if p.IsListenLocal {
-		loopDev, err := FindLoopDev()
-		if err != nil {
-			return fmt.Errorf("open: %w", err)
+	if len(p.ListenDevs) <= 0 {
+		if p.IsListenLocal {
+			loopDev, err := FindLoopDev()
+			if err != nil {
+				return fmt.Errorf("open: %w", err)
+			}
+			p.ListenDevs = append(make([]*Device, 0), loopDev)
+		} else {
+			devs, err := FindAllDevs()
+			if err != nil {
+				return fmt.Errorf("open: %w", err)
+			}
+			p.ListenDevs = devs
 		}
-		p.listenDevs = append(make([]*Device, 0), loopDev)
-	} else {
-		devs, err := FindAllDevs()
-		if err != nil {
-			return fmt.Errorf("open: %w", err)
-		}
-		p.listenDevs = devs
 	}
 
 	// Find route upstream and gateway device
@@ -124,7 +126,7 @@ func (p *Pcap) Open() error {
 		}
 	}
 
-	if p.listenDevs == nil || len(p.listenDevs) <= 0 {
+	if len(p.ListenDevs) <= 0 {
 		return fmt.Errorf("open: %w", errors.New("can not listen device"))
 	}
 	if p.UpDev == nil {
@@ -134,7 +136,7 @@ func (p *Pcap) Open() error {
 		return fmt.Errorf("open: %w", errors.New("can not determine gateway"))
 	}
 	strDevs := ""
-	for i, dev := range p.listenDevs {
+	for i, dev := range p.ListenDevs {
 		if i != 0 {
 			strDevs = strDevs + ", "
 		}
@@ -170,7 +172,7 @@ func (p *Pcap) Open() error {
 
 	// Handles for listening
 	p.listenHandles = make([]*pcap.Handle, 0)
-	for _, dev := range p.listenDevs {
+	for _, dev := range p.ListenDevs {
 		handle, err := pcap.OpenLive(dev.Name, 1600, true, pcap.BlockForever)
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
