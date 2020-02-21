@@ -103,7 +103,8 @@ func FindAllDevs() ([]*Device, error) {
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
-				fmt.Println(fmt.Errorf("find all devs: %w", errors.New("invalid address")))
+				fmt.Println(fmt.Errorf("find all devs: %w",
+					fmt.Errorf("invalid address in %s", inter.Name)))
 				continue
 			}
 			as = append(as, IPAddr{IP:ipnet.IP, Mask:ipnet.Mask})

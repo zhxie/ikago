@@ -37,7 +37,7 @@ func (p *Pcap) Open() error {
 		if p.IsListenLocal {
 			loopDev, err := FindLoopDev()
 			if err != nil {
-				return fmt.Errorf("open: %w", err)
+				return fmt.Errorf("open: %w", fmt.Errorf("find listen devices: %w", err))
 			}
 			p.ListenDevs = append(make([]*Device, 0), loopDev)
 		} else {
@@ -54,18 +54,18 @@ func (p *Pcap) Open() error {
 		if p.IsLocal {
 			loopDev, err := FindLoopDev()
 			if err != nil {
-				return fmt.Errorf("open: %w", err)
+				return fmt.Errorf("open: %w", fmt.Errorf("find upstream device: %w", err))
 			}
 			p.UpDev = loopDev
 			p.gatewayDev = p.UpDev
 		} else {
 			gatewayAddr, err := FindGatewayAddr()
 			if err != nil {
-				return fmt.Errorf("open: %w", err)
+				return fmt.Errorf("open: %w", fmt.Errorf("find gateway: %w", err))
 			}
 			devs, err := FindAllDevs()
 			if err != nil {
-				return fmt.Errorf("open: %w", err)
+				return fmt.Errorf("open: %w", fmt.Errorf("find upstream device: %w", err))
 			}
 			for _, dev := range devs {
 				if dev.IsLoop {
@@ -101,7 +101,7 @@ func (p *Pcap) Open() error {
 			var err error
 			p.gatewayDev, err = FindGatewayDev(p.UpDev.Name)
 			if err != nil {
-				return fmt.Errorf("open: %w", err)
+				return fmt.Errorf("open: %w", fmt.Errorf("find gateway: %w", err))
 			}
 			// Test if device's IP is in the same domain of the gateway's
 			var newDev *Device
@@ -127,7 +127,7 @@ func (p *Pcap) Open() error {
 	}
 
 	if len(p.ListenDevs) <= 0 {
-		return fmt.Errorf("open: %w", errors.New("can not listen device"))
+		return fmt.Errorf("open: %w", errors.New("can not determine listen device"))
 	}
 	if p.UpDev == nil {
 		return fmt.Errorf("open: %w", errors.New("can not determine upstream device"))
@@ -412,10 +412,10 @@ func (p *Pcap) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		fmt.Println(fmt.Errorf("handle listen: %w", err))
 	}
 	if isPortUnknown {
-		fmt.Printf("Redirect a %s packet from %s to %s of size %d Bytes\n",
+		fmt.Printf("Redirect an outbound %s packet from %s to %s (%d Bytes)\n",
 			transportLayerType, srcIP, dstIP, packet.Metadata().Length)
 	} else {
-		fmt.Printf("Redirect a %s packet from %s:%d to %s:%d of size %d Bytes\n",
+		fmt.Printf("Redirect an outbound %s packet from %s:%d to %s:%d (%d Bytes)\n",
 			transportLayerType, srcIP, srcPort, dstIP, dstPort, packet.Metadata().Length)
 	}
 }
@@ -567,10 +567,10 @@ func (p *Pcap) handle(packet gopacket.Packet) {
 		fmt.Println(fmt.Errorf("handle: %w", err))
 	}
 	if isEncappedDstPortUnknown {
-		fmt.Printf("Redirect a %s packet from %s to %s of size %d Bytes\n",
+		fmt.Printf("Redirect an inbound %s packet from %s to %s (%d Bytes)\n",
 			encappedTransportLayerType, encappedSrcIP, encappedDstIP, len(data))
 	} else {
-		fmt.Printf("Redirect a %s packet from %s:%d to %s:%d of size %d Bytes\n",
+		fmt.Printf("Redirect an inbound %s packet from %s:%d to %s:%d (%d Bytes)\n",
 			encappedTransportLayerType, encappedSrcIP, encappedSrcPort, encappedDstIP, encappedDstPort, len(data))
 	}
 }

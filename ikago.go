@@ -61,25 +61,21 @@ func main() {
 	}
 	serverSplit := strings.Split(*server, ":")
 	if len(serverSplit) < 2 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
-			fmt.Errorf("server: %w", errors.New("invalid"))))
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("invalid server")))
 		os.Exit(1)
 	}
 	serverIP = net.ParseIP(serverSplit[0])
 	if serverIP == nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
-			fmt.Errorf("server: %w", errors.New("invalid ip"))))
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("invalid server ip")))
 		os.Exit(1)
 	}
 	serverPort, err = strconv.ParseUint(serverSplit[len(serverSplit) - 1], 10, 16)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
-			fmt.Errorf("server: %w", errors.New("invalid port"))))
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("invalid server port")))
 		os.Exit(1)
 	}
 	if serverPort <= 0 || serverPort >= 65535 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w",
-			fmt.Errorf("server: %w", errors.New("port out of range"))))
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("server port out of range")))
 		os.Exit(1)
 	}
 	fmt.Printf("Starting proxying from :%d to %s...\n", *listenPort, *server)
@@ -89,7 +85,7 @@ func main() {
 	if *listenDev != "" {
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
+			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", fmt.Errorf("listen device: %w", err)))
 			os.Exit(1)
 		}
 		for _, dev := range devs {
@@ -103,7 +99,7 @@ func main() {
 	if *upDev != "" {
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
+			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", fmt.Errorf("upstream device: %w", err)))
 			os.Exit(1)
 		}
 		for _, dev := range devs {
