@@ -81,7 +81,7 @@ func (p *Pcap) Open() error {
 						p.UpDev = &Device{
 							Name:         dev.Name,
 							FriendlyName: dev.FriendlyName,
-							IPAddrs:      append(make([]net.IPNet, 0), addr),
+							IPAddrs:      append(make([]*net.IPNet, 0), addr),
 							HardwareAddr: dev.HardwareAddr,
 							IsLoop:       dev.IsLoop,
 						}
@@ -109,7 +109,7 @@ func (p *Pcap) Open() error {
 					newDev = &Device{
 						Name:         p.UpDev.Name,
 						FriendlyName: p.UpDev.FriendlyName,
-						IPAddrs:      append(make([]net.IPNet, 0), addr),
+						IPAddrs:      append(make([]*net.IPNet, 0), addr),
 						HardwareAddr: p.UpDev.HardwareAddr,
 						IsLoop:       p.UpDev.IsLoop,
 					}

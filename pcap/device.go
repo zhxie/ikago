@@ -16,7 +16,7 @@ import (
 type Device struct {
 	Name         string
 	FriendlyName string
-	IPAddrs      []net.IPNet
+	IPAddrs      []*net.IPNet
 	HardwareAddr net.HardwareAddr
 	IsLoop       bool
 }
@@ -25,7 +25,7 @@ type Device struct {
 func (dev *Device) IPv4() *net.IPNet {
 	for _, addr := range dev.IPAddrs {
 		if addr.IP.To4() != nil {
-			return &addr
+			return addr
 		}
 	}
 	return nil
@@ -35,7 +35,7 @@ func (dev *Device) IPv4() *net.IPNet {
 func (dev *Device) IPv6() *net.IPNet {
 	for _, addr := range dev.IPAddrs {
 		if addr.IP.To4() == nil && addr.IP.To16() != nil {
-			return &addr
+			return addr
 		}
 	}
 	return nil
@@ -86,7 +86,7 @@ func FindAllDevs() ([]*Device, error) {
 			fmt.Println(fmt.Errorf("find all devs: %w", err))
 			continue
 		}
-		as := make([]net.IPNet, 0)
+		as := make([]*net.IPNet, 0)
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
@@ -94,7 +94,7 @@ func FindAllDevs() ([]*Device, error) {
 					fmt.Errorf("invalid address in %s", inter.Name)))
 				continue
 			}
-			as = append(as, *ipnet)
+			as = append(as, ipnet)
 		}
 		t = append(t, &Device{FriendlyName:inter.Name, IPAddrs:as, HardwareAddr:inter.HardwareAddr, IsLoop:isLoop})
 	}
@@ -225,6 +225,6 @@ func FindGatewayDev(dev string) (*Device, error) {
 	if !ok {
 		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
 	}
-	addrs := append(make([]net.IPNet, 0), net.IPNet{IP:ip})
+	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP:ip})
 	return &Device{FriendlyName:"Gateway", IPAddrs:addrs, HardwareAddr:ethernetPacket.DstMAC}, nil
 }
