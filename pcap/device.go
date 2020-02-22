@@ -167,7 +167,7 @@ func FindLoopDev() (*Device, error) {
 	return findLoopDev(devs), nil
 }
 
-// FindGatewayAddr returns the gatewayDev address
+// FindGatewayAddr returns the gateway's address
 func FindGatewayAddr() (*net.IPNet, error) {
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
@@ -176,7 +176,7 @@ func FindGatewayAddr() (*net.IPNet, error) {
 	return &net.IPNet{IP:ip}, nil
 }
 
-// FindGatewayDev returns the gatewayDev device
+// FindGatewayDev returns the gateway device
 func FindGatewayDev(dev string) (*Device, error) {
 	// Find gateway's IP
 	ip, err := gateway.DiscoverGateway()
