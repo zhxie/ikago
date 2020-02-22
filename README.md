@@ -26,7 +26,7 @@ go run ikago.go [-list-devices] [-local-only] [-d device] -p [port] -s [address:
 
 `-p port`: Port for listening.
 
-`-upstream-port -port`: (Optional) Port for routing upstream, must be different with port for listening. If this value is not set, a random port from 49152 to 65535 will be used.
+`-upstream-port -port`: (Optional) Port for routing upstream, must be different with port for listening. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 
 `-s address:port`: Server.
 
