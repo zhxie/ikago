@@ -96,7 +96,7 @@ func (p *Pcap) Open() error {
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
-		err = handle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d && not (src host %s && src port %d)",
+		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && not (src host %s && src port %d)",
 			p.ListenPort, p.ServerIP, p.ServerPort))
 		p.listenHandles = append(p.listenHandles, handle)
 	}
@@ -115,7 +115,7 @@ func (p *Pcap) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	err = p.upHandle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d && (src host %s && src port %d)",
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && (src host %s && src port %d)",
 		p.UpPort, p.ServerIP, p.ServerPort))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
