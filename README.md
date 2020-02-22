@@ -18,7 +18,7 @@ go run ikago.go [-list-devices] [-local-only] [-d device] -p [port] -s [address:
 
 `-listen-local`: (Optional) Listen loopback device only.
 
-`-listen-device device`: (Optional) Designated pcap device for listening.
+`-listen-devices devices`: (Optional) Designated pcap devices for listening, use comma to separate multiple devices.
 
 `-upstream-local`: (Optional) Route upstream to loopback device only.
 
