@@ -89,6 +89,90 @@ func CheckTCPIPv4Sum(tcp *layers.TCP, payload []byte, ipv4 *layers.IPv4) uint16 
 	return s.CheckSum()
 }
 
+// UDPPseudoHeaderIPv4 describes the pseudo header of UDP layer in checksum calculation in IPv4 network
+type UDPPseudoHeaderIPv4 struct {
+	SrcIP     net.IP
+	DstIP     net.IP
+	reserved  uint8
+	protocol  uint8
+	UDPLength uint16
+}
+
+// Bytes returns the slice of bytes of the pseudo header
+func (header *UDPPseudoHeaderIPv4) Bytes() []byte {
+	header.protocol = uint8(layers.IPProtocolTCP)
+
+	b := make([]byte, 0)
+	b = append(b, []byte(header.SrcIP.To4())...)
+	b = append(b, []byte(header.DstIP.To4())...)
+	b = append(b, header.reserved, header.protocol)
+	b = append(b, uint16ToBytes(header.UDPLength)...)
+
+	return b
+}
+
+// UDPSegment describes the UDP layer of header and payload
+type UDPSegment struct {
+	Header  *layers.UDP
+	Payload []byte
+}
+
+// Length returns the length of the segment
+func (segment *UDPSegment) Length() uint16 {
+	return uint16(len(segment.Header.LayerContents()) + len(segment.Payload))
+}
+
+// Bytes returns the slice of bytes of the segment
+func (segment *UDPSegment) Bytes() []byte {
+	b := make([]byte, 0)
+
+	b = append(b, segment.Header.LayerContents()...)
+	b = append(b, segment.Payload...)
+
+	return b
+}
+
+// UDPSegmentWithPseudoHeaderIPv4 describes the pseudo header of UDP layer in IPv4 network and its payload
+type UDPSegmentWithPseudoHeaderIPv4 struct {
+	Header  *UDPPseudoHeaderIPv4
+	Segment *UDPSegment
+}
+
+// Bytes returns the slice of bytes of the struct
+func (s *UDPSegmentWithPseudoHeaderIPv4) Bytes() []byte {
+	b := make([]byte, 0)
+
+	b = append(b, s.Header.Bytes()...)
+	b = append(b, s.Segment.Bytes()...)
+
+	return b
+}
+
+// CheckSum returns the checksum of struct
+func (s *UDPSegmentWithPseudoHeaderIPv4) CheckSum() uint16 {
+	return checkSum(s.Bytes())
+}
+
+// CheckUDPIPv4Sum returns the checksum of a UDP layer with payload in IPv4 network
+func CheckUDPIPv4Sum(udp *layers.UDP, payload []byte, ipv4 *layers.IPv4) uint16 {
+	segment := UDPSegment{
+		Header:  udp,
+		Payload: payload,
+	}
+
+	header := UDPPseudoHeaderIPv4{
+		SrcIP:     ipv4.SrcIP,
+		DstIP:     ipv4.DstIP,
+		UDPLength: segment.Length(),
+	}
+
+	s := UDPSegmentWithPseudoHeaderIPv4{
+		Header:  &header,
+		Segment: &segment,
+	}
+	return s.CheckSum()
+}
+
 func checkSum(data []byte) uint16 {
 	var sum uint32
 	length := len(data)

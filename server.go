@@ -88,10 +88,10 @@ func main() {
 
 	// Packet capture
 	p := pcap.Server{
-		ListenPort:    uint16(*argListenPort),
-		ListenDevs:    listenDevs,
-		UpDev:         upDev,
-		GatewayDev:    gatewayDev,
+		ListenPort: uint16(*argListenPort),
+		ListenDevs: listenDevs,
+		UpDev:      upDev,
+		GatewayDev: gatewayDev,
 	}
 
 	// Wait signals

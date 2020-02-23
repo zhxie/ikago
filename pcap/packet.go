@@ -4,16 +4,26 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"net"
 )
 
-// Quintuple describes a tuple with source and destination IP and port and protocol in a packet
+// Quintuple describes a quintuple with source and destination's IP and port and protocol in a packet
 type Quintuple struct {
 	SrcIP    string
 	SrcPort  uint16
 	DstIP    string
 	DstPort  uint16
 	Protocol gopacket.LayerType
+}
+
+// BackQuintuple describes a quintuple with source and encapped source's IP and port and device from which it was sent in a packet
+type BackQuintuple struct {
+	SrcIP           string
+	SrcPort         uint16
+	EncappedSrcIP   string
+	EncappedSrcPort uint16
+	Handle          *pcap.Handle
 }
 
 // SendTCPPacket implements a method sends a TCP packet

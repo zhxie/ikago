@@ -180,6 +180,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("%s not support", networkLayerType)))
 		return
 	}
+
 	transportLayer = packet.TransportLayer()
 	if transportLayer == nil {
 		fmt.Println(fmt.Errorf("handle listen: %w", errors.New("missing transport layer")))
@@ -198,6 +199,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	default:
 		isPortUnknown = true
 	}
+
 	applicationLayer = packet.ApplicationLayer()
 
 	// Construct contents of new application layer
@@ -234,14 +236,15 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		newNetworkLayer = createIPv4Layer(upDevIP, p.ServerIP, p.id, ttl-1)
 		p.id++
 
-		ipv4 := newNetworkLayer.(*layers.IPv4)
+		ipv4Layer := newNetworkLayer.(*layers.IPv4)
 
 		// Checksum of transport layer
-		newTransportLayer.Checksum = CheckTCPIPv4Sum(newTransportLayer, contents, ipv4)
+		newTransportLayer.Checksum = CheckTCPIPv4Sum(newTransportLayer, contents, ipv4Layer)
 
 		// Fill length and checksum of network layer
-		ipv4.Length = (uint16(ipv4.IHL) + uint16(len(newTransportLayer.LayerContents())) + uint16(len(contents))) * 8
-		ipv4.Checksum = checkSum(ipv4.LayerContents())
+		ipv4Layer.Length = (uint16(ipv4Layer.IHL) +
+			uint16(len(newTransportLayer.LayerContents())) + uint16(len(contents))) * 8
+		ipv4Layer.Checksum = checkSum(ipv4Layer.LayerContents())
 	} else {
 		fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ipv6 not support")))
 		return
@@ -258,6 +261,8 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		switch newNetworkLayerType {
 		case layers.LayerTypeIPv4:
 			t = layers.EthernetTypeIPv4
+		case layers.LayerTypeIPv6:
+			t = layers.EthernetTypeIPv6
 		default:
 			fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("%s not support", newNetworkLayerType)))
 			return
@@ -269,7 +274,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		}
 	}
 
-	// Append quintuple
+	// Record the source device of the packet
 	q := Quintuple{
 		SrcIP:    srcIP.String(),
 		SrcPort:  srcPort,
@@ -294,6 +299,13 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 				newTransportLayer,
 				gopacket.Payload(contents),
 			)
+		case layers.LayerTypeIPv6:
+			err = gopacket.SerializeLayers(buffer, options,
+				newLinkLayer.(*layers.Loopback),
+				newNetworkLayer.(*layers.IPv6),
+				newTransportLayer,
+				gopacket.Payload(contents),
+			)
 		default:
 			fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("%s not support", newNetworkLayerType)))
 			return
@@ -304,6 +316,13 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 			err = gopacket.SerializeLayers(buffer, options,
 				newLinkLayer.(*layers.Ethernet),
 				newNetworkLayer.(*layers.IPv4),
+				newTransportLayer,
+				gopacket.Payload(contents),
+			)
+		case layers.LayerTypeIPv6:
+			err = gopacket.SerializeLayers(buffer, options,
+				newLinkLayer.(*layers.Ethernet),
+				newNetworkLayer.(*layers.IPv6),
 				newTransportLayer,
 				gopacket.Payload(contents),
 			)
@@ -358,7 +377,6 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
 		return
 	}
-
 	// Guess network layer type
 	encappedPacket = gopacket.NewPacket(applicationLayer.LayerContents(), layers.LayerTypeIPv4, gopacket.Default)
 	encappedNetworkLayer = encappedPacket.NetworkLayer()
@@ -426,6 +444,8 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		switch encappedNetworkLayerType {
 		case layers.LayerTypeIPv4:
 			t = layers.EthernetTypeIPv4
+		case layers.LayerTypeIPv6:
+			t = layers.EthernetTypeIPv6
 		default:
 			fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("%s not support", encappedNetworkLayerType)))
 			return
