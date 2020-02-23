@@ -21,8 +21,16 @@ type Device struct {
 	IsLoop       bool
 }
 
-// IPv4 returns the first IPv4 address of the device
-func (dev *Device) IPv4() *net.IPNet {
+// IPAddr returns the first IP address of the device
+func (dev *Device) IPAddr() *net.IPNet {
+	if len(dev.IPAddrs) > 0 {
+		return dev.IPAddrs[0]
+	}
+	return nil
+}
+
+// IPv4Addr returns the first IPv4 address of the device
+func (dev *Device) IPv4Addr() *net.IPNet {
 	for _, addr := range dev.IPAddrs {
 		if addr.IP.To4() != nil {
 			return addr
@@ -31,8 +39,8 @@ func (dev *Device) IPv4() *net.IPNet {
 	return nil
 }
 
-// IPv6 returns the first IPv6 address of the device
-func (dev *Device) IPv6() *net.IPNet {
+// IPv6Addr returns the first IPv6Addr address of the device
+func (dev *Device) IPv6Addr() *net.IPNet {
 	for _, addr := range dev.IPAddrs {
 		if addr.IP.To4() == nil && addr.IP.To16() != nil {
 			return addr

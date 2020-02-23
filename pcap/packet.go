@@ -3,6 +3,7 @@ package pcap
 import (
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"net"
 )
 
@@ -47,4 +48,31 @@ func SendUDPPacket(addr string, data []byte) error {
 		return fmt.Errorf("send udp packet: %w", err)
 	}
 	return nil
+}
+
+func createTCPLayer(srcPort, dstPort uint16, seq uint32) *layers.TCP {
+	return &layers.TCP{
+		SrcPort:    layers.TCPPort(srcPort),
+		DstPort:    layers.TCPPort(dstPort),
+		Seq:        seq,
+		DataOffset: 5,
+		PSH:        true,
+		ACK:        true,
+		// Checksum:   0,
+	}
+}
+
+func createIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8) *layers.IPv4 {
+	return &layers.IPv4{
+		Version:    4,
+		IHL:        5,
+		// Length:     0,
+		Id:         id,
+		Flags:      layers.IPv4DontFragment,
+		TTL:        ttl,
+		Protocol:   layers.IPProtocolTCP,
+		// Checksum:   0,
+		SrcIP:      srcIP,
+		DstIP:      dstIP,
+	}
 }

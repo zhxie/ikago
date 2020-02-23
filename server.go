@@ -51,6 +51,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("listen port out of range")))
 		os.Exit(1)
 	}
+	fmt.Printf("Starting proxying from :%d...\n", *argListenPort)
 
 	// Find devices
 	if *argListenDevs == "" {
@@ -85,19 +86,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Packet capture
+	// Packet capture
+	p := pcap.Server{
+		ListenPort:    uint16(*argListenPort),
+		ListenDevs:    listenDevs,
+		UpDev:         upDev,
+		GatewayDev:    gatewayDev,
+	}
 
 	// Wait signals
 	sig := make(chan os.Signal)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sig
-		// TODO: close packet capture
+		p.Close()
 		os.Exit(0)
 	}()
 
 	go func() {
-		// TODO: open packet capture
+		err := p.Open()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("pcap: %w", err))
 			os.Exit(1)

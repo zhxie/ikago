@@ -9,7 +9,7 @@ import (
 	"net"
 )
 
-// Client describes a packet capture on the client side
+// Client describes the packet capture on the client side
 type Client struct {
 	ListenPort    uint16
 	UpPort        uint16
@@ -84,7 +84,7 @@ func (p *Client) Open() error {
 	}
 	if !p.GatewayDev.IsLoop {
 		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.FriendlyName,
-			p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.gatewayDevIP())
+			p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
 	} else {
 		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.FriendlyName)
 	}
@@ -109,7 +109,7 @@ func (p *Client) Open() error {
 		}()
 	}
 
-	// Handles for listening and sending
+	// Handles for routing upstream
 	var err error
 	p.upHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
@@ -123,7 +123,7 @@ func (p *Client) Open() error {
 	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
 	go func() {
 		for packet := range packetSrc.Packets() {
-			p.handle(packet)
+			p.handleUpstream(packet)
 		}
 	}()
 
@@ -136,10 +136,6 @@ func (p *Client) Close() {
 		handle.Close()
 	}
 	p.upHandle.Close()
-}
-
-func (p *Client) gatewayDevIP() net.IP {
-	return p.GatewayDev.IPAddrs[0].IP
 }
 
 func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
@@ -213,19 +209,19 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	}
 
 	// Create new transport layer in TCP
-	newTransportLayer = createTCP(p.UpPort, p.ServerPort, p.seq)
+	newTransportLayer = createTCPLayer(p.UpPort, p.ServerPort, p.seq)
 	p.seq++
 
 	// Decide IPv4 of IPv6
-	isIPv4 := p.gatewayDevIP().To4() != nil
+	isIPv4 := p.GatewayDev.IPAddr().IP.To4() != nil
 	if isIPv4 {
-		upDevIP = p.UpDev.IPv4().IP
+		upDevIP = p.UpDev.IPv4Addr().IP
 		if upDevIP == nil {
 			fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
 			return
 		}
 	} else {
-		upDevIP = p.UpDev.IPv6().IP
+		upDevIP = p.UpDev.IPv6Addr().IP
 		if upDevIP == nil {
 			fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
 			return
@@ -235,7 +231,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	// Create new network layer
 	if isIPv4 {
 		// Create in IPv4
-		newNetworkLayer = createIPv4(upDevIP, p.ServerIP, p.id, ttl-1)
+		newNetworkLayer = createIPv4Layer(upDevIP, p.ServerIP, p.id, ttl-1)
 		p.id++
 
 		ipv4 := newNetworkLayer.(*layers.IPv4)
@@ -339,7 +335,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	}
 }
 
-func (p *Client) handle(packet gopacket.Packet) {
+func (p *Client) handleUpstream(packet gopacket.Packet) {
 	var (
 		applicationLayer           gopacket.ApplicationLayer
 		encappedPacket             gopacket.Packet
@@ -359,7 +355,7 @@ func (p *Client) handle(packet gopacket.Packet) {
 	// Parse packet
 	applicationLayer = packet.ApplicationLayer()
 	if applicationLayer == nil {
-		fmt.Println(fmt.Errorf("handle: %w", errors.New("empty payload")))
+		fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
 		return
 	}
 
@@ -367,11 +363,11 @@ func (p *Client) handle(packet gopacket.Packet) {
 	encappedPacket = gopacket.NewPacket(applicationLayer.LayerContents(), layers.LayerTypeIPv4, gopacket.Default)
 	encappedNetworkLayer = encappedPacket.NetworkLayer()
 	if encappedNetworkLayer == nil {
-		fmt.Println(fmt.Errorf("handle: %w", errors.New("missing network layer")))
+		fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("missing network layer")))
 		return
 	}
 	if encappedNetworkLayer.LayerType() != layers.LayerTypeIPv4 {
-		fmt.Println(fmt.Errorf("handle: %w", errors.New("type not support")))
+		fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("type not support")))
 		return
 	}
 	ipVersion := encappedNetworkLayer.(*layers.IPv4).Version
@@ -386,11 +382,11 @@ func (p *Client) handle(packet gopacket.Packet) {
 		encappedPacket := gopacket.NewPacket(applicationLayer.LayerContents(), layers.LayerTypeIPv6, gopacket.Default)
 		encappedNetworkLayer = encappedPacket.NetworkLayer()
 		if encappedNetworkLayer == nil {
-			fmt.Println(fmt.Errorf("handle: %w", errors.New("missing network layer")))
+			fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("missing network layer")))
 			return
 		}
 		if encappedNetworkLayer.LayerType() != layers.LayerTypeIPv6 {
-			fmt.Println(fmt.Errorf("handle: %w", errors.New("type not support")))
+			fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("type not support")))
 			return
 		}
 		encappedNetworkLayerType = layers.LayerTypeIPv6
@@ -398,12 +394,12 @@ func (p *Client) handle(packet gopacket.Packet) {
 		encappedDstIP = encappedIPv6Layer.DstIP
 		encappedSrcIP = encappedIPv6Layer.SrcIP
 	default:
-		fmt.Println(fmt.Errorf("handle: %w", fmt.Errorf("IP version %d not support", ipVersion)))
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("IP version %d not support", ipVersion)))
 		return
 	}
 	encappedTransportLayer = encappedPacket.TransportLayer()
 	if encappedTransportLayer == nil {
-		fmt.Println(fmt.Errorf("handle: %w", errors.New("missing transport layer")))
+		fmt.Println(fmt.Errorf("handle upstream: %w", errors.New("missing transport layer")))
 		return
 	}
 	encappedTransportLayerType = encappedTransportLayer.LayerType()
@@ -431,7 +427,7 @@ func (p *Client) handle(packet gopacket.Packet) {
 		case layers.LayerTypeIPv4:
 			t = layers.EthernetTypeIPv4
 		default:
-			fmt.Println(fmt.Errorf("handle: %w", fmt.Errorf("%s not support", encappedNetworkLayerType)))
+			fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("%s not support", encappedNetworkLayerType)))
 			return
 		}
 		newLinkLayer = &layers.Ethernet{
@@ -458,11 +454,11 @@ func (p *Client) handle(packet gopacket.Packet) {
 			gopacket.Payload(applicationLayer.LayerContents()),
 		)
 	default:
-		fmt.Println(fmt.Errorf("handle: %w", fmt.Errorf("%s not support", newLinkLayerType)))
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("%s not support", newLinkLayerType)))
 		return
 	}
 	if err != nil {
-		fmt.Println(fmt.Errorf("handle: %w", err))
+		fmt.Println(fmt.Errorf("handle upstream: %w", err))
 		return
 	}
 
@@ -483,7 +479,7 @@ func (p *Client) handle(packet gopacket.Packet) {
 	data := buffer.Bytes()
 	err = handle.WritePacketData(data)
 	if err != nil {
-		fmt.Println(fmt.Errorf("handle: %w", err))
+		fmt.Println(fmt.Errorf("handle upstream: %w", err))
 	}
 	if isEncappedDstPortUnknown {
 		fmt.Printf("Redirect an inbound %s packet from %s to %s (%d Bytes)\n",
@@ -491,32 +487,5 @@ func (p *Client) handle(packet gopacket.Packet) {
 	} else {
 		fmt.Printf("Redirect an inbound %s packet from %s:%d to %s:%d (%d Bytes)\n",
 			encappedTransportLayerType, encappedSrcIP, encappedSrcPort, encappedDstIP, encappedDstPort, len(data))
-	}
-}
-
-func createTCP(srcPort, dstPort uint16, seq uint32) *layers.TCP {
-	return &layers.TCP{
-		SrcPort:    layers.TCPPort(srcPort),
-		DstPort:    layers.TCPPort(dstPort),
-		Seq:        seq,
-		DataOffset: 5,
-		PSH:        true,
-		ACK:        true,
-		// Checksum:   0,
-	}
-}
-
-func createIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8) *layers.IPv4 {
-	return &layers.IPv4{
-		Version:    4,
-		IHL:        5,
-		// Length:     0,
-		Id:         id,
-		Flags:      layers.IPv4DontFragment,
-		TTL:        ttl,
-		Protocol:   layers.IPProtocolTCP,
-		// Checksum:   0,
-		SrcIP:      srcIP,
-		DstIP:      dstIP,
 	}
 }
