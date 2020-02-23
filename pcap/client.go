@@ -3,10 +3,11 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
 )
 
 // Client describes the packet capture on the client side
@@ -98,6 +99,9 @@ func (p *Client) Open() error {
 		}
 		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && not (src host %s && src port %d)",
 			p.ListenPort, p.ServerIP, p.ServerPort))
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
 		p.listenHandles = append(p.listenHandles, handle)
 	}
 	for _, handle := range p.listenHandles {

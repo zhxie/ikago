@@ -3,10 +3,11 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
 )
 
 // Server describes the packet capture on the server side
@@ -94,6 +95,9 @@ func (p *Server) Open() error {
 			return fmt.Errorf("open: %w", err)
 		}
 		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d", p.ListenPort))
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
 		p.listenHandles = append(p.listenHandles, handle)
 	}
 	for _, handle := range p.listenHandles {
@@ -108,6 +112,10 @@ func (p *Server) Open() error {
 	// Handles for routing upstream
 	var err error
 	p.upHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && not dst port %d", p.ListenPort))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
