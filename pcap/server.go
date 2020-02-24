@@ -291,6 +291,22 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 
 		ipv4Layer := newNetworkLayer.(*layers.IPv4)
 
+		// Protocol and length
+		switch encappedTransportLayerType {
+		case layers.LayerTypeTCP:
+			ipv4Layer.Protocol = layers.IPProtocolTCP
+			ipv4Layer.Length = uint16(ipv4Layer.IHL * 4) +
+				uint16(encappedTransportLayer.(*layers.TCP).DataOffset * 4) + uint16(len(contents))
+		case layers.LayerTypeUDP:
+			ipv4Layer.Protocol = layers.IPProtocolUDP
+			ipv4Layer.Length = uint16(ipv4Layer.IHL * 4) + 8 + uint16(len(contents))
+		default:
+			fmt.Println(fmt.Errorf("handle listen: %w",
+				fmt.Errorf("create network layer: %w",
+					fmt.Errorf("type %s not support", encappedTransportLayerType))))
+			return
+		}
+
 		// Checksum of transport layer
 		switch encappedTransportLayerType {
 		case layers.LayerTypeTCP:

@@ -247,6 +247,10 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 
 		ipv4Layer := newNetworkLayer.(*layers.IPv4)
 
+		// Protocol and length
+		ipv4Layer.Protocol = layers.IPProtocolUDP
+		ipv4Layer.Length = uint16(ipv4Layer.IHL * 4) + uint16(newTransportLayer.DataOffset * 4) + uint16(len(contents))
+
 		// Checksum of transport layer
 		err := newTransportLayer.SetNetworkLayerForChecksum(ipv4Layer)
 		if err != nil {
