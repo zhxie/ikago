@@ -94,7 +94,7 @@ func (p *Server) Open() error {
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
-		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d", p.ListenPort))
+		err = handle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d", p.ListenPort))
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
