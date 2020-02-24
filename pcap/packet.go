@@ -60,14 +60,54 @@ func SendUDPPacket(addr string, data []byte) error {
 	return nil
 }
 
+func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {
+	return &layers.TCP{
+		SrcPort:    layers.TCPPort(srcPort),
+		DstPort:    layers.TCPPort(dstPort),
+		Seq:        seq,
+		DataOffset: 5,
+		SYN:        true,
+		Window:     65535,
+		// Checksum:   0,
+	}
+}
+
+func createTCPLayerACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
+	return &layers.TCP{
+		SrcPort:    layers.TCPPort(srcPort),
+		DstPort:    layers.TCPPort(dstPort),
+		Seq:        seq,
+		Ack:        ack,
+		DataOffset: 5,
+		SYN:        true,
+		ACK:        true,
+		Window:     65535,
+		// Checksum:   0,
+	}
+}
+
+func createTCPLayerSYNACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
+	return &layers.TCP{
+		SrcPort:    layers.TCPPort(srcPort),
+		DstPort:    layers.TCPPort(dstPort),
+		Seq:        seq,
+		Ack:        ack,
+		DataOffset: 5,
+		ACK:        true,
+		Window:     65535,
+		// Checksum:   0,
+	}
+}
+
 func createTCPLayer(srcPort, dstPort uint16, seq uint32) *layers.TCP {
 	return &layers.TCP{
 		SrcPort:    layers.TCPPort(srcPort),
 		DstPort:    layers.TCPPort(dstPort),
 		Seq:        seq,
 		DataOffset: 5,
-		PSH:        true,
-		ACK:        true,
+		SYN:        true,
+		PSH:        false,
+		ACK:        false,
 		Window:     65535,
 		// Checksum:   0,
 	}
