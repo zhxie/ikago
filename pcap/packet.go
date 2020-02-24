@@ -73,6 +73,15 @@ func createTCPLayer(srcPort, dstPort uint16, seq uint32) *layers.TCP {
 	}
 }
 
+func createUDPLayer(srcPort, dstPort uint16) *layers.UDP {
+	return &layers.UDP{
+		SrcPort:   layers.UDPPort(srcPort),
+		DstPort:   layers.UDPPort(dstPort),
+		// Length:    0,
+		// Checksum:  0,
+	}
+}
+
 func createIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8) *layers.IPv4 {
 	return &layers.IPv4{
 		Version:    4,
@@ -81,7 +90,7 @@ func createIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8) *layers.IPv4 {
 		Id:         id,
 		Flags:      layers.IPv4DontFragment,
 		TTL:        ttl,
-		Protocol:   layers.IPProtocolTCP,
+		// Protocol:   0,
 		// Checksum:   0,
 		SrcIP:      srcIP,
 		DstIP:      dstIP,
