@@ -243,12 +243,10 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		ipv4Layer := newNetworkLayer.(*layers.IPv4)
 
 		// Checksum of transport layer
-		newTransportLayer.Checksum = CheckTCPIPv4Sum(newTransportLayer, contents, ipv4Layer)
-
-		// Fill length and checksum of network layer
-		ipv4Layer.Length = (uint16(ipv4Layer.IHL) +
-			uint16(len(newTransportLayer.LayerContents())) + uint16(len(contents))) * 8
-		ipv4Layer.Checksum = checkSum(ipv4Layer.LayerContents())
+		err := newTransportLayer.SetNetworkLayerForChecksum(ipv4Layer)
+		if err != nil {
+			fmt.Println(fmt.Errorf("handle listen: %w", err))
+		}
 	} else {
 		fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ipv6 not support")))
 		return
@@ -289,7 +287,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	p.nat[q] = handle
 
 	// Serialize layers
-	options := gopacket.SerializeOptions{}
+	options := gopacket.SerializeOptions{ComputeChecksums:true}
 	buffer := gopacket.NewSerializeBuffer()
 	var err error
 	newLinkLayerType = newLinkLayer.LayerType()

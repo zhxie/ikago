@@ -287,22 +287,23 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 			tcpLayer := encappedTransportLayer.(*layers.TCP)
 
 			// Checksum of TCP layer
-			tcpLayer.Checksum = CheckTCPIPv4Sum(tcpLayer, contents, ipv4Layer)
+			err := tcpLayer.SetNetworkLayerForChecksum(ipv4Layer)
+			if err != nil {
+				fmt.Println(fmt.Errorf("handle listen: %w", err))
+			}
 		case layers.LayerTypeUDP:
 			udpLayer := encappedTransportLayer.(*layers.UDP)
 
 			// Checksum of UDP layer
-			udpLayer.Checksum = CheckUDPIPv4Sum(udpLayer, contents, ipv4Layer)
+			err := udpLayer.SetNetworkLayerForChecksum(ipv4Layer)
+			if err != nil {
+				fmt.Println(fmt.Errorf("handle listen: %w", err))
+			}
 		default:
 			fmt.Println(fmt.Errorf("handle listen: %w",
 				fmt.Errorf("%s not support", encappedTransportLayerType)))
 			return
 		}
-
-		// Fill length and checksum of network layer
-		ipv4Layer.Length = (uint16(ipv4Layer.IHL) +
-			uint16(len(encappedTransportLayer.LayerContents())) + uint16(len(contents))) * 8
-		ipv4Layer.Checksum = checkSum(ipv4Layer.LayerContents())
 	case layers.LayerTypeIPv6:
 		fmt.Println(fmt.Errorf("handle listen: %w", errors.New("ipv6 not support")))
 		return
@@ -357,7 +358,7 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	bts = append(bts, bq)
 
 	// Serialize layers
-	options := gopacket.SerializeOptions{}
+	options := gopacket.SerializeOptions{ComputeChecksums:true}
 	buffer := gopacket.NewSerializeBuffer()
 	var err error
 	newLinkLayerType = newLinkLayer.LayerType()
