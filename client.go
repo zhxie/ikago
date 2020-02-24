@@ -159,13 +159,9 @@ func main() {
 		os.Exit(0)
 	}()
 
-	go func() {
-		err := p.Open()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("pcap: %w", err))
-			os.Exit(1)
-		}
-	}()
-
-	select {}
+	err = p.Open()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("pcap: %w", err))
+		os.Exit(1)
+	}
 }

@@ -104,14 +104,6 @@ func (p *Client) Open() error {
 		}
 		p.listenHandles = append(p.listenHandles, handle)
 	}
-	for _, handle := range p.listenHandles {
-		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
-		go func() {
-			for packet := range packetSrc.Packets() {
-				p.handleListen(packet, handle)
-			}
-		}()
-	}
 
 	// Handles for routing upstream
 	var err error
@@ -124,14 +116,24 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
-	go func() {
-		for packet := range packetSrc.Packets() {
-			p.handleUpstream(packet)
-		}
-	}()
 
-	select {}
+	// TODO: Handshaking with server
+
+	// Start handling
+	for _, handle := range p.listenHandles {
+		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
+		go func() {
+			for packet := range packetSrc.Packets() {
+				p.handleListen(packet, handle)
+			}
+		}()
+	}
+	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
+	for packet := range packetSrc.Packets() {
+		p.handleUpstream(packet)
+	}
+
+	return nil
 }
 
 // Close implements a method closes the pcap
