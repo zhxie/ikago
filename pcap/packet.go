@@ -68,6 +68,7 @@ func createTCPLayer(srcPort, dstPort uint16, seq uint32) *layers.TCP {
 		DataOffset: 5,
 		PSH:        true,
 		ACK:        true,
+		Window:     65535,
 		// Checksum:   0,
 	}
 }
