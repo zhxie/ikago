@@ -20,7 +20,7 @@ func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {
 	}
 }
 
-func createTCPLayerACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
+func createTCPLayerSYNACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	return &layers.TCP{
 		SrcPort:    layers.TCPPort(srcPort),
 		DstPort:    layers.TCPPort(dstPort),
@@ -34,7 +34,7 @@ func createTCPLayerACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	}
 }
 
-func createTCPLayerSYNACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
+func createTCPLayerACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	return &layers.TCP{
 		SrcPort:    layers.TCPPort(srcPort),
 		DstPort:    layers.TCPPort(dstPort),
