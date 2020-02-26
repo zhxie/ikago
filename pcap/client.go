@@ -24,6 +24,7 @@ type Client struct {
 	upHandle        *pcap.Handle
 	handshakeHandle *pcap.Handle
 	seq             uint32
+	ack             uint32
 	// TODO: attempt to initialize IPv4 id to reduce the possibility of collision
 	id              uint16
 	nat             map[quintuple]*pcap.Handle
@@ -92,40 +93,15 @@ func (p *Client) Open() error {
 		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.FriendlyName)
 	}
 
-	// Handles for listening
-	p.listenHandles = make([]*pcap.Handle, 0)
-	for _, dev := range p.ListenDevs {
-		handle, err := pcap.OpenLive(dev.Name, 1600, true, pcap.BlockForever)
-		if err != nil {
-			return fmt.Errorf("open: %w", err)
-		}
-		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && not (src host %s && src port %d)",
-			p.ListenPort, p.ServerIP, p.ServerPort))
-		if err != nil {
-			return fmt.Errorf("open: %w", err)
-		}
-		p.listenHandles = append(p.listenHandles, handle)
-	}
-
-	// Handle for routing upstream
-	var err error
-	p.upHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
-	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && (src host %s && src port %d)",
-		p.UpPort, p.ServerIP, p.ServerPort))
-	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-
 	// Handle for handshaking
+	var err error
 	p.handshakeHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
 	defer p.handshakeHandle.Close()
-	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & (tcp-syn&tcp-ack) != 0 && dst port %d && (src host %s && src port %d)",
+	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0" +
+		"&& tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
 		p.UpPort, p.ServerIP, p.ServerPort))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -148,7 +124,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", err))
 	}
-	fmt.Printf("Handshake with server %s:%d\n", p.ServerIP, p.ServerPort)
+	fmt.Printf("Connect to server %s:%d\n", p.ServerIP, p.ServerPort)
 
 	// Handshaking with server (ACK)
 	packet := <-c
@@ -160,9 +136,22 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", err))
 	}
-	fmt.Printf("Connect to server %s:%d with latency %d ms\n", p.ServerIP, p.ServerPort, d.Milliseconds())
+	fmt.Printf("Connected to server %s:%d with latency %d ms\n", p.ServerIP, p.ServerPort, d.Milliseconds())
 
-	// Start handling
+	// Handles for listening
+	p.listenHandles = make([]*pcap.Handle, 0)
+	for _, dev := range p.ListenDevs {
+		handle, err := pcap.OpenLive(dev.Name, 1600, true, pcap.BlockForever)
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
+		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && not (src host %s && src port %d)",
+			p.ListenPort, p.ServerIP, p.ServerPort))
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
+		p.listenHandles = append(p.listenHandles, handle)
+	}
 	for _, handle := range p.listenHandles {
 		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 		go func() {
@@ -170,6 +159,17 @@ func (p *Client) Open() error {
 				p.handleListen(packet, handle)
 			}
 		}()
+	}
+
+	// Handle for routing upstream
+	p.upHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && (src host %s && src port %d)",
+		p.UpPort, p.ServerIP, p.ServerPort))
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
 	}
 	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
 	for packet := range packetSrc.Packets() {
@@ -199,7 +199,6 @@ func (p *Client) handshakeSYN() error {
 
 	// Create transport layer
 	transportLayer = createTCPLayerSYN(p.UpPort, p.ServerPort, p.seq)
-	p.seq++
 
 	// Decide IPv4 or IPv6
 	isIPv4 := p.GatewayDev.IPAddr().IP.To4() != nil
@@ -259,7 +258,7 @@ func (p *Client) handshakeSYN() error {
 	}
 
 	// Write packet data
-	err = p.upHandle.WritePacketData(data)
+	err = p.handshakeHandle.WritePacketData(data)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
 	}
@@ -281,12 +280,14 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	indicator, err := parsePacket(packet)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
-
 	}
 
-	// Create transport layer
-	newTransportLayer = createTCPLayerACK(indicator.DstPort, indicator.SrcPort, p.seq, indicator.Seq+1)
+	// Seq and Ack
 	p.seq++
+	p.ack = indicator.Seq + 1
+
+	// Create transport layer
+	newTransportLayer = createTCPLayerACK(indicator.DstPort, indicator.SrcPort, p.seq, p.ack)
 
 	// Decide IPv4 or IPv6
 	if indicator.DstIP.To4() != nil {
@@ -340,7 +341,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	}
 
 	// Write packet data
-	err = p.upHandle.WritePacketData(data)
+	err = p.handshakeHandle.WritePacketData(data)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
 	}
@@ -370,8 +371,7 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	contents := indicator.Contents()
 
 	// Create new transport layer in TCP
-	newTransportLayer = createTransportLayerTCP(p.UpPort, p.ServerPort, p.seq)
-	p.seq++
+	newTransportLayer = createTransportLayerTCP(p.UpPort, p.ServerPort, p.seq, p.ack)
 
 	// Decide IPv4 or IPv6
 	isIPv4 := p.GatewayDev.IPAddr().IP.To4() != nil
@@ -445,6 +445,9 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		return
 	}
 
+	// Seq
+	p.seq = p.seq + uint32(len(contents))
+
 	// Write packet data
 	err = p.upHandle.WritePacketData(data)
 	if err != nil {
@@ -464,11 +467,14 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Parse packet
 	applicationLayer := packet.ApplicationLayer()
+
+	// Empty payload
 	if applicationLayer == nil {
-		fmt.Println(fmt.Errorf("handle upstream: %w",
-			fmt.Errorf("parse: %w", errors.New("empty payload"))))
 		return
 	}
+
+	// Ack
+	p.ack = p.ack + uint32(len(applicationLayer.LayerContents()))
 
 	// Parse encapped packet
 	encappedIndicator, err := parseEncappedPacket(applicationLayer.LayerContents())
@@ -504,7 +510,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Serialize layers
 	data, err := serialize(newLinkLayer, encappedIndicator.NetworkLayer,
-		encappedIndicator.TransportLayer, encappedIndicator.ApplicationLayer.LayerContents())
+		encappedIndicator.TransportLayer, encappedIndicator.Payload())
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle upstream: %w", err))
 		return

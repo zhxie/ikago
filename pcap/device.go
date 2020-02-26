@@ -12,6 +12,16 @@ import (
 	"github.com/jackpal/gateway"
 )
 
+// IPPort describes an ip address and a port
+type IPPort struct {
+	IP   net.IP
+	Port uint16
+}
+
+func (i IPPort) String() string {
+	return fmt.Sprintf("%s:%d", i.IP, i.Port)
+}
+
 // Device describes an network device
 type Device struct {
 	Name         string

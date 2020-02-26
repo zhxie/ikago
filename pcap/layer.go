@@ -47,13 +47,15 @@ func createTCPLayerACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	}
 }
 
-func createTransportLayerTCP(srcPort, dstPort uint16, seq uint32) *layers.TCP {
+func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	return &layers.TCP{
 		SrcPort:    layers.TCPPort(srcPort),
 		DstPort:    layers.TCPPort(dstPort),
 		Seq:        seq,
+		Ack:        ack,
 		DataOffset: 5,
 		PSH:        true,
+		ACK:        true,
 		Window:     65535,
 		// Checksum:   0,
 	}

@@ -110,6 +110,15 @@ func (indicator *packetIndicator) DstAddr() string {
 	}
 }
 
+// Payload returns the contents of application layer
+func (indicator *packetIndicator) Payload() []byte {
+	if indicator.ApplicationLayer == nil {
+		return nil
+	} else {
+		return indicator.ApplicationLayer.LayerContents()
+	}
+}
+
 func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	var (
 		networkLayer       gopacket.NetworkLayer

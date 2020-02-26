@@ -16,7 +16,8 @@ type Server struct {
 	GatewayDev    *Device
 	listenHandles []*pcap.Handle
 	upHandle      *pcap.Handle
-	seq           uint32
+	seqs          map[string]uint32
+	acks          map[string]uint32
 	// TODO: attempt to initialize IPv4 id to reduce the possibility of collision
 	id            uint16
 	nat           map[quintuple][]backQuintuple
@@ -24,6 +25,8 @@ type Server struct {
 
 // Open implements a method opens the pcap
 func (p *Server) Open() error {
+	p.seqs = make(map[string]uint32)
+	p.acks = make(map[string]uint32)
 	p.id = 0
 	p.nat = make(map[quintuple][]backQuintuple)
 
@@ -144,9 +147,13 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 		newLinkLayer        gopacket.Layer
 	)
 
+	// Seq && Ack
+	ipPort := IPPort{IP:indicator.SrcIP, Port:indicator.SrcPort}.String()
+	p.seqs[ipPort] = p.seqs[ipPort] + 1
+	p.acks[ipPort] = indicator.Seq + 1
+
 	// Create transport layer
-	newTransportLayer = createTCPLayerSYNACK(p.ListenPort, indicator.SrcPort, p.seq, indicator.Seq+1)
-	p.seq++
+	newTransportLayer = createTCPLayerSYNACK(p.ListenPort, indicator.SrcPort, p.seqs[ipPort], p.acks[ipPort])
 
 	// Decide IPv4 or IPv6
 	if indicator.DstIP.To4() != nil {
@@ -239,10 +246,12 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 
 	// Empty payload
 	if indicator.ApplicationLayer == nil {
-		fmt.Println(fmt.Errorf("handle listen: %w",
-			fmt.Errorf("parse: %w", errors.New("empty payload"))))
 		return
 	}
+
+	// Ack
+	ipPort := IPPort{IP:indicator.SrcIP, Port:indicator.SrcPort}.String()
+	p.acks[ipPort] = p.acks[ipPort] + uint32(len(indicator.ApplicationLayer.LayerContents()))
 
 	// Parse encapped packet
 	encappedIndicator, err = parseEncappedPacket(indicator.ApplicationLayer.LayerContents())
@@ -317,8 +326,7 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	bts = append(bts, bq)
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer, newNetworkLayer,
-		encappedIndicator.TransportLayer, encappedIndicator.ApplicationLayer.LayerContents())
+	data, err := serialize(newLinkLayer, newNetworkLayer, encappedIndicator.TransportLayer, encappedIndicator.Payload())
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle listen: %w", err))
 		return
