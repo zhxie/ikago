@@ -288,6 +288,13 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	newTransportLayer = createTCPLayerACK(indicator.DstPort, indicator.SrcPort, p.seq, indicator.Seq+1)
 	p.seq++
 
+	// Decide IPv4 or IPv6
+	if indicator.DstIP.To4() != nil {
+		newNetworkLayerType = layers.LayerTypeIPv4
+	} else {
+		newNetworkLayerType = layers.LayerTypeIPv6
+	}
+
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:

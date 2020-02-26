@@ -148,6 +148,13 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	newTransportLayer = createTCPLayerSYNACK(p.ListenPort, indicator.SrcPort, p.seq, indicator.Seq+1)
 	p.seq++
 
+	// Decide IPv4 or IPv6
+	if indicator.DstIP.To4() != nil {
+		newNetworkLayerType = layers.LayerTypeIPv4
+	} else {
+		newNetworkLayerType = layers.LayerTypeIPv6
+	}
+
 	// Create new network layer
 	var err error
 	switch newNetworkLayerType {
@@ -223,7 +230,7 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	if indicator.SYN {
 		err := p.handshake(indicator)
 		if err != nil {
-			fmt.Println(fmt.Errorf("handshake: %w", err))
+			fmt.Println(fmt.Errorf("handle listen: %w", err))
 			return
 		}
 		fmt.Printf("Connect from client %s:%d\n", indicator.SrcIP, indicator.SrcPort)
