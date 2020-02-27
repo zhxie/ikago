@@ -12,16 +12,6 @@ import (
 	"github.com/jackpal/gateway"
 )
 
-// IPPort describes an ip address and a port
-type IPPort struct {
-	IP   net.IP
-	Port uint16
-}
-
-func (i IPPort) String() string {
-	return fmt.Sprintf("%s:%d", i.IP, i.Port)
-}
-
 // Device describes an network device
 type Device struct {
 	Name         string
@@ -114,7 +104,7 @@ func FindAllDevs() ([]*Device, error) {
 			}
 			as = append(as, ipnet)
 		}
-		t = append(t, &Device{FriendlyName:inter.Name, IPAddrs:as, HardwareAddr:inter.HardwareAddr, IsLoop:isLoop})
+		t = append(t, &Device{FriendlyName: inter.Name, IPAddrs: as, HardwareAddr: inter.HardwareAddr, IsLoop: isLoop})
 	}
 
 	// Enumerate pcap devices
@@ -144,7 +134,7 @@ func FindAllDevs() ([]*Device, error) {
 					continue
 				}
 				if d.Name != "" {
-					return nil,fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
+					return nil, fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
 				}
 				d.Name = dev.Name
 				result = append(result, d)
@@ -191,7 +181,7 @@ func FindGatewayAddr() (*net.IPNet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("find gateway addr: %w", err)
 	}
-	return &net.IPNet{IP:ip}, nil
+	return &net.IPNet{IP: ip}, nil
 }
 
 // FindGatewayDev returns the gateway device
@@ -243,6 +233,6 @@ func FindGatewayDev(dev string) (*Device, error) {
 	if !ok {
 		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
 	}
-	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP:ip})
-	return &Device{FriendlyName:"Gateway", IPAddrs:addrs, HardwareAddr:ethernetPacket.DstMAC}, nil
+	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP: ip})
+	return &Device{FriendlyName: "Gateway", IPAddrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil
 }

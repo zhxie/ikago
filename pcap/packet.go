@@ -9,7 +9,6 @@ import (
 	"net"
 )
 
-// quintuple describes a quintuple with source and destination's IP and port and protocol in a packet
 type quintuple struct {
 	SrcIP    string
 	SrcPort  uint16
@@ -18,8 +17,7 @@ type quintuple struct {
 	Protocol gopacket.LayerType
 }
 
-// backQuintuple describes a quintuple with source and encapped source's IP and port and device from which it was sent in a packet
-type backQuintuple struct {
+type encappedPacketSrc struct {
 	SrcIP           string
 	SrcPort         uint16
 	EncappedSrcIP   string
@@ -61,7 +59,6 @@ func sendUDPPacket(addr string, data []byte) error {
 	return nil
 }
 
-// packetIndicator describes all used parameters in a packet
 type packetIndicator struct {
 	NetworkLayer       gopacket.NetworkLayer
 	NetworkLayerType   gopacket.LayerType
@@ -81,14 +78,12 @@ type packetIndicator struct {
 	ApplicationLayer   gopacket.ApplicationLayer
 }
 
-// Contents returns network, transport and application layer's contents in array of bytes
+// Contents returns the network, transport and application layer's contents in array of bytes
 func (indicator *packetIndicator) Contents() []byte {
 	contents := make([]byte, 0)
 	contents = append(contents, indicator.NetworkLayer.LayerContents()...)
 	contents = append(contents, indicator.TransportLayer.LayerContents()...)
-	if indicator.ApplicationLayer != nil {
-		contents = append(contents, indicator.ApplicationLayer.LayerContents()...)
-	}
+	contents = append(contents, indicator.Payload()...)
 	return contents
 }
 
@@ -110,7 +105,7 @@ func (indicator *packetIndicator) DstAddr() string {
 	}
 }
 
-// Payload returns the contents of application layer
+// Payload returns the application layer in array of bytes
 func (indicator *packetIndicator) Payload() []byte {
 	if indicator.ApplicationLayer == nil {
 		return nil

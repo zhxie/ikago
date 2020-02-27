@@ -26,8 +26,8 @@ type Client struct {
 	seq             uint32
 	ack             uint32
 	// TODO: attempt to initialize IPv4 id to reduce the possibility of collision
-	id              uint16
-	nat             map[quintuple]*pcap.Handle
+	id  uint16
+	nat map[quintuple]*pcap.Handle
 }
 
 // Open implements a method opens the pcap
@@ -100,7 +100,7 @@ func (p *Client) Open() error {
 		return fmt.Errorf("open: %w", err)
 	}
 	defer p.handshakeHandle.Close()
-	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0" +
+	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0"+
 		"&& tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
 		p.UpPort, p.ServerIP, p.ServerPort))
 	if err != nil {
@@ -218,7 +218,6 @@ func (p *Client) handshakeSYN() error {
 	switch networkLayerType {
 	case layers.LayerTypeIPv4:
 		networkLayer, err = createNetworkLayerIPv4(upDevIP, p.ServerIP, p.id, 128, transportLayer)
-		p.id++
 	case layers.LayerTypeIPv6:
 		networkLayer, err = createNetworkLayerIPv6(upDevIP, p.ServerIP, transportLayer)
 	default:
@@ -263,6 +262,17 @@ func (p *Client) handshakeSYN() error {
 		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
 	}
 
+	// TCP Seq
+	p.seq++
+
+	// IPv4 Id
+	switch networkLayerType {
+	case layers.LayerTypeIPv4:
+		p.id++
+	default:
+		break
+	}
+
 	return nil
 }
 
@@ -282,8 +292,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 		return fmt.Errorf("handshake: %w", err)
 	}
 
-	// Seq and Ack
-	p.seq++
+	// TCP Ack
 	p.ack = indicator.Seq + 1
 
 	// Create transport layer
@@ -301,7 +310,6 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	case layers.LayerTypeIPv4:
 		newNetworkLayer, err = createNetworkLayerIPv4(indicator.DstIP,
 			indicator.SrcIP, p.id, 128, newTransportLayer)
-		p.id++
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(indicator.DstIP, indicator.SrcIP, newTransportLayer)
 	default:
@@ -344,6 +352,14 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	err = p.handshakeHandle.WritePacketData(data)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
+	}
+
+	// IPv4 Id
+	switch newNetworkLayerType {
+	case layers.LayerTypeIPv4:
+		p.id++
+	default:
+		break
 	}
 
 	return nil
@@ -391,7 +407,6 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
 		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, p.ServerIP, p.id, indicator.TTL-1, newTransportLayer)
-		p.id++
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, p.ServerIP, newTransportLayer)
 	default:
@@ -445,16 +460,25 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		return
 	}
 
-	// Seq
-	p.seq = p.seq + uint32(len(contents))
-
 	// Write packet data
 	err = p.upHandle.WritePacketData(data)
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
 		return
 	}
-	fmt.Printf("Redirect an outbound %s packet from %s to %s (%d Bytes)\n",
+
+	// TCP Seq
+	p.seq = p.seq + uint32(len(contents))
+
+	// IPv4 Id
+	switch newNetworkLayerType {
+	case layers.LayerTypeIPv4:
+		p.id++
+	default:
+		break
+	}
+
+	fmt.Printf("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
 		indicator.TransportLayerType, indicator.SrcAddr(), indicator.DstAddr(), packet.Metadata().Length)
 }
 
@@ -473,7 +497,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		return
 	}
 
-	// Ack
+	// TCP Ack
 	p.ack = p.ack + uint32(len(applicationLayer.LayerContents()))
 
 	// Parse encapped packet
@@ -534,6 +558,6 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("write: %w", err)))
 	}
-	fmt.Printf("Redirect an inbound %s packet from %s to %s (%d Bytes)\n",
+	fmt.Printf("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
 		encappedIndicator.TransportLayerType, encappedIndicator.SrcAddr(), encappedIndicator.DstAddr(), len(data))
 }

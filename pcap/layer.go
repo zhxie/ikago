@@ -63,25 +63,29 @@ func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.T
 
 func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
 	return &layers.UDP{
-		SrcPort:   layers.UDPPort(srcPort),
-		DstPort:   layers.UDPPort(dstPort),
+		SrcPort: layers.UDPPort(srcPort),
+		DstPort: layers.UDPPort(dstPort),
 		// Length:    0,
 		// Checksum:  0,
 	}
 }
 
 func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
+	if srcIP.To4() == nil || dstIP.To4() == nil {
+		return nil, fmt.Errorf("create network layer: %w", errors.New("invalid ipv4 address"))
+	}
+
 	ipv4Layer := &layers.IPv4{
-		Version:    4,
-		IHL:        5,
+		Version: 4,
+		IHL:     5,
 		// Length:     0,
-		Id:         id,
-		Flags:      layers.IPv4DontFragment,
-		TTL:        ttl,
+		Id:    id,
+		Flags: layers.IPv4DontFragment,
+		TTL:   ttl,
 		// Protocol:   0,
 		// Checksum:   0,
-		SrcIP:      srcIP,
-		DstIP:      dstIP,
+		SrcIP: srcIP,
+		DstIP: dstIP,
 	}
 
 	// Protocol
@@ -114,6 +118,9 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 }
 
 func createNetworkLayerIPv6(srcIP, dstIP net.IP, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
+	if srcIP.To4() != nil || dstIP.To4() != nil {
+		return nil, fmt.Errorf("create network layer: %w", errors.New("invalid ipv6 address"))
+	}
 	return nil, fmt.Errorf("create network layer: %w", errors.New("ipv6 not support"))
 }
 
@@ -123,8 +130,8 @@ func createLinkLayerLoopback() *layers.Loopback {
 
 func createLinkLayerEthernet(srcMAC, dstMAC net.HardwareAddr, networkLayer gopacket.NetworkLayer) (*layers.Ethernet, error) {
 	ethernetLayer := &layers.Ethernet{
-		SrcMAC:       srcMAC,
-		DstMAC:       dstMAC,
+		SrcMAC: srcMAC,
+		DstMAC: dstMAC,
 		// EthernetType: 0,
 	}
 
@@ -149,7 +156,7 @@ func serialize(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tra
 	transportLayerType := transportLayer.LayerType()
 
 	// Recalculate checksum and length
-	options := gopacket.SerializeOptions{ComputeChecksums:true, FixLengths:true}
+	options := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	buffer := gopacket.NewSerializeBuffer()
 
 	var err error
