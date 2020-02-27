@@ -49,6 +49,46 @@ func (dev *Device) IPv6Addr() *net.IPNet {
 	return nil
 }
 
+// To4 returns the device with IPv4 addresses only
+func (dev *Device) To4() *Device {
+	addrs := make([]*net.IPNet, 0)
+	for _, addr := range dev.IPAddrs {
+		if addr.IP.To4() != nil {
+			addrs = append(addrs, addr)
+		}
+	}
+	if len(addrs) <= 0 {
+		return nil
+	}
+	return &Device{
+		Name:         dev.Name,
+		FriendlyName: dev.FriendlyName,
+		IPAddrs:      addrs,
+		HardwareAddr: dev.HardwareAddr,
+		IsLoop:       dev.IsLoop,
+	}
+}
+
+// To16Only returns the device with IPv6 addresses only
+func (dev *Device) To16Only() *Device {
+	addrs := make([]*net.IPNet, 0)
+	for _, addr := range dev.IPAddrs {
+		if addr.IP.To4() == nil {
+			addrs = append(addrs, addr)
+		}
+	}
+	if len(addrs) <= 0 {
+		return nil
+	}
+	return &Device{
+		Name:         dev.Name,
+		FriendlyName: dev.FriendlyName,
+		IPAddrs:      addrs,
+		HardwareAddr: dev.HardwareAddr,
+		IsLoop:       dev.IsLoop,
+	}
+}
+
 func (dev Device) String() string {
 	var result string
 	if dev.HardwareAddr != nil {
@@ -115,7 +155,7 @@ func FindAllDevs() ([]*Device, error) {
 	for _, dev := range devs {
 		// Match pcap device with interface
 		if dev.Flags&flagPcapLoopback != 0 {
-			d := findLoopDev(t)
+			d := FindLoopDev(t)
 			if d == nil {
 				continue
 			}
@@ -129,7 +169,7 @@ func FindAllDevs() ([]*Device, error) {
 				continue
 			}
 			for _, addr := range dev.Addresses {
-				d := findDev(t, addr.IP)
+				d := FindDev(t, addr.IP)
 				if d == nil {
 					continue
 				}
@@ -146,7 +186,46 @@ func FindAllDevs() ([]*Device, error) {
 	return result, nil
 }
 
-func findLoopDev(devs []*Device) *Device {
+// FindAllIPv4Devs returns all valid IPv4 network devices in current computer
+func FindAllIPv4Devs() ([]*Device, error) {
+	devs, err := FindAllDevs()
+	if err != nil {
+		return nil, fmt.Errorf("find all ipv4 devs: %w", err)
+	}
+
+	result := make([]*Device, 0)
+	for _, dev := range devs {
+		ipv4Dev := dev.To4()
+		if ipv4Dev == nil {
+			continue
+		}
+		result = append(result, ipv4Dev)
+	}
+
+	return result, nil
+}
+
+// FindAllIPv6Devs returns all valid IPv6 network devices in current computer
+func FindAllIPv6Devs() ([]*Device, error) {
+	devs, err := FindAllDevs()
+	if err != nil {
+		return nil, fmt.Errorf("find all ipv6 devs: %w", err)
+	}
+
+	result := make([]*Device, 0)
+	for _, dev := range devs {
+		ipv6Dev := dev.To16Only()
+		if ipv6Dev == nil {
+			continue
+		}
+		result = append(result, ipv6Dev)
+	}
+
+	return result, nil
+}
+
+// FindLoopDev returns the loop device in designated devices
+func FindLoopDev(devs []*Device) *Device {
 	for _, dev := range devs {
 		if dev.IsLoop {
 			return dev
@@ -155,7 +234,8 @@ func findLoopDev(devs []*Device) *Device {
 	return nil
 }
 
-func findDev(devs []*Device, ip net.IP) *Device {
+// FindDev returns the device with designated IP in designated devices
+func FindDev(devs []*Device, ip net.IP) *Device {
 	for _, dev := range devs {
 		for _, addr := range dev.IPAddrs {
 			if addr.IP.Equal(ip) {
@@ -164,15 +244,6 @@ func findDev(devs []*Device, ip net.IP) *Device {
 		}
 	}
 	return nil
-}
-
-// FindLoopDev returns the loop device in current computer
-func FindLoopDev() (*Device, error) {
-	devs, err := FindAllDevs()
-	if err != nil {
-		return nil, fmt.Errorf("find loop dev: %w", err)
-	}
-	return findLoopDev(devs), nil
 }
 
 // FindGatewayAddr returns the gateway's address

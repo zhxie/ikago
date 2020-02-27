@@ -11,7 +11,7 @@
 ## Usage
 
 ```
-go run ikago.go [-list-devices] [-local-only] [-d device] -p [port] -s [address:port]
+go run ikago.go [-list-devices] [-listen-local] [-listen-devices device] [-upstream-local] [-upstream-devices device] [-ipv4] [-ipv6] -p [port] [-upstream-port port] -s [address:port]
 ```
 
 `-list-devices`: (Optional, Exclusively) List all valid pcap devices in current computer.
@@ -24,9 +24,13 @@ go run ikago.go [-list-devices] [-local-only] [-d device] -p [port] -s [address:
 
 `-upstream-device device`: (Optional) Designated pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used.
 
+`-ipv4`: (Optional) Use IPv4 only.
+
+`-ipv6`: (Optional) Use IPv6 only.
+
 `-p port`: Port for listening.
 
-`-upstream-port -port`: (Optional) Port for routing upstream, must be different with port for listening. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
+`-upstream-port port`: (Optional) Port for routing upstream, must be different with port for listening. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 
 `-s address:port`: Server.
 

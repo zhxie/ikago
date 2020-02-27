@@ -13,10 +13,11 @@ import (
 
 func main() {
 	var (
-		err        error
-		listenDevs = make([]*pcap.Device, 0)
-		upDev      *pcap.Device
-		gatewayDev *pcap.Device
+		err             error
+		ipVersionOption = pcap.IPv4AndIPv6
+		listenDevs      = make([]*pcap.Device, 0)
+		upDev           *pcap.Device
+		gatewayDev      *pcap.Device
 	)
 
 	var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
@@ -24,6 +25,8 @@ func main() {
 	var argListenDevs = flag.String("listen-devices", "", "Designated pcap devices for listening.")
 	var argUpLocal = flag.Bool("upstream-local", false, "Route upstream to loopback device only.")
 	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
+	var argIPv4 = flag.Bool("ipv4", false, "Use IPv4 only.")
+	var argIPv6 = flag.Bool("ipv6", false, "Use IPv6 only.")
 	var argListenPort = flag.Int("p", 0, "Port for listening.")
 
 	// Parse arguments
@@ -54,10 +57,16 @@ func main() {
 	fmt.Printf("Starting proxying from :%d...\n", *argListenPort)
 
 	// Find devices
+	if *argIPv4 && !*argIPv6 {
+		ipVersionOption = pcap.IPv4Only
+	}
+	if *argIPv6 && !*argIPv4 {
+		ipVersionOption = pcap.IPv6Only
+	}
 	if *argListenDevs == "" {
-		listenDevs, err = pcap.FindListenDevs(nil, *argListenLocal)
+		listenDevs, err = pcap.FindListenDevs(nil, *argListenLocal, ipVersionOption)
 	} else {
-		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","), *argListenLocal)
+		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","), *argListenLocal, ipVersionOption)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
@@ -67,7 +76,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
 		os.Exit(1)
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLocal)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLocal, ipVersionOption)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
 		os.Exit(1)

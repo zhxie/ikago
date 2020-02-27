@@ -6,14 +6,30 @@ import (
 	"net"
 )
 
+type IPVersionOption int
+
+const IPv4AndIPv6 IPVersionOption = 0
+const IPv4Only IPVersionOption = 1
+const IPv6Only IPVersionOption = 2
+
 // FindListenDevs returns all valid pcap devices for listening
-func FindListenDevs(strDevs []string, isLocal bool) ([]*Device, error) {
+func FindListenDevs(strDevs []string, isLocal bool, option IPVersionOption) ([]*Device, error) {
 	result := make([]*Device, 0)
 
-	devs, err := FindAllDevs()
-	if err != nil {
-		return nil, fmt.Errorf("find listen devices: %w", err)
+	var devs []*Device
+	var err error
+	switch option {
+	case IPv4AndIPv6:
+		devs, err = FindAllDevs()
+	case IPv4Only:
+		devs, err = FindAllIPv4Devs()
+	case IPv6Only:
+		devs, err = FindAllIPv6Devs()
 	}
+	if err != nil {
+		return nil, fmt.Errorf("find listen devs: %w", err)
+	}
+
 	if len(strDevs) <= 0 {
 		if isLocal {
 			for _, dev := range devs {
@@ -33,8 +49,7 @@ func FindListenDevs(strDevs []string, isLocal bool) ([]*Device, error) {
 		for _, strDev := range strDevs {
 			dev, ok := m[strDev]
 			if !ok {
-				return nil, fmt.Errorf("find listen devices: %w",
-					fmt.Errorf("unknown device %s", strDev))
+				return nil, fmt.Errorf("find listen devs: %w", fmt.Errorf("unknown device %s", strDev))
 			}
 			if isLocal {
 				if dev.IsLoop {
@@ -50,16 +65,26 @@ func FindListenDevs(strDevs []string, isLocal bool) ([]*Device, error) {
 }
 
 // FindUpstreamDevAndGateway returns the pcap device for routing upstream and the gateway
-func FindUpstreamDevAndGateway(strDev string, isLocal bool) (upDev, gatewayDev *Device, err error) {
-	devs, err := FindAllDevs()
+func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOption) (upDev, gatewayDev *Device, err error) {
+	var devs []*Device
+	switch option {
+	case IPv4AndIPv6:
+		devs, err = FindAllDevs()
+	case IPv4Only:
+		devs, err = FindAllIPv4Devs()
+	case IPv6Only:
+		devs, err = FindAllIPv6Devs()
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("find upstream devs and gateway: %w", err)
+	}
+
 	if strDev != "" {
 		// Find upstream device
 		for _, dev := range devs {
 			if dev.Name == strDev {
 				if isLocal {
-					if dev.IsLoop {
-						upDev = dev
-					}
+					upDev = FindLoopDev(devs)
 				} else {
 					upDev = dev
 				}
@@ -68,7 +93,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool) (upDev, gatewayDev *
 		}
 		if upDev == nil {
 			return nil, nil,
-				fmt.Errorf("find upstream device: %w",fmt.Errorf("unknown device %s", strDev))
+				fmt.Errorf("find upstream dev: %w", fmt.Errorf("unknown device %s", strDev))
 		}
 		// Find gateway
 		if upDev.IsLoop {
@@ -101,10 +126,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool) (upDev, gatewayDev *
 	} else {
 		if isLocal {
 			// Find upstream device and gateway
-			loopDev, err := FindLoopDev()
-			if err != nil {
-				return nil, nil, fmt.Errorf("find upstream device: %w", err)
-			}
+			loopDev := FindLoopDev(devs)
 			upDev = loopDev
 			gatewayDev = upDev
 		} else {
@@ -112,7 +134,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool) (upDev, gatewayDev *
 			gatewayAddr, err := FindGatewayAddr()
 			if err != nil {
 				return nil, nil,
-					fmt.Errorf("find upstream device: %w", fmt.Errorf("find gateway's address: %w", err))
+					fmt.Errorf("find upstream dev: %w", fmt.Errorf("find gateway's address: %w", err))
 			}
 			for _, dev := range devs {
 				if dev.IsLoop {
