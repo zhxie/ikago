@@ -263,3 +263,60 @@ func serialize(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tra
 
 	return buffer.Bytes(), nil
 }
+
+func serializeWithoutLinkLayer(networkLayer gopacket.NetworkLayer, transportLayer gopacket.TransportLayer, contents []byte) ([]byte, error) {
+	networkLayerType := networkLayer.LayerType()
+	transportLayerType := transportLayer.LayerType()
+
+	// Recalculate checksum and length
+	options := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+	buffer := gopacket.NewSerializeBuffer()
+
+	var err error
+	switch networkLayerType {
+	case layers.LayerTypeIPv4:
+		switch transportLayerType {
+		case layers.LayerTypeTCP:
+			err = gopacket.SerializeLayers(buffer, options,
+				networkLayer.(*layers.IPv4),
+				transportLayer.(*layers.TCP),
+				gopacket.Payload(contents),
+			)
+		case layers.LayerTypeUDP:
+			err = gopacket.SerializeLayers(buffer, options,
+				networkLayer.(*layers.IPv4),
+				transportLayer.(*layers.UDP),
+				gopacket.Payload(contents),
+			)
+		default:
+			return nil, fmt.Errorf("serialize: %w",
+				fmt.Errorf("transport layer type %s not support", transportLayerType))
+		}
+	case layers.LayerTypeIPv6:
+		switch transportLayerType {
+		case layers.LayerTypeTCP:
+			err = gopacket.SerializeLayers(buffer, options,
+				networkLayer.(*layers.IPv6),
+				transportLayer.(*layers.TCP),
+				gopacket.Payload(contents),
+			)
+		case layers.LayerTypeUDP:
+			err = gopacket.SerializeLayers(buffer, options,
+				networkLayer.(*layers.IPv6),
+				transportLayer.(*layers.UDP),
+				gopacket.Payload(contents),
+			)
+		default:
+			return nil, fmt.Errorf("serialize: %w",
+				fmt.Errorf("transport layer type %s not support", transportLayerType))
+		}
+	default:
+		return nil, fmt.Errorf("serialize: %w",
+			fmt.Errorf("network layer type %s not support", networkLayerType))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("serialize: %w", err)
+	}
+
+	return buffer.Bytes(), nil
+}

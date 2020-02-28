@@ -78,15 +78,6 @@ type packetIndicator struct {
 	ApplicationLayer   gopacket.ApplicationLayer
 }
 
-// Contents returns the network, transport and application layer's contents in array of bytes
-func (indicator *packetIndicator) Contents() []byte {
-	contents := make([]byte, 0)
-	contents = append(contents, indicator.NetworkLayer.LayerContents()...)
-	contents = append(contents, indicator.TransportLayer.LayerContents()...)
-	contents = append(contents, indicator.Payload()...)
-	return contents
-}
-
 // SrcAddr returns the source address of the packet
 func (indicator *packetIndicator) SrcAddr() string {
 	// TODO: Use IPPort struct

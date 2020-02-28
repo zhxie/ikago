@@ -440,10 +440,27 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		fmt.Println(fmt.Errorf("handle upstream: %w",
 			fmt.Errorf("create encapped network layer: %w",
 				fmt.Errorf("type %s not support", indicator.NetworkLayerType))))
+		return
+	}
+
+	// Set network layer for transport layer
+	switch indicator.TransportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := indicator.TransportLayer.(*layers.TCP)
+		tcpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
+	case layers.LayerTypeUDP:
+		udpLayer := indicator.TransportLayer.(*layers.UDP)
+		udpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
+	default:
+		break
 	}
 
 	// Construct contents of new application layer
-	contents := indicator.Contents()
+	contents, err := serializeWithoutLinkLayer(indicator.NetworkLayer, indicator.TransportLayer, indicator.Payload())
+	if err != nil {
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create application layer: %w", err)))
+		return
+	}
 
 	// Create new transport layer
 	// TODO: Use IPPort struct
@@ -480,6 +497,14 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle upstream: %w", err))
 		return
+	}
+
+	// TODO: BUG: upDev may not owns handle
+	// Decide Loopback or Ethernet
+	if p.UpDev.IsLoop {
+		newLinkLayerType = layers.LayerTypeLoopback
+	} else {
+		newLinkLayerType = layers.LayerTypeEthernet
 	}
 
 	// Create new link layer

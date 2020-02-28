@@ -385,8 +385,24 @@ func (p *Client) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 		return
 	}
 
+	// Set network layer for transport layer
+	switch indicator.TransportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := indicator.TransportLayer.(*layers.TCP)
+		tcpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
+	case layers.LayerTypeUDP:
+		udpLayer := indicator.TransportLayer.(*layers.UDP)
+		udpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
+	default:
+		break
+	}
+
 	// Construct contents of new application layer
-	contents := indicator.Contents()
+	contents, err := serializeWithoutLinkLayer(indicator.NetworkLayer, indicator.TransportLayer, indicator.Payload())
+	if err != nil {
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create application layer: %w", err)))
+		return
+	}
 
 	// Create new transport layer in TCP
 	newTransportLayer = createTransportLayerTCP(p.UpPort, p.ServerPort, p.seq, p.ack)
@@ -509,6 +525,19 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		return
 	}
 
+	// Set network layer for encapped transport layer
+	switch encappedIndicator.TransportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := encappedIndicator.TransportLayer.(*layers.TCP)
+		tcpLayer.SetNetworkLayerForChecksum(encappedIndicator.NetworkLayer)
+	case layers.LayerTypeUDP:
+		udpLayer := encappedIndicator.TransportLayer.(*layers.UDP)
+		udpLayer.SetNetworkLayerForChecksum(encappedIndicator.NetworkLayer)
+	default:
+		break
+	}
+
+	// TODO: BUG: upDev may not owns handle
 	// Decide Loopback or Ethernet
 	if p.UpDev.IsLoop {
 		newLinkLayerType = layers.LayerTypeLoopback
@@ -559,6 +588,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	err = handle.WritePacketData(data)
 	if err != nil {
 		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("write: %w", err)))
+		return
 	}
 	fmt.Printf("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
 		encappedIndicator.TransportLayerType, encappedIndicator.SrcAddr(), encappedIndicator.DstAddr(), len(data))
