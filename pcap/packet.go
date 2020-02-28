@@ -89,6 +89,7 @@ func (indicator *packetIndicator) Contents() []byte {
 
 // SrcAddr returns the source address of the packet
 func (indicator *packetIndicator) SrcAddr() string {
+	// TODO: Use IPPort struct
 	if indicator.IsPortUndefined {
 		return fmt.Sprintf("%s", indicator.SrcIP)
 	} else {
@@ -98,6 +99,7 @@ func (indicator *packetIndicator) SrcAddr() string {
 
 // DstAddr returns the destination address of the packet
 func (indicator *packetIndicator) DstAddr() string {
+	// TODO: Use IPPort struct
 	if indicator.IsPortUndefined {
 		return fmt.Sprintf("%s", indicator.DstIP)
 	} else {

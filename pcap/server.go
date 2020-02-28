@@ -253,6 +253,7 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 			fmt.Println(fmt.Errorf("handle listen: %w", err))
 			return
 		}
+		// TODO: Use IPPort struct
 		fmt.Printf("Connect from client %s:%d\n", indicator.SrcIP, indicator.SrcPort)
 		return
 	}
@@ -285,6 +286,7 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	if !ok {
 		distPort = p.distPort()
 		p.port++
+		p.portDist[qPortDist] = distPort
 	}
 
 	// Modify transport layer
@@ -349,7 +351,7 @@ func (p *Server) handleListen(packet gopacket.Packet, handle *pcap.Handle) {
 	// Record the source and the source device of the packet
 	qNAT := quintuple{
 		SrcIP:    p.UpDev.IPv4Addr().IP.String(),
-		SrcPort:  encappedIndicator.SrcPort,
+		SrcPort:  distPort,
 		DstIP:    encappedIndicator.DstIP.String(),
 		DstPort:  encappedIndicator.DstPort,
 		Protocol: encappedIndicator.TransportLayerType,
@@ -415,10 +417,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	switch indicator.TransportLayerType {
 	case layers.LayerTypeTCP:
 		tcpLayer := indicator.TransportLayer.(*layers.TCP)
-		tcpLayer.SrcPort = layers.TCPPort(ps.EncappedSrcPort)
+		tcpLayer.DstPort = layers.TCPPort(ps.SrcPort)
 	case layers.LayerTypeUDP:
 		udpLayer := indicator.TransportLayer.(*layers.UDP)
-		udpLayer.SrcPort = layers.UDPPort(ps.EncappedSrcPort)
+		udpLayer.DstPort = layers.UDPPort(ps.SrcPort)
 	default:
 		fmt.Println(fmt.Errorf("handle upstream: %w",
 			fmt.Errorf("create encapped transport layer: %w",
@@ -430,10 +432,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	switch indicator.NetworkLayerType {
 	case layers.LayerTypeIPv4:
 		ipv4Layer := indicator.NetworkLayer.(*layers.IPv4)
-		ipv4Layer.SrcIP = net.ParseIP(ps.EncappedSrcIP)
+		ipv4Layer.DstIP = net.ParseIP(ps.SrcIP)
 	case layers.LayerTypeIPv6:
 		ipv6Layer := indicator.NetworkLayer.(*layers.IPv6)
-		ipv6Layer.SrcIP = net.ParseIP(ps.EncappedSrcIP)
+		ipv6Layer.DstIP = net.ParseIP(ps.SrcIP)
 	default:
 		fmt.Println(fmt.Errorf("handle upstream: %w",
 			fmt.Errorf("create encapped network layer: %w",
@@ -444,6 +446,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	contents := indicator.Contents()
 
 	// Create new transport layer
+	// TODO: Use IPPort struct
 	addr := fmt.Sprintf("%s:%d", ps.SrcIP, ps.SrcPort)
 	newTransportLayer = createTransportLayerTCP(p.ListenPort, ps.SrcPort, p.seqs[addr], p.acks[addr])
 
@@ -520,8 +523,9 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		break
 	}
 
-	fmt.Printf("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",
-		indicator.TransportLayerType, indicator.SrcAddr(), indicator.DstAddr(), packet.Metadata().Length)
+	// TODO: Use IPPort struct
+	fmt.Printf("Redirect an outbound %s packet: %s:%d <- %s (%d Bytes)\n",
+		indicator.TransportLayerType, ps.SrcIP, ps.SrcPort, indicator.SrcAddr(), packet.Metadata().Length)
 }
 
 func (p *Server) distPort() uint16 {

@@ -124,6 +124,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", err))
 	}
+	// TODO: Use IPPort struct
 	fmt.Printf("Connect to server %s:%d\n", p.ServerIP, p.ServerPort)
 
 	// Handshaking with server (ACK)
@@ -136,6 +137,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", err))
 	}
+	// TODO: Use IPPort struct
 	fmt.Printf("Connected to server %s:%d with latency %d ms\n", p.ServerIP, p.ServerPort, d.Milliseconds())
 
 	// Handles for listening
