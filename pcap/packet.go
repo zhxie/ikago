@@ -17,11 +17,17 @@ type quintuple struct {
 	Protocol gopacket.LayerType
 }
 
+type packetSrc struct {
+	Dev    *Device
+	Handle *pcap.Handle
+}
+
 type encappedPacketSrc struct {
 	SrcIP           string
 	SrcPort         uint16
 	EncappedSrcIP   string
 	EncappedSrcPort uint16
+	Dev             *Device
 	Handle          *pcap.Handle
 }
 
@@ -80,22 +86,22 @@ type packetIndicator struct {
 
 // SrcAddr returns the source address of the packet
 func (indicator *packetIndicator) SrcAddr() string {
-	// TODO: Use IPPort struct
-	if indicator.IsPortUndefined {
-		return fmt.Sprintf("%s", indicator.SrcIP)
-	} else {
-		return fmt.Sprintf("%s:%d", indicator.SrcIP, indicator.SrcPort)
+	i := IPPort{
+		IP:              indicator.SrcIP,
+		Port:            indicator.SrcPort,
+		IsPortUndefined: indicator.IsPortUndefined,
 	}
+	return i.String()
 }
 
 // DstAddr returns the destination address of the packet
 func (indicator *packetIndicator) DstAddr() string {
-	// TODO: Use IPPort struct
-	if indicator.IsPortUndefined {
-		return fmt.Sprintf("%s", indicator.DstIP)
-	} else {
-		return fmt.Sprintf("%s:%d", indicator.DstIP, indicator.DstPort)
+	i := IPPort{
+		IP:              indicator.DstIP,
+		Port:            indicator.DstPort,
+		IsPortUndefined: indicator.IsPortUndefined,
 	}
+	return i.String()
 }
 
 // Payload returns the application layer in array of bytes

@@ -6,12 +6,6 @@ import (
 	"net"
 )
 
-type IPVersionOption int
-
-const IPv4AndIPv6 IPVersionOption = 0
-const IPv4Only IPVersionOption = 1
-const IPv6Only IPVersionOption = 2
-
 // FindListenDevs returns all valid pcap devices for listening
 func FindListenDevs(strDevs []string, isLocal bool, option IPVersionOption) ([]*Device, error) {
 	result := make([]*Device, 0)
