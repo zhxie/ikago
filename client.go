@@ -17,6 +17,7 @@ import (
 func main() {
 	var (
 		err             error
+		filters         = make([]pcap.Filter, 0)
 		ipVersionOption = pcap.IPv4AndIPv6
 		serverIP        net.IP
 		serverPort      uint16
@@ -32,7 +33,7 @@ func main() {
 	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
 	var argIPv4 = flag.Bool("ipv4", false, "Use IPv4 only.")
 	var argIPv6 = flag.Bool("ipv6", false, "Use IPv6 only.")
-	var argListenPort = flag.Int("p", 0, "Port for listening.")
+	var argFilters = flag.String("f", "", "Filters.")
 	var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
 	var argServer = flag.String("s", "", "Server.")
 
@@ -51,8 +52,8 @@ func main() {
 		}
 		os.Exit(0)
 	}
-	if *argListenPort == 0 {
-		fmt.Fprintln(os.Stderr, "Please provide listen port by -p [port].")
+	if *argFilters == "" {
+		fmt.Fprintln(os.Stderr, "Please provide filters by -f [filters].")
 		os.Exit(1)
 	}
 	if *argServer == "" {
@@ -61,9 +62,14 @@ func main() {
 	}
 
 	// Verify parameters
-	if *argListenPort <= 0 || *argListenPort >= 65536 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("listen port out of range")))
-		os.Exit(1)
+	strFilters := strings.Split(*argFilters, ",")
+	for _, strFilter := range strFilters {
+		filter, err := pcap.ParseFilter(strFilter)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
+			os.Exit(1)
+		}
+		filters = append(filters, filter)
 	}
 	if *argUpPort < 0 || *argUpPort >= 65536 {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("upstream port out of range")))
@@ -76,15 +82,45 @@ func main() {
 		for {
 			randUpPort := 49152 + r.Intn(16384)
 			argUpPort = &randUpPort
-			if *argListenPort != *argUpPort {
+			var exist bool
+			for _, filter := range filters {
+				switch filter.FilterType() {
+				case pcap.FilterTypeIP:
+				case pcap.FilterTypeIPPort:
+					break
+				case pcap.FilterTypePort:
+					if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
+						exist = true
+					}
+				default:
+					// TODO: escape default
+					break
+				}
+				if exist {
+					break
+				}
+			}
+			if !exist {
 				break
 			}
 		}
 	}
-	if *argListenPort == *argUpPort {
-		fmt.Fprintln(os.Stderr,
-			fmt.Errorf("parse: %w", errors.New("same port for listening and routing upstream")))
-		os.Exit(1)
+	for _, filter := range filters {
+		switch filter.FilterType() {
+		case pcap.FilterTypeIP:
+		case pcap.FilterTypeIPPort:
+			break
+		case pcap.FilterTypePort:
+			if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
+				fmt.Fprintln(os.Stderr,
+					fmt.Errorf("parse: %w",
+						errors.New("same port in filters and port for routing upstream")))
+				os.Exit(1)
+			}
+		default:
+			// TODO: escape default
+			break
+		}
 	}
 	serverIPPort, err := pcap.ParseIPPort(*argServer)
 	if err != nil {
@@ -93,7 +129,15 @@ func main() {
 	}
 	serverIP = serverIPPort.IP
 	serverPort = serverIPPort.Port
-	fmt.Printf("Starting proxying from :%d through :%d to %s...\n", *argListenPort, *argUpPort, serverIPPort)
+	if len(filters) == 1 {
+		fmt.Printf("Proxy from %s through :%d to %s\n", filters[0], *argUpPort, serverIPPort)
+	} else {
+		fmt.Println("Proxy:")
+		for _, filter := range filters {
+			fmt.Printf("  %s\n", filter)
+		}
+		fmt.Printf("    through :%d to %s...\n", *argUpPort, serverIPPort)
+	}
 
 	// Find devices
 	if *argIPv4 && !*argIPv6 {
@@ -114,6 +158,33 @@ func main() {
 	if len(listenDevs) <= 0 {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
 		os.Exit(1)
+	}
+	// Check if listen devices including illegal filter
+	addrs := make(map[string]bool)
+	for _, dev := range listenDevs {
+		for _, addr := range dev.IPAddrs {
+			addrs[addr.IP.String()] = true
+		}
+	}
+	for _, filter := range filters {
+		switch filter.FilterType() {
+		case pcap.FilterTypeIPPort:
+			ipPortFilter := filter.(*pcap.IPPortFilter)
+			if ipPortFilter.Port == uint16(*argUpPort) {
+				_, ok := addrs[ipPortFilter.IP.String()]
+				if ok {
+					fmt.Fprintln(os.Stderr,
+						fmt.Errorf("parse: %w",
+							errors.New("same port in filters and port for routing upstream")))
+					os.Exit(1)
+				}
+			}
+		case pcap.FilterTypeIP:
+		case pcap.FilterTypePort:
+			break
+		default:
+			break
+		}
 	}
 	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLocal, ipVersionOption)
 	if err != nil {
@@ -136,7 +207,7 @@ func main() {
 
 	// Packet capture
 	p := pcap.Client{
-		ListenPort: uint16(*argListenPort),
+		Filters:    filters,
 		UpPort:     uint16(*argUpPort),
 		ServerIP:   serverIP,
 		ServerPort: serverPort,

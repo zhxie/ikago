@@ -12,7 +12,7 @@
 
 ```
 # Client
-go run client.go -p [port] -s [address:port]
+go run client.go -f [filters] -s [address:port]
 
 # Server
 go run server.go -p [port]
@@ -32,9 +32,11 @@ go run server.go -p [port]
 
 `-ipv6`: (Optional) Use IPv6 only.
 
-`-p port`: Port for listening.
+`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with ":".
 
-`-upstream-port port`: (Optional) Port for routing upstream, must be different with port for listening. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
+`-p port`: (Server only) Port for listening.
+
+`-upstream-port port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 
 `-s address:port`: (Client only) Server.
 
@@ -44,6 +46,6 @@ go run server.go -p [port]
 - [x] Support UDP proxy
 - [ ] Test NAT using STUN
 - [x] Test latency
-- [ ] Use whitelist instead of listen port
+- [x] Use filters instead of listen port
 - [ ] Retransmission and out of order packets detection
 - [ ] Handle packets with unrecognizable transport layer

@@ -108,6 +108,7 @@ func (dev Device) String() string {
 	return result
 }
 
+// AliasString returns the string of device with its alias
 func (dev Device) AliasString() string {
 	var result string
 	if dev.HardwareAddr != nil {

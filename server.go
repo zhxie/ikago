@@ -54,7 +54,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("listen port out of range")))
 		os.Exit(1)
 	}
-	fmt.Printf("Starting proxying from :%d...\n", *argListenPort)
+	fmt.Printf("Proxy from :%d\n", *argListenPort)
 
 	// Find devices
 	if *argIPv4 && !*argIPv6 {

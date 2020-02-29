@@ -225,11 +225,8 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	p.seqs[srcAddr]++
 
 	// IPv4 Id
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
+	if newNetworkLayerType == layers.LayerTypeIPv4 {
 		p.id++
-	default:
-		break
 	}
 
 	return nil
@@ -469,6 +466,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 			return
 		}
 	default:
+		// TODO: escape default
 		break
 	}
 
@@ -556,11 +554,8 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	p.seqs[addr] = p.seqs[addr] + uint32(len(contents))
 
 	// IPv4 Id
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
+	if newNetworkLayerType == layers.LayerTypeIPv4 {
 		p.id++
-	default:
-		break
 	}
 
 	fmt.Printf("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",

@@ -108,9 +108,8 @@ func (indicator *packetIndicator) DstAddr() string {
 func (indicator *packetIndicator) Payload() []byte {
 	if indicator.ApplicationLayer == nil {
 		return nil
-	} else {
-		return indicator.ApplicationLayer.LayerContents()
 	}
+	return indicator.ApplicationLayer.LayerContents()
 }
 
 func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {

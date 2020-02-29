@@ -13,7 +13,7 @@ import (
 
 // Client describes the packet capture on the client side
 type Client struct {
-	ListenPort      uint16
+	Filters         []Filter
 	UpPort          uint16
 	ServerIP        net.IP
 	ServerPort      uint16
@@ -144,8 +144,8 @@ func (p *Client) Open() error {
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
-		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && dst port %d && not (src host %s && src port %d)",
-			p.ListenPort, p.ServerIP, p.ServerPort))
+		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && %s && not (src host %s && src port %d)",
+			formatOrSrcFilters(p.Filters), p.ServerIP, p.ServerPort))
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
@@ -267,11 +267,8 @@ func (p *Client) handshakeSYN() error {
 	p.seq++
 
 	// IPv4 Id
-	switch networkLayerType {
-	case layers.LayerTypeIPv4:
+	if networkLayerType == layers.LayerTypeIPv4 {
 		p.id++
-	default:
-		break
 	}
 
 	return nil
@@ -356,11 +353,8 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	}
 
 	// IPv4 Id
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
+	if newNetworkLayerType == layers.LayerTypeIPv4 {
 		p.id++
-	default:
-		break
 	}
 
 	return nil
@@ -498,11 +492,8 @@ func (p *Client) handleListen(packet gopacket.Packet, ps *packetSrc) {
 	p.seq = p.seq + uint32(len(contents))
 
 	// IPv4 Id
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
+	if newNetworkLayerType == layers.LayerTypeIPv4 {
 		p.id++
-	default:
-		break
 	}
 
 	fmt.Printf("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
