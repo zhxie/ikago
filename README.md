@@ -41,6 +41,9 @@ go run server.go -p [port]
 ## Todo
 
 - [x] Support TCP proxy
-- [ ] Support UDP proxy using [FakeTCP](https://github.com/wangyu-/udp2raw-tunnel)
+- [x] Support UDP proxy
 - [ ] Test NAT using STUN
 - [x] Test latency
+- [ ] Use whitelist instead of listen port
+- [ ] Retransmission and out of order packets detection
+- [ ] Handle packets with unrecognizable transport layer

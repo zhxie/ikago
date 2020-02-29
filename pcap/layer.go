@@ -72,7 +72,7 @@ func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
 
 func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
 	if srcIP.To4() == nil || dstIP.To4() == nil {
-		return nil, fmt.Errorf("create network layer: %w", errors.New("invalid ipv4 address"))
+		return nil, fmt.Errorf("create network layer: %w", fmt.Errorf("invalid ipv4 address %s", srcIP))
 	}
 
 	ipv4Layer := &layers.IPv4{
@@ -119,7 +119,7 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 
 func createNetworkLayerIPv6(srcIP, dstIP net.IP, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
 	if srcIP.To4() != nil || dstIP.To4() != nil {
-		return nil, fmt.Errorf("create network layer: %w", errors.New("invalid ipv6 address"))
+		return nil, fmt.Errorf("create network layer: %w", fmt.Errorf("invalid ipv6 address %s", srcIP))
 	}
 	return nil, fmt.Errorf("create network layer: %w", errors.New("ipv6 not support"))
 }

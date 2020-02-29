@@ -46,36 +46,11 @@ func (p *Client) Open() error {
 		return fmt.Errorf("open: %w", errors.New("missing gateway"))
 	}
 	if len(p.ListenDevs) == 1 {
-		dev := p.ListenDevs[0]
-		strIPs := ""
-		for i, addr := range dev.IPAddrs {
-			if i != 0 {
-				strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
-			} else {
-				strIPs = strIPs + addr.IP.String()
-			}
-		}
-		if dev.IsLoop {
-			fmt.Printf("Listen on %s: %s\n", dev.FriendlyName, strIPs)
-		} else {
-			fmt.Printf("Listen on %s [%s]: %s\n", dev.FriendlyName, dev.HardwareAddr, strIPs)
-		}
+		fmt.Printf("Listen on %s\n", p.ListenDevs[0].AliasString())
 	} else {
 		fmt.Println("Listen on:")
 		for _, dev := range p.ListenDevs {
-			strIPs := ""
-			for j, addr := range dev.IPAddrs {
-				if j != 0 {
-					strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
-				} else {
-					strIPs = strIPs + addr.IP.String()
-				}
-			}
-			if dev.IsLoop {
-				fmt.Printf("  %s: %s\n", dev.FriendlyName, strIPs)
-			} else {
-				fmt.Printf("  %s [%s]: %s\n", dev.FriendlyName, dev.HardwareAddr, strIPs)
-			}
+			fmt.Printf("  %s\n", dev.AliasString())
 		}
 	}
 	strUpIPs := ""
@@ -87,10 +62,10 @@ func (p *Client) Open() error {
 		}
 	}
 	if !p.GatewayDev.IsLoop {
-		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.FriendlyName,
+		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.Alias,
 			p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
 	} else {
-		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.FriendlyName)
+		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.Alias)
 	}
 
 	// Handle for handshaking

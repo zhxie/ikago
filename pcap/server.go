@@ -3,10 +3,11 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
 )
 
 // Server describes the packet capture on the server side
@@ -55,9 +56,9 @@ func (p *Server) Open() error {
 			}
 		}
 		if dev.IsLoop {
-			fmt.Printf("Listen on %s: %s\n", dev.FriendlyName, strIPs)
+			fmt.Printf("Listen on %s: %s\n", dev.Alias, strIPs)
 		} else {
-			fmt.Printf("Listen on %s [%s]: %s\n", dev.FriendlyName, dev.HardwareAddr, strIPs)
+			fmt.Printf("Listen on %s [%s]: %s\n", dev.Alias, dev.HardwareAddr, strIPs)
 		}
 	} else {
 		fmt.Println("Listen on:")
@@ -71,9 +72,9 @@ func (p *Server) Open() error {
 				}
 			}
 			if dev.IsLoop {
-				fmt.Printf("  %s: %s\n", dev.FriendlyName, strIPs)
+				fmt.Printf("  %s: %s\n", dev.Alias, strIPs)
 			} else {
-				fmt.Printf("  %s [%s]: %s\n", dev.FriendlyName, dev.HardwareAddr, strIPs)
+				fmt.Printf("  %s [%s]: %s\n", dev.Alias, dev.HardwareAddr, strIPs)
 			}
 		}
 	}
@@ -86,10 +87,10 @@ func (p *Server) Open() error {
 		}
 	}
 	if !p.GatewayDev.IsLoop {
-		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.FriendlyName,
+		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.Alias,
 			p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
 	} else {
-		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.FriendlyName)
+		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.Alias)
 	}
 
 	// Handles for listening
@@ -258,7 +259,8 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 			fmt.Println(fmt.Errorf("handle listen: %w", err))
 			return
 		}
-		fmt.Printf("Connect from client %s\n", IPPort{IP: indicator.SrcIP, Port: indicator.SrcPort})
+		fmt.Printf("Connect from client %s\n",
+			IPPort{IP: indicator.SrcIP, Port: indicator.SrcPort, IsPortUndefined: indicator.IsPortUndefined})
 		return
 	}
 

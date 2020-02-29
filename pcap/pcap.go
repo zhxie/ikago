@@ -103,7 +103,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 				if addr.Contains(gatewayDev.IPAddrs[0].IP) {
 					newUpDev = &Device{
 						Name:         upDev.Name,
-						FriendlyName: upDev.FriendlyName,
+						Alias:        upDev.Alias,
 						IPAddrs:      append(make([]*net.IPNet, 0), addr),
 						HardwareAddr: upDev.HardwareAddr,
 						IsLoop:       upDev.IsLoop,
@@ -143,7 +143,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 						}
 						upDev = &Device{
 							Name:         dev.Name,
-							FriendlyName: dev.FriendlyName,
+							Alias:        dev.Alias,
 							IPAddrs:      append(make([]*net.IPNet, 0), addr),
 							HardwareAddr: dev.HardwareAddr,
 							IsLoop:       dev.IsLoop,

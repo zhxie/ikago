@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,7 +19,7 @@ func main() {
 		err             error
 		ipVersionOption = pcap.IPv4AndIPv6
 		serverIP        net.IP
-		serverPort      uint64
+		serverPort      uint16
 		listenDevs      = make([]*pcap.Device, 0)
 		upDev           *pcap.Device
 		gatewayDev      *pcap.Device
@@ -87,27 +86,14 @@ func main() {
 			fmt.Errorf("parse: %w", errors.New("same port for listening and routing upstream")))
 		os.Exit(1)
 	}
-	serverSplit := strings.Split(*argServer, ":")
-	if len(serverSplit) < 2 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("invalid server")))
-		os.Exit(1)
-	}
-	serverIP = net.ParseIP(serverSplit[0])
-	if serverIP == nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("invalid server ip")))
-		os.Exit(1)
-	}
-	serverPort, err = strconv.ParseUint(serverSplit[len(serverSplit)-1], 10, 16)
+	serverIPPort, err := pcap.ParseIPPort(*argServer)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("invalid server port")))
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", fmt.Errorf("server: %w", err)))
 		os.Exit(1)
 	}
-	if serverPort <= 0 || serverPort >= 65535 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("server port out of range")))
-		os.Exit(1)
-	}
-	fmt.Printf("Starting proxying from :%d through :%d to %s...\n",
-		*argListenPort, *argUpPort, *argServer)
+	serverIP = serverIPPort.IP
+	serverPort = serverIPPort.Port
+	fmt.Printf("Starting proxying from :%d through :%d to %s...\n", *argListenPort, *argUpPort, serverIPPort)
 
 	// Find devices
 	if *argIPv4 && !*argIPv6 {
@@ -153,7 +139,7 @@ func main() {
 		ListenPort: uint16(*argListenPort),
 		UpPort:     uint16(*argUpPort),
 		ServerIP:   serverIP,
-		ServerPort: uint16(serverPort),
+		ServerPort: serverPort,
 		ListenDevs: listenDevs,
 		UpDev:      upDev,
 		GatewayDev: gatewayDev,

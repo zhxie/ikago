@@ -15,7 +15,7 @@ import (
 // Device describes an network device
 type Device struct {
 	Name         string
-	FriendlyName string
+	Alias        string
 	IPAddrs      []*net.IPNet
 	HardwareAddr net.HardwareAddr
 	IsLoop       bool
@@ -62,7 +62,7 @@ func (dev *Device) To4() *Device {
 	}
 	return &Device{
 		Name:         dev.Name,
-		FriendlyName: dev.FriendlyName,
+		Alias:        dev.Alias,
 		IPAddrs:      addrs,
 		HardwareAddr: dev.HardwareAddr,
 		IsLoop:       dev.IsLoop,
@@ -82,7 +82,7 @@ func (dev *Device) To16Only() *Device {
 	}
 	return &Device{
 		Name:         dev.Name,
-		FriendlyName: dev.FriendlyName,
+		Alias:        dev.Alias,
 		IPAddrs:      addrs,
 		HardwareAddr: dev.HardwareAddr,
 		IsLoop:       dev.IsLoop,
@@ -97,7 +97,26 @@ func (dev Device) String() string {
 		result = dev.Name + ": "
 	}
 	for i, addr := range dev.IPAddrs {
-		result = result + addr.IP.String()
+		result = result + IPPort{IP: addr.IP, IsPortUndefined: true}.String()
+		if i < len(dev.IPAddrs)-1 {
+			result = result + ", "
+		}
+	}
+	if dev.IsLoop {
+		result = result + " (Loopback)"
+	}
+	return result
+}
+
+func (dev Device) AliasString() string {
+	var result string
+	if dev.HardwareAddr != nil {
+		result = dev.Alias + " [" + dev.HardwareAddr.String() + "]: "
+	} else {
+		result = dev.Alias + ": "
+	}
+	for i, addr := range dev.IPAddrs {
+		result = result + IPPort{IP: addr.IP, IsPortUndefined: true}.String()
 		if i < len(dev.IPAddrs)-1 {
 			result = result + ", "
 		}
@@ -144,7 +163,7 @@ func FindAllDevs() ([]*Device, error) {
 			}
 			as = append(as, ipnet)
 		}
-		t = append(t, &Device{FriendlyName: inter.Name, IPAddrs: as, HardwareAddr: inter.HardwareAddr, IsLoop: isLoop})
+		t = append(t, &Device{Alias: inter.Name, IPAddrs: as, HardwareAddr: inter.HardwareAddr, IsLoop: isLoop})
 	}
 
 	// Enumerate pcap devices
@@ -305,5 +324,5 @@ func FindGatewayDev(dev string) (*Device, error) {
 		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
 	}
 	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP: ip})
-	return &Device{FriendlyName: "Gateway", IPAddrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil
+	return &Device{Alias: "Gateway", IPAddrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil
 }
