@@ -40,7 +40,7 @@ go run server.go -p [port]
 
 ## Todo
 
-- [ ] Support TCP proxy
+- [x] Support TCP proxy
 - [ ] Support UDP proxy using [FakeTCP](https://github.com/wangyu-/udp2raw-tunnel)
 - [ ] Test NAT using STUN
-- [ ] Test latency
+- [x] Test latency

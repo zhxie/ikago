@@ -220,6 +220,9 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
 	}
 
+	// TCP Seq
+	p.seqs[srcAddr]++
+
 	// IPv4 Id
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
