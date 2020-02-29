@@ -100,8 +100,8 @@ func (p *Client) Open() error {
 		return fmt.Errorf("open: %w", err)
 	}
 	defer p.handshakeHandle.Close()
-	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0"+
-		"&& tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
+	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && "+
+		"dst port %d && (src host %s && src port %d)",
 		p.UpPort, p.ServerIP, p.ServerPort))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -131,6 +131,27 @@ func (p *Client) Open() error {
 	if packet == nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", errors.New("timeout")))
 	}
+	transportLayer := packet.TransportLayer()
+	if transportLayer == nil {
+		return fmt.Errorf("open: %w",
+			fmt.Errorf("handshake: %w", errors.New("missing transport layer")))
+	}
+	transportLayerType := transportLayer.LayerType()
+	switch transportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := transportLayer.(*layers.TCP)
+		if tcpLayer.RST {
+			return fmt.Errorf("open: %w",
+				fmt.Errorf("handshake: %w", errors.New("connection reset")))
+		}
+		if !tcpLayer.SYN {
+			return fmt.Errorf("open: %w",
+				fmt.Errorf("handshake: %w", errors.New("missing synchronization flag")))
+		}
+	default:
+		return fmt.Errorf("open: %w",
+			fmt.Errorf("handshake: %w", fmt.Errorf("type %s not support", transportLayerType)))
+	}
 	d := time.Now().Sub(t)
 	err = p.handshakeACK(packet)
 	if err != nil {
@@ -138,6 +159,8 @@ func (p *Client) Open() error {
 	}
 	fmt.Printf("Connected to server %s with latency %d ms\n",
 		IPPort{IP: p.ServerIP, Port: p.ServerPort}, d.Milliseconds())
+	// Close in advance
+	p.handshakeHandle.Close()
 
 	// Handles for listening
 	p.listenHandles = make([]*pcap.Handle, 0)
