@@ -32,7 +32,7 @@ go run server.go -p [port]
 
 `-ipv6`: (Optional) Use IPv6 only.
 
-`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with ":".
+`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with a colon.
 
 `-p port`: (Server only) Port for listening.
 
