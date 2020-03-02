@@ -299,9 +299,7 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 		udpLayer := encappedIndicator.TransportLayer.(*layers.UDP)
 		udpLayer.SrcPort = layers.UDPPort(distPort)
 	default:
-		fmt.Println(fmt.Errorf("handle listen: %w",
-			fmt.Errorf("create transport layer: %w",
-				fmt.Errorf("type %s not support", encappedIndicator.TransportLayerType))))
+		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", fmt.Errorf("type %s not support", encappedIndicator.TransportLayerType))))
 		return
 	}
 
@@ -313,9 +311,7 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(p.UpDev.IPv6Addr().IP, encappedIndicator.DstIP, encappedIndicator.TransportLayer)
 	default:
-		fmt.Println(fmt.Errorf("handle listen: %w",
-			fmt.Errorf("create network layer: %w",
-				fmt.Errorf("type %s not support", newNetworkLayerType))))
+		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
 	}
 	if err != nil {
@@ -337,8 +333,7 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
 	default:
-		fmt.Println(fmt.Errorf("handle listen: %w",
-			fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
+		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
 		return
 	}
 	if err != nil {
@@ -377,8 +372,7 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 		fmt.Println(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
 	}
 	fmt.Printf("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
-		encappedIndicator.TransportLayerType,
-		encappedIndicator.SrcAddr(), encappedIndicator.DstAddr(), packet.Metadata().Length)
+		encappedIndicator.TransportLayerType, encappedIndicator.SrcAddr(), encappedIndicator.DstAddr(), packet.Metadata().Length)
 }
 
 func (p *Server) handleUpstream(packet gopacket.Packet) {
@@ -421,9 +415,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		udpLayer := indicator.TransportLayer.(*layers.UDP)
 		udpLayer.DstPort = layers.UDPPort(eps.EncappedSrcPort)
 	default:
-		fmt.Println(fmt.Errorf("handle upstream: %w",
-			fmt.Errorf("create encapped transport layer: %w",
-				fmt.Errorf("type %s not support", indicator.TransportLayerType))))
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create encapped transport layer: %w", fmt.Errorf("type %s not support", indicator.TransportLayerType))))
 		return
 	}
 
@@ -436,9 +428,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		ipv6Layer := indicator.NetworkLayer.(*layers.IPv6)
 		ipv6Layer.DstIP = net.ParseIP(eps.EncappedSrcIP)
 	default:
-		fmt.Println(fmt.Errorf("handle upstream: %w",
-			fmt.Errorf("create encapped network layer: %w",
-				fmt.Errorf("type %s not support", indicator.NetworkLayerType))))
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create encapped network layer: %w", fmt.Errorf("type %s not support", indicator.NetworkLayerType))))
 		return
 	}
 
@@ -448,16 +438,14 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		tcpLayer := indicator.TransportLayer.(*layers.TCP)
 		err := tcpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
 		if err != nil {
-			fmt.Println(fmt.Errorf("handle upstream: %w",
-				fmt.Errorf("create encapped network layer: %w", err)))
+			fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create encapped network layer: %w", err)))
 			return
 		}
 	case layers.LayerTypeUDP:
 		udpLayer := indicator.TransportLayer.(*layers.UDP)
 		err := udpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
 		if err != nil {
-			fmt.Println(fmt.Errorf("handle upstream: %w",
-				fmt.Errorf("create encapped network layer: %w", err)))
+			fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create encapped network layer: %w", err)))
 			return
 		}
 	default:
@@ -497,9 +485,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, net.ParseIP(eps.SrcIP), newTransportLayer)
 	default:
-		fmt.Println(fmt.Errorf("handle upstream: %w",
-			fmt.Errorf("create network layer: %w",
-				fmt.Errorf("type %s not support", newNetworkLayerType))))
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
 	}
 	if err != nil {
@@ -521,8 +507,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(eps.Dev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
 	default:
-		fmt.Println(fmt.Errorf("handle upstream: %w",
-			fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
+		fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
 		return
 	}
 	if err != nil {
@@ -553,10 +538,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	fmt.Printf("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",
-		indicator.TransportLayerType,
-		IPPort{IP: net.ParseIP(eps.EncappedSrcIP), Port: eps.EncappedSrcPort},
-		indicator.SrcAddr(),
-		packet.Metadata().Length)
+		indicator.TransportLayerType, IPPort{IP: net.ParseIP(eps.EncappedSrcIP), Port: eps.EncappedSrcPort}, indicator.SrcAddr(), packet.Metadata().Length)
 }
 
 func (p *Server) distPort() uint16 {
