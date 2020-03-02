@@ -208,8 +208,6 @@ func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
 		return nil, fmt.Errorf("parse encapped: %w", errors.New("missing network layer"))
 	}
 	if networkLayer.LayerType() != layers.LayerTypeIPv4 {
-		fmt.Println(fmt.Errorf("handle upstream: %w",
-			fmt.Errorf("parse: %w", errors.New("type not support"))))
 		return nil, fmt.Errorf("parse encapped: %w", errors.New("network layer type not support"))
 	}
 	ipVersion := networkLayer.(*layers.IPv4).Version
@@ -238,4 +236,26 @@ func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
 		return nil, fmt.Errorf("parse encapped: %w", err)
 	}
 	return indicator, nil
+}
+
+func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
+	// Guess link layer type
+	packet := gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
+	linkLayer := packet.Layers()[0]
+	if linkLayer == nil {
+		return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
+	}
+	if linkLayer.LayerType() != layers.LayerTypeLoopback {
+		// Not Loopback, then Ethernet
+		packet = gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
+		linkLayer := packet.LinkLayer()
+		if linkLayer == nil {
+			return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
+		}
+		if linkLayer.LayerType() != layers.LayerTypeEthernet {
+			return nil, fmt.Errorf("parse raw: %w", errors.New("link layer type not support"))
+		}
+	}
+
+	return &packet, nil
 }
