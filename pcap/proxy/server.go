@@ -34,7 +34,7 @@ func (p *Server) Open() error {
 			conn, err := p.listener.Accept()
 			if err != nil {
 				fmt.Println(fmt.Errorf("open: %w", err))
-				continue
+				return
 			}
 			fmt.Printf("Connect from client %s\n", conn.RemoteAddr())
 

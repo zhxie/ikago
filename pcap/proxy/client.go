@@ -55,8 +55,8 @@ func (p *Client) handle() {
 		d := make([]byte, 1600)
 		_, err := p.conn.Read(d)
 		if err != nil {
-			fmt.Println("handle: %w", err)
-			continue
+			fmt.Println(fmt.Errorf("handle: %w", err))
+			return
 		}
 		p.c <- d
 	}

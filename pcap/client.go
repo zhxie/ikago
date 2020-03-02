@@ -65,11 +65,13 @@ func (p *Client) Open() error {
 	}
 
 	// Proxy for routing upstream
-	p.proxy = proxy.Client{LocalPort: p.UpPort, Server: IPPort{IP: p.ServerIP, Port: p.ServerPort}.String()}
+	serverIPPort := IPPort{IP: p.ServerIP, Port: p.ServerPort}
+	p.proxy = proxy.Client{LocalPort: p.UpPort, Server: serverIPPort.String()}
 	err := p.proxy.Open()
 	if err != nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("proxy: %w", err))
 	}
+	fmt.Printf("Connect to server %s\n", serverIPPort.String())
 
 	// Start handling
 	for i, handle := range p.listenHandles {
