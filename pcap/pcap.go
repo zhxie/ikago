@@ -86,8 +86,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 			}
 		}
 		if upDev == nil {
-			return nil, nil,
-				fmt.Errorf("find upstream dev: %w", fmt.Errorf("unknown device %s", strDev))
+			return nil, nil, fmt.Errorf("find upstream dev: %w", fmt.Errorf("unknown device %s", strDev))
 		}
 		// Find gateway
 		if upDev.IsLoop {
@@ -112,8 +111,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 				}
 			}
 			if newUpDev == nil {
-				return nil, nil, fmt.Errorf("find gateway: %w",
-					errors.New("different domain in upstream device and gateway"))
+				return nil, nil, fmt.Errorf("find gateway: %w", errors.New("different domain in upstream device and gateway"))
 			}
 			upDev = newUpDev
 		}
@@ -127,8 +125,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 			// Find upstream device and gateway
 			gatewayAddr, err := FindGatewayAddr()
 			if err != nil {
-				return nil, nil,
-					fmt.Errorf("find upstream dev: %w", fmt.Errorf("find gateway's address: %w", err))
+				return nil, nil, fmt.Errorf("find upstream dev: %w", fmt.Errorf("find gateway's address: %w", err))
 			}
 			for _, dev := range devs {
 				if dev.IsLoop {

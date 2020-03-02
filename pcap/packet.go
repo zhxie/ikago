@@ -158,8 +158,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		srcIP = ipv6Layer.SrcIP
 		dstIP = ipv6Layer.DstIP
 	default:
-		return nil, fmt.Errorf("parse: %w",
-			fmt.Errorf("network layer type %s not support", networkLayerType))
+		return nil, fmt.Errorf("parse: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 	}
 
 	// Parse transport layer

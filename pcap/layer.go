@@ -110,8 +110,7 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 			return nil, fmt.Errorf("create network layer: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("create network layer: %w",
-			fmt.Errorf("transport layer type %s not support", transportLayerType))
+		return nil, fmt.Errorf("create network layer: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 	}
 
 	return ipv4Layer, nil
@@ -143,8 +142,7 @@ func createLinkLayerEthernet(srcMAC, dstMAC net.HardwareAddr, networkLayer gopac
 	case layers.LayerTypeIPv6:
 		ethernetLayer.EthernetType = layers.EthernetTypeIPv6
 	default:
-		return nil, fmt.Errorf("create link layer: %w",
-			fmt.Errorf("type %s not support", networkLayerType))
+		return nil, fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", networkLayerType))
 	}
 
 	return ethernetLayer, nil
@@ -180,8 +178,7 @@ func serialize(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tra
 					gopacket.Payload(contents),
 				)
 			default:
-				return nil, fmt.Errorf("serialize: %w",
-					fmt.Errorf("transport layer type %s not support", transportLayerType))
+				return nil, fmt.Errorf("serialize: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 			}
 		case layers.LayerTypeIPv6:
 			switch transportLayerType {
@@ -200,12 +197,10 @@ func serialize(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tra
 					gopacket.Payload(contents),
 				)
 			default:
-				return nil, fmt.Errorf("serialize: %w",
-					fmt.Errorf("transport layer type %s not support", transportLayerType))
+				return nil, fmt.Errorf("serialize: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 			}
 		default:
-			return nil, fmt.Errorf("serialize: %w",
-				fmt.Errorf("network layer type %s not support", networkLayerType))
+			return nil, fmt.Errorf("serialize: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 		}
 	case layers.LayerTypeEthernet:
 		switch networkLayerType {
@@ -226,8 +221,7 @@ func serialize(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tra
 					gopacket.Payload(contents),
 				)
 			default:
-				return nil, fmt.Errorf("serialize: %w",
-					fmt.Errorf("transport layer type %s not support", transportLayerType))
+				return nil, fmt.Errorf("serialize: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 			}
 		case layers.LayerTypeIPv6:
 			switch transportLayerType {
@@ -246,16 +240,13 @@ func serialize(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tra
 					gopacket.Payload(contents),
 				)
 			default:
-				return nil, fmt.Errorf("serialize: %w",
-					fmt.Errorf("transport layer type %s not support", transportLayerType))
+				return nil, fmt.Errorf("serialize: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 			}
 		default:
-			return nil, fmt.Errorf("serialize: %w",
-				fmt.Errorf("network layer type %s not support", networkLayerType))
+			return nil, fmt.Errorf("serialize: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 		}
 	default:
-		return nil, fmt.Errorf("serialize: %w",
-			fmt.Errorf("link layer type %s not support", linkLayerType))
+		return nil, fmt.Errorf("serialize: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("serialize: %w", err)
@@ -289,8 +280,7 @@ func serializeWithoutLinkLayer(networkLayer gopacket.NetworkLayer, transportLaye
 				gopacket.Payload(contents),
 			)
 		default:
-			return nil, fmt.Errorf("serialize: %w",
-				fmt.Errorf("transport layer type %s not support", transportLayerType))
+			return nil, fmt.Errorf("serialize: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 		}
 	case layers.LayerTypeIPv6:
 		switch transportLayerType {
@@ -307,12 +297,10 @@ func serializeWithoutLinkLayer(networkLayer gopacket.NetworkLayer, transportLaye
 				gopacket.Payload(contents),
 			)
 		default:
-			return nil, fmt.Errorf("serialize: %w",
-				fmt.Errorf("transport layer type %s not support", transportLayerType))
+			return nil, fmt.Errorf("serialize: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 		}
 	default:
-		return nil, fmt.Errorf("serialize: %w",
-			fmt.Errorf("network layer type %s not support", networkLayerType))
+		return nil, fmt.Errorf("serialize: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("serialize: %w", err)

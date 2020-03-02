@@ -87,8 +87,7 @@ func (p *Server) Open() error {
 		}
 	}
 	if !p.GatewayDev.IsLoop {
-		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.Alias,
-			p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
+		fmt.Printf("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.Alias, p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
 	} else {
 		fmt.Printf("Route upstream to loopback %s\n", p.UpDev.Alias)
 	}
@@ -175,8 +174,7 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	var err error
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(indicator.DstIP,
-			indicator.SrcIP, p.id, 128, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(indicator.DstIP, indicator.SrcIP, p.id, 128, newTransportLayer)
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(indicator.DstIP, indicator.SrcIP, newTransportLayer)
 	default:
@@ -311,11 +309,9 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 	newNetworkLayerType = encappedIndicator.NetworkLayerType
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(p.UpDev.IPv4Addr().IP,
-			encappedIndicator.DstIP, encappedIndicator.Id, encappedIndicator.TTL-1, encappedIndicator.TransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(p.UpDev.IPv4Addr().IP, encappedIndicator.DstIP, encappedIndicator.Id, encappedIndicator.TTL-1, encappedIndicator.TransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(p.UpDev.IPv6Addr().IP,
-			encappedIndicator.DstIP, encappedIndicator.TransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(p.UpDev.IPv6Addr().IP, encappedIndicator.DstIP, encappedIndicator.TransportLayer)
 	default:
 		fmt.Println(fmt.Errorf("handle listen: %w",
 			fmt.Errorf("create network layer: %w",
@@ -339,8 +335,7 @@ func (p *Server) handleListen(packet gopacket.Packet, ps *packetSrc) {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = createLinkLayerLoopback()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr,
-			p.GatewayDev.HardwareAddr, newNetworkLayer)
+		newLinkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
 	default:
 		fmt.Println(fmt.Errorf("handle listen: %w",
 			fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
@@ -498,8 +493,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP,
-			net.ParseIP(eps.SrcIP), p.id, indicator.TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, net.ParseIP(eps.SrcIP), p.id, indicator.TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, net.ParseIP(eps.SrcIP), newTransportLayer)
 	default:
