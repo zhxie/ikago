@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 )
 
@@ -15,14 +14,11 @@ func main() {
 	var (
 		err             error
 		ipVersionOption = pcap.IPv4AndIPv6
-		listenDevs      = make([]*pcap.Device, 0)
 		upDev           *pcap.Device
 		gatewayDev      *pcap.Device
 	)
 
 	var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
-	var argListenLoopDev = flag.Bool("listen-loopback-device", false, "Listen loopback device only.")
-	var argListenDevs = flag.String("listen-devices", "", "Designated pcap devices for listening.")
 	var argUpLoopDev = flag.Bool("upstream-loopback-device", false, "Route upstream to loopback device only.")
 	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
 	var argIPv4Dev = flag.Bool("ipv4", false, "Use IPv4 only.")
@@ -62,19 +58,6 @@ func main() {
 	if *argIPv6Dev && !*argIPv4Dev {
 		ipVersionOption = pcap.IPv6Only
 	}
-	if *argListenDevs == "" {
-		listenDevs, err = pcap.FindListenDevs(nil, *argListenLoopDev, ipVersionOption)
-	} else {
-		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","), *argListenLoopDev, ipVersionOption)
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
-		os.Exit(1)
-	}
-	if len(listenDevs) <= 0 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
-		os.Exit(1)
-	}
 	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLoopDev, ipVersionOption)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
@@ -97,7 +80,6 @@ func main() {
 	// Packet capture
 	p := pcap.Server{
 		ListenPort: uint16(*argListenPort),
-		ListenDevs: listenDevs,
 		UpDev:      upDev,
 		GatewayDev: gatewayDev,
 	}

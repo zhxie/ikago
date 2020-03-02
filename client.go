@@ -22,7 +22,6 @@ func main() {
 		serverIP        net.IP
 		serverPort      uint16
 		listenDevs      = make([]*pcap.Device, 0)
-		upDev           *pcap.Device
 		gatewayDev      *pcap.Device
 	)
 
@@ -30,7 +29,6 @@ func main() {
 	var argListenLoopDev = flag.Bool("listen-loopback-device", false, "Listen loopback device only.")
 	var argListenDevs = flag.String("listen-devices", "", "Designated pcap devices for listening.")
 	var argUpLoopDev = flag.Bool("upstream-loopback-device", false, "Route upstream to loopback device only.")
-	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
 	var argIPv4Dev = flag.Bool("ipv4-device", false, "Use IPv4 device only.")
 	var argIPv6Dev = flag.Bool("ipv6-device", false, "Use IPv6 device only.")
 	var argFilters = flag.String("f", "", "Filters.")
@@ -133,7 +131,7 @@ func main() {
 		for _, filter := range filters {
 			fmt.Printf("  %s\n", filter)
 		}
-		fmt.Printf("    through :%d to %s...\n", *argUpPort, serverIPPort)
+		fmt.Printf("    through :%d to %s\n", *argUpPort, serverIPPort)
 	}
 
 	// Find devices
@@ -181,18 +179,9 @@ func main() {
 			break
 		}
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLoopDev, ipVersionOption)
+	_, gatewayDev, err = pcap.FindUpstreamDevAndGateway("", *argUpLoopDev, ipVersionOption)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
-		os.Exit(1)
-	}
-	if upDev == nil && gatewayDev == nil {
-		fmt.Fprintln(os.Stderr,
-			fmt.Errorf("parse: %w", errors.New("cannot determine upstream device and gateway")))
-		os.Exit(1)
-	}
-	if upDev == nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine upstream device")))
 		os.Exit(1)
 	}
 	if gatewayDev == nil {
@@ -207,7 +196,6 @@ func main() {
 		ServerIP:   serverIP,
 		ServerPort: serverPort,
 		ListenDevs: listenDevs,
-		UpDev:      upDev,
 		GatewayDev: gatewayDev,
 	}
 

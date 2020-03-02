@@ -27,8 +27,7 @@ type encappedPacketSrc struct {
 	SrcPort         uint16
 	EncappedSrcIP   string
 	EncappedSrcPort uint16
-	Dev             *Device
-	Handle          *pcap.Handle
+	Conn            net.Conn
 }
 
 // sendTCPPacket implements a method sends a TCP packet
