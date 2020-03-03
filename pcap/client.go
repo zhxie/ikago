@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -23,15 +24,18 @@ type Client struct {
 	listenHandles   []*pcap.Handle
 	upHandle        *pcap.Handle
 	handshakeHandle *pcap.Handle
+	cListenPackets  chan devPacket
 	seq             uint32
 	ack             uint32
 	id              uint16
-	nat             map[quintuple]*packetSrc
+	natLock         sync.RWMutex
+	nat             map[quintuple]*clientNATIndicator
 }
 
 // Open implements a method opens the pcap
 func (p *Client) Open() error {
-	p.nat = make(map[quintuple]*packetSrc)
+	p.cListenPackets = make(chan devPacket, 1000)
+	p.nat = make(map[quintuple]*clientNATIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -166,14 +170,19 @@ func (p *Client) Open() error {
 	// Start handling
 	for i, handle := range p.listenHandles {
 		dev := p.ListenDevs[i]
-		ps := packetSrc{Dev: dev, Handle: handle}
 		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 		go func() {
 			for packet := range packetSrc.Packets() {
-				p.handleListen(packet, &ps)
+				// Avoid conflict
+				p.cListenPackets <- devPacket{Packet: packet, Dev: dev, Handle: handle}
 			}
 		}()
 	}
+	go func() {
+		for devPacket := range p.cListenPackets {
+			p.handleListen(devPacket.Packet, devPacket.Dev, devPacket.Handle)
+		}
+	}()
 	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
 	for packet := range packetSrc.Packets() {
 		p.handleUpstream(packet)
@@ -355,7 +364,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	return nil
 }
 
-func (p *Client) handleListen(packet gopacket.Packet, ps *packetSrc) {
+func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.Handle) {
 	var (
 		indicator           *packetIndicator
 		newTransportLayer   *layers.TCP
@@ -462,7 +471,9 @@ func (p *Client) handleListen(packet gopacket.Packet, ps *packetSrc) {
 		DstPort:  indicator.DstPort,
 		Protocol: indicator.TransportLayerType,
 	}
-	p.nat[q] = ps
+	p.natLock.Lock()
+	p.nat[q] = &clientNATIndicator{Dev: dev, Handle: handle}
+	p.natLock.Unlock()
 
 	// Serialize layers
 	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, contents)
@@ -545,7 +556,9 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		DstPort:  encappedIndicator.SrcPort,
 		Protocol: encappedIndicator.TransportLayerType,
 	}
+	p.natLock.RLock()
 	ps, ok := p.nat[q]
+	p.natLock.RUnlock()
 	if !ok {
 		dev = p.UpDev
 		handle = p.upHandle

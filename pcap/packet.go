@@ -17,12 +17,18 @@ type quintuple struct {
 	Protocol gopacket.LayerType
 }
 
-type packetSrc struct {
+type devPacket struct {
+	Packet gopacket.Packet
 	Dev    *Device
 	Handle *pcap.Handle
 }
 
-type encappedPacketSrc struct {
+type clientNATIndicator struct {
+	Dev    *Device
+	Handle *pcap.Handle
+}
+
+type serverNATIndicator struct {
 	SrcIP           string
 	SrcPort         uint16
 	EncappedSrcIP   string
