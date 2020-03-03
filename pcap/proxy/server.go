@@ -63,11 +63,11 @@ func (p *Server) handle(conn net.Conn) {
 
 	for {
 		d := make([]byte, 1600)
-		_, err := conn.Read(d)
+		n, err := conn.Read(d)
 		if err != nil {
 			fmt.Println(fmt.Errorf("handle: %w", fmt.Errorf("conn %s: %w", conn.RemoteAddr(), err)))
 			return
 		}
-		p.c <- ConnData{Data: d, Conn: conn}
+		p.c <- ConnData{Data: d[:n], Conn: conn}
 	}
 }

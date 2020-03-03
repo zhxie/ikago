@@ -53,11 +53,11 @@ func (p *Client) handle() {
 	defer p.Close()
 	for {
 		d := make([]byte, 1600)
-		_, err := p.conn.Read(d)
+		n, err := p.conn.Read(d)
 		if err != nil {
 			fmt.Println(fmt.Errorf("handle: %w", err))
 			return
 		}
-		p.c <- d
+		p.c <- d[:n]
 	}
 }

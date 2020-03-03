@@ -49,3 +49,4 @@ go run server.go -p [port]
 - [x] Use filters instead of listen port
 - [ ] Retransmission and out of order packets detection
 - [ ] Handle packets with unrecognizable transport layer
+- [ ] Log
