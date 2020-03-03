@@ -27,7 +27,8 @@ type encappedPacketSrc struct {
 	SrcPort         uint16
 	EncappedSrcIP   string
 	EncappedSrcPort uint16
-	Conn            net.Conn
+	Dev             *Device
+	Handle          *pcap.Handle
 }
 
 // sendTCPPacket implements a method sends a TCP packet
@@ -84,23 +85,21 @@ type packetIndicator struct {
 }
 
 // SrcAddr returns the source address of the packet
-func (indicator *packetIndicator) SrcAddr() string {
-	i := IPPort{
+func (indicator *packetIndicator) SrcAddr() *IPPort {
+	return &IPPort{
 		IP:              indicator.SrcIP,
 		Port:            indicator.SrcPort,
 		IsPortUndefined: indicator.IsPortUndefined,
 	}
-	return i.String()
 }
 
 // DstAddr returns the destination address of the packet
-func (indicator *packetIndicator) DstAddr() string {
-	i := IPPort{
+func (indicator *packetIndicator) DstAddr() *IPPort {
+	return &IPPort{
 		IP:              indicator.DstIP,
 		Port:            indicator.DstPort,
 		IsPortUndefined: indicator.IsPortUndefined,
 	}
-	return i.String()
 }
 
 // Payload returns the application layer in array of bytes

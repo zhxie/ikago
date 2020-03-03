@@ -20,13 +20,13 @@ go run server.go -p [port]
 
 `-list-devices`: (Optional, exclusively) List all valid pcap devices in current computer.
 
-`-listen-loopback-device`: (Client only, optional) Listen loopback device only.
+`-listen-loopback-device`: (Optional) Listen loopback device only.
 
-`-listen-devices devices`: (Client only, optional) Designated pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used.
+`-listen-devices devices`: (Optional) Designated pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used.
 
 `-upstream-loopback-device`: (Optional) Route upstream to loopback device only.
 
-`-upstream-device device`: (Server only, optional) Designated pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used.
+`-upstream-device device`: (Optional) Designated pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used.
 
 `-ipv4-device`: (Optional) Use IPv4 device only.
 
@@ -36,7 +36,7 @@ go run server.go -p [port]
 
 `-p port`: (Server only) Port for listening.
 
-`-upstream-port port`: (Client only, optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
+`-upstream-port port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 
 `-s address:port`: (Client only) Server.
 
@@ -45,8 +45,7 @@ go run server.go -p [port]
 - [x] Support TCP proxy
 - [x] Support UDP proxy
 - [ ] Test NAT using STUN
-- [ ] Test latency
+- [x] Test latency
 - [x] Use filters instead of listen port
 - [ ] Retransmission and out of order packets detection
 - [ ] Handle packets with unrecognizable transport layer
-- [ ] Log

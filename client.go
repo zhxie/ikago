@@ -22,6 +22,7 @@ func main() {
 		serverIP        net.IP
 		serverPort      uint16
 		listenDevs      = make([]*pcap.Device, 0)
+		upDev           *pcap.Device
 		gatewayDev      *pcap.Device
 	)
 
@@ -29,6 +30,7 @@ func main() {
 	var argListenLoopDev = flag.Bool("listen-loopback-device", false, "Listen loopback device only.")
 	var argListenDevs = flag.String("listen-devices", "", "Designated pcap devices for listening.")
 	var argUpLoopDev = flag.Bool("upstream-loopback-device", false, "Route upstream to loopback device only.")
+	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
 	var argIPv4Dev = flag.Bool("ipv4-device", false, "Use IPv4 device only.")
 	var argIPv6Dev = flag.Bool("ipv6-device", false, "Use IPv6 device only.")
 	var argFilters = flag.String("f", "", "Filters.")
@@ -38,7 +40,7 @@ func main() {
 	// Parse arguments
 	flag.Parse()
 	if *argListDevs {
-		fmt.Println("Available devices are listed below, use -listen-device [device] or -upstream-device [device] to designate device:")
+		fmt.Println("Available devices are listed below, use -listen-devices [devices] or -upstream-device [device] to designate device:")
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, fmt.Errorf("list devices: %w", err))
@@ -179,9 +181,18 @@ func main() {
 			break
 		}
 	}
-	_, gatewayDev, err = pcap.FindUpstreamDevAndGateway("", *argUpLoopDev, ipVersionOption)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLoopDev, ipVersionOption)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
+		os.Exit(1)
+	}
+	if upDev == nil && gatewayDev == nil {
+		fmt.Fprintln(os.Stderr,
+			fmt.Errorf("parse: %w", errors.New("cannot determine upstream device and gateway")))
+		os.Exit(1)
+	}
+	if upDev == nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine upstream device")))
 		os.Exit(1)
 	}
 	if gatewayDev == nil {
@@ -196,6 +207,7 @@ func main() {
 		ServerIP:   serverIP,
 		ServerPort: serverPort,
 		ListenDevs: listenDevs,
+		UpDev:      upDev,
 		GatewayDev: gatewayDev,
 	}
 
