@@ -171,10 +171,11 @@ func (p *Client) Open() error {
 	for i, handle := range p.listenHandles {
 		dev := p.ListenDevs[i]
 		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
+		copyHandle := handle
 		go func() {
 			for packet := range packetSrc.Packets() {
 				// Avoid conflict
-				p.cListenPackets <- devPacket{Packet: packet, Dev: dev, Handle: handle}
+				p.cListenPackets <- devPacket{Packet: packet, Dev: dev, Handle: copyHandle}
 			}
 		}()
 	}
