@@ -225,7 +225,6 @@ func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
 			return nil, fmt.Errorf("parse encapped: %w", errors.New("missing network layer"))
 		}
 		if networkLayer.LayerType() != layers.LayerTypeIPv6 {
-			fmt.Println(fmt.Errorf("handle upstream: %w", fmt.Errorf("parse: %w", errors.New("type not support"))))
 			return nil, fmt.Errorf("parse encapped: %w", errors.New("network layer type not support"))
 		}
 	default:

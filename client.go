@@ -1,6 +1,7 @@
 package main
 
 import (
+	"./log"
 	"./pcap"
 	"errors"
 	"flag"
@@ -36,42 +37,44 @@ func main() {
 	var argFilters = flag.String("f", "", "Filters.")
 	var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
 	var argServer = flag.String("s", "", "Server.")
+	var argVerbose = flag.Bool("v", false, "Print verbose messages.")
 
 	// Parse arguments
 	flag.Parse()
+
+	// Log
+	log.SetVerbose(*argVerbose)
+
+	// Exclusive commands
 	if *argListDevs {
-		fmt.Println("Available devices are listed below, use -listen-devices [devices] or -upstream-device [device] to designate device:")
+		log.Infoln("Available devices are listed below, use -listen-devices [devices] or -upstream-device [device] to designate device:")
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("list devices: %w", err))
-			os.Exit(1)
+			log.Fatalln(fmt.Errorf("list devices: %w", err))
 		}
 		for _, dev := range devs {
-			fmt.Printf("  %s\n", dev)
+			log.Infof("  %s\n", dev)
 		}
 		os.Exit(0)
 	}
-	if *argFilters == "" {
-		fmt.Fprintln(os.Stderr, "Please provide filters by -f [filters].")
-		os.Exit(1)
-	}
-	if *argServer == "" {
-		fmt.Fprintln(os.Stderr, "Please provide server by -s [address:port].")
-		os.Exit(1)
-	}
 
 	// Verify parameters
+	if *argFilters == "" {
+		log.Fatalln("Please provide filters by -f [filters].")
+	}
+	if *argServer == "" {
+		log.Fatalln("Please provide server by -s [address:port].")
+	}
 	strFilters := strings.Split(*argFilters, ",")
 	for _, strFilter := range strFilters {
 		filter, err := pcap.ParseFilter(strFilter)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
-			os.Exit(1)
+			log.Fatalln(fmt.Errorf("parse: %w", err))
 		}
 		filters = append(filters, filter)
 	}
 	if *argUpPort < 0 || *argUpPort >= 65536 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("upstream port out of range")))
+		log.Fatalln(fmt.Errorf("parse: %w", errors.New("upstream port out of range")))
 		os.Exit(1)
 	}
 	// Randomize upstream port
@@ -111,8 +114,7 @@ func main() {
 			break
 		case pcap.FilterTypePort:
 			if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
-				fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
-				os.Exit(1)
+				log.Fatalln(fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
 			}
 		default:
 			// TODO: escape default
@@ -121,19 +123,18 @@ func main() {
 	}
 	serverIPPort, err := pcap.ParseIPPort(*argServer)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", fmt.Errorf("server: %w", err)))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("server: %w", err)))
 	}
 	serverIP = serverIPPort.IP
 	serverPort = serverIPPort.Port
 	if len(filters) == 1 {
-		fmt.Printf("Proxy from %s through :%d to %s\n", filters[0], *argUpPort, serverIPPort)
+		log.Infof("Proxy from %s through :%d to %s\n", filters[0], *argUpPort, serverIPPort)
 	} else {
-		fmt.Println("Proxy:")
+		log.Info("Proxy:")
 		for _, filter := range filters {
-			fmt.Printf("  %s\n", filter)
+			log.Infof("\n  %s", filter)
 		}
-		fmt.Printf("    through :%d to %s\n", *argUpPort, serverIPPort)
+		log.Infof(" through :%d to %s\n", *argUpPort, serverIPPort)
 	}
 
 	// Find devices
@@ -149,12 +150,10 @@ func main() {
 		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","), *argListenLoopDev, ipVersionOption)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	if len(listenDevs) <= 0 {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
 	}
 	// Check if listen devices including illegal filter
 	addrs := make(map[string]bool)
@@ -170,8 +169,7 @@ func main() {
 			if ipPortFilter.Port == uint16(*argUpPort) {
 				_, ok := addrs[ipPortFilter.IP.String()]
 				if ok {
-					fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
-					os.Exit(1)
+					log.Fatalln(fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
 				}
 			}
 		case pcap.FilterTypeIP:
@@ -183,21 +181,16 @@ func main() {
 	}
 	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLoopDev, ipVersionOption)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", err))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	if upDev == nil && gatewayDev == nil {
-		fmt.Fprintln(os.Stderr,
-			fmt.Errorf("parse: %w", errors.New("cannot determine upstream device and gateway")))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine upstream device and gateway")))
 	}
 	if upDev == nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine upstream device")))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine upstream device")))
 	}
 	if gatewayDev == nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("parse: %w", errors.New("cannot determine gateway")))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine gateway")))
 	}
 
 	// Packet capture
@@ -222,7 +215,6 @@ func main() {
 
 	err = p.Open()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("pcap: %w", err))
-		os.Exit(1)
+		log.Fatalln(fmt.Errorf("pcap: %w", err))
 	}
 }

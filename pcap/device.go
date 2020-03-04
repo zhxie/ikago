@@ -1,6 +1,7 @@
 package pcap
 
 import (
+	"../log"
 	"errors"
 	"fmt"
 	"net"
@@ -151,14 +152,14 @@ func FindAllDevs() ([]*Device, error) {
 		}
 		addrs, err := inter.Addrs()
 		if err != nil {
-			fmt.Println(fmt.Errorf("find all devs: %w", err))
+			log.Errorln(fmt.Errorf("find all devs: %w", err))
 			continue
 		}
 		as := make([]*net.IPNet, 0)
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
-				fmt.Println(fmt.Errorf("find all devs: %w", fmt.Errorf("invalid address in %s", inter.Name)))
+				log.Errorln(fmt.Errorf("find all devs: %w", fmt.Errorf("invalid address in %s", inter.Name)))
 				continue
 			}
 			as = append(as, ipnet)

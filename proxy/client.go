@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"../log"
 	"fmt"
 	"net"
 )
@@ -55,7 +56,7 @@ func (p *Client) handle() {
 		d := make([]byte, 1600)
 		n, err := p.conn.Read(d)
 		if err != nil {
-			fmt.Println(fmt.Errorf("handle: %w", err))
+			log.Errorln(fmt.Errorf("handle: %w", err))
 			return
 		}
 		p.c <- d[:n]

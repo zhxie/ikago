@@ -40,6 +40,8 @@ go run server.go -p [port]
 
 `-s address:port`: (Client only) Server.
 
+`-v`: (Optional) Print verbose messages.
+
 ## Todo
 
 - [x] Support TCP proxy
@@ -49,3 +51,4 @@ go run server.go -p [port]
 - [x] Use filters instead of listen port
 - [ ] Retransmission and out of order packets detection
 - [ ] Handle packets with unrecognizable transport layer
+- [x] Log

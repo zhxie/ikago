@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"../log"
 	"fmt"
 	"net"
 )
@@ -33,10 +34,10 @@ func (p *Server) Open() error {
 		for {
 			conn, err := p.listener.Accept()
 			if err != nil {
-				fmt.Println(fmt.Errorf("open: %w", err))
+				log.Errorln(fmt.Errorf("open: %w", err))
 				return
 			}
-			fmt.Printf("Connect from client %s\n", conn.RemoteAddr())
+			log.Infof("Connect from client %s\n", conn.RemoteAddr())
 
 			// Handle connection
 			go func() {
@@ -65,7 +66,7 @@ func (p *Server) handle(conn net.Conn) {
 		d := make([]byte, 1600)
 		n, err := conn.Read(d)
 		if err != nil {
-			fmt.Println(fmt.Errorf("handle: %w", fmt.Errorf("conn %s: %w", conn.RemoteAddr(), err)))
+			log.Errorln(fmt.Errorf("handle: %w", fmt.Errorf("conn %s: %w", conn.RemoteAddr(), err)))
 			return
 		}
 		p.c <- ConnData{Data: d[:n], Conn: conn}
