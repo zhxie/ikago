@@ -421,8 +421,8 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 
 	// NAT
 	t := triple{
-		IP:       indicator.SrcIP.String(),
-		Port:     indicator.SrcPort,
+		IP:       indicator.DstIP.String(),
+		Port:     indicator.DstPort,
 		Protocol: indicator.TransportLayerType,
 	}
 	p.natLock.RLock()
