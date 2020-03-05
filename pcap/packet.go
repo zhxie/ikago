@@ -23,12 +23,12 @@ type devPacket struct {
 	Handle *pcap.Handle
 }
 
-type clientNATIndicator struct {
+type devIndicator struct {
 	Dev    *Device
 	Handle *pcap.Handle
 }
 
-type serverNATIndicator struct {
+type natIndicator struct {
 	SrcIP           string
 	SrcPort         uint16
 	EncappedSrcIP   string

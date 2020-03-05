@@ -28,10 +28,9 @@ type Server struct {
 	id             uint16
 	tcpPort        uint16
 	udpPort        uint16
-	// Port translation
-	pt      map[quintuple]uint16
-	natLock sync.RWMutex
-	nat     map[quintuple]*serverNATIndicator
+	portMap        map[quintuple]uint16
+	natLock        sync.RWMutex
+	nat            map[quintuple]*natIndicator
 }
 
 // Open implements a method opens the pcap
@@ -40,8 +39,8 @@ func (p *Server) Open() error {
 	p.seqs = make(map[string]uint32)
 	p.acks = make(map[string]uint32)
 	p.id = 0
-	p.pt = make(map[quintuple]uint16)
-	p.nat = make(map[quintuple]*serverNATIndicator)
+	p.portMap = make(map[quintuple]uint16)
+	p.nat = make(map[quintuple]*natIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -307,13 +306,13 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		DstPort:  indicator.SrcPort,
 		Protocol: encappedIndicator.TransportLayerType,
 	}
-	upPort, ok := p.pt[qPT]
+	upPort, ok := p.portMap[qPT]
 	if !ok {
 		upPort, err = p.distPort(encappedIndicator.TransportLayerType)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle listen: %w", err))
 		}
-		p.pt[qPT] = upPort
+		p.portMap[qPT] = upPort
 	}
 
 	// Modify transport layer
@@ -375,7 +374,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		DstPort:  encappedIndicator.DstPort,
 		Protocol: encappedIndicator.TransportLayerType,
 	}
-	natIndicator := serverNATIndicator{
+	natIndicator := natIndicator{
 		SrcIP:           indicator.SrcIP.String(),
 		SrcPort:         indicator.SrcPort,
 		EncappedSrcIP:   encappedIndicator.SrcIP.String(),

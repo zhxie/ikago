@@ -29,14 +29,14 @@ type Client struct {
 	seq             uint32
 	ack             uint32
 	id              uint16
-	natLock         sync.RWMutex
-	nat             map[quintuple]*clientNATIndicator
+	devMapLock      sync.RWMutex
+	devMap          map[quintuple]*devIndicator
 }
 
 // Open implements a method opens the pcap
 func (p *Client) Open() error {
 	p.cListenPackets = make(chan devPacket, 1000)
-	p.nat = make(map[quintuple]*clientNATIndicator)
+	p.devMap = make(map[quintuple]*devIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -473,9 +473,9 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		DstPort:  indicator.DstPort,
 		Protocol: indicator.TransportLayerType,
 	}
-	p.natLock.Lock()
-	p.nat[q] = &clientNATIndicator{Dev: dev, Handle: handle}
-	p.natLock.Unlock()
+	p.devMapLock.Lock()
+	p.devMap[q] = &devIndicator{Dev: dev, Handle: handle}
+	p.devMapLock.Unlock()
 
 	// Serialize layers
 	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, contents)
@@ -558,9 +558,9 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		DstPort:  encappedIndicator.SrcPort,
 		Protocol: encappedIndicator.TransportLayerType,
 	}
-	p.natLock.RLock()
-	ps, ok := p.nat[q]
-	p.natLock.RUnlock()
+	p.devMapLock.RLock()
+	ps, ok := p.devMap[q]
+	p.devMapLock.RUnlock()
 	if !ok {
 		dev = p.UpDev
 		handle = p.upHandle
