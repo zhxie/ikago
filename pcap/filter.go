@@ -1,6 +1,7 @@
 package pcap
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
@@ -37,12 +38,12 @@ func (filter IPFilter) FilterType() FilterType {
 
 // SrcBPFFilter returns a string describes the BPF filter on the source side
 func (filter IPFilter) SrcBPFFilter() string {
-	return fmt.Sprintf("(src host %s)", filter.IP)
+	return fmt.Sprintf("(src host %s)", fullString(filter.IP))
 }
 
 // DstBPFFilter returns a string describes the BPF filter on the destination side
 func (filter IPFilter) DstBPFFilter() string {
-	return fmt.Sprintf("(dst host %s)", filter.IP)
+	return fmt.Sprintf("(dst host %s)", fullString(filter.IP))
 }
 
 func (filter IPFilter) String() string {
@@ -62,12 +63,12 @@ func (filter IPPortFilter) FilterType() FilterType {
 
 // SrcBPFFilter returns a string describes the BPF filter on the source side
 func (filter IPPortFilter) SrcBPFFilter() string {
-	return fmt.Sprintf("(src host %s && src port %d)", filter.IP, filter.Port)
+	return fmt.Sprintf("(src host %s && src port %d)", fullString(filter.IP), filter.Port)
 }
 
 // DstBPFFilter returns a string describes the BPF filter on the destination side
 func (filter IPPortFilter) DstBPFFilter() string {
-	return fmt.Sprintf("(dst host %s && dst port %d)", filter.IP, filter.Port)
+	return fmt.Sprintf("(dst host %s && dst port %d)", fullString(filter.IP), filter.Port)
 }
 
 func (filter IPPortFilter) String() string {
@@ -96,6 +97,22 @@ func (filter PortFilter) DstBPFFilter() string {
 
 func (filter PortFilter) String() string {
 	return fmt.Sprintf(":%d", filter.Port)
+}
+
+func fullString(ip net.IP) string {
+	if ip.To4() != nil {
+		return ip.String()
+	}
+	dst := make([]byte, hex.EncodedLen(len(ip)))
+	_ = hex.Encode(dst, ip)
+	return string(dst[0:4]) + ":" +
+		string(dst[4:8]) + ":" +
+		string(dst[8:12]) + ":" +
+		string(dst[12:16]) + ":" +
+		string(dst[16:20]) + ":" +
+		string(dst[20:24]) + ":" +
+		string(dst[24:28]) + ":" +
+		string(dst[28:])
 }
 
 // ParseFilter returns a Filter by the given string of filter
