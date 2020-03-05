@@ -9,6 +9,12 @@ import (
 	"net"
 )
 
+type triple struct {
+	IP       string
+	Port     uint16
+	Protocol gopacket.LayerType
+}
+
 type quintuple struct {
 	SrcIP    string
 	SrcPort  uint16

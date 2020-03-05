@@ -30,7 +30,7 @@ type Server struct {
 	udpPort        uint16
 	portMap        map[quintuple]uint16
 	natLock        sync.RWMutex
-	nat            map[quintuple]*natIndicator
+	nat            map[triple]*natIndicator
 }
 
 // Open implements a method opens the pcap
@@ -40,7 +40,7 @@ func (p *Server) Open() error {
 	p.acks = make(map[string]uint32)
 	p.id = 0
 	p.portMap = make(map[quintuple]uint16)
-	p.nat = make(map[quintuple]*natIndicator)
+	p.nat = make(map[triple]*natIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -299,20 +299,20 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Distribute port
-	qPT := quintuple{
+	q := quintuple{
 		SrcIP:    encappedIndicator.SrcIP.String(),
 		SrcPort:  encappedIndicator.SrcPort,
 		DstIP:    indicator.SrcIP.String(),
 		DstPort:  indicator.SrcPort,
 		Protocol: encappedIndicator.TransportLayerType,
 	}
-	upPort, ok := p.portMap[qPT]
+	upPort, ok := p.portMap[q]
 	if !ok {
 		upPort, err = p.distPort(encappedIndicator.TransportLayerType)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle listen: %w", err))
 		}
-		p.portMap[qPT] = upPort
+		p.portMap[q] = upPort
 	}
 
 	// Modify transport layer
@@ -367,11 +367,9 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Record the source and the source device of the packet
-	qNAT := quintuple{
-		SrcIP:    p.UpDev.IPv4Addr().IP.String(),
-		SrcPort:  upPort,
-		DstIP:    encappedIndicator.DstIP.String(),
-		DstPort:  encappedIndicator.DstPort,
+	t := triple{
+		IP:       p.UpDev.IPv4Addr().IP.String(),
+		Port:     upPort,
 		Protocol: encappedIndicator.TransportLayerType,
 	}
 	natIndicator := natIndicator{
@@ -383,7 +381,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		Handle:          handle,
 	}
 	p.natLock.Lock()
-	p.nat[qNAT] = &natIndicator
+	p.nat[t] = &natIndicator
 	p.natLock.Unlock()
 
 	// Serialize layers
@@ -422,15 +420,13 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// NAT
-	q := quintuple{
-		SrcIP:    indicator.DstIP.String(),
-		SrcPort:  indicator.DstPort,
-		DstIP:    indicator.SrcIP.String(),
-		DstPort:  indicator.SrcPort,
+	t := triple{
+		IP:       indicator.SrcIP.String(),
+		Port:     indicator.SrcPort,
 		Protocol: indicator.TransportLayerType,
 	}
 	p.natLock.RLock()
-	natIndicator, ok := p.nat[q]
+	natIndicator, ok := p.nat[t]
 	p.natLock.RUnlock()
 	if !ok {
 		return
