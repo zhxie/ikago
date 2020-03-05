@@ -92,25 +92,22 @@ type packetIndicator struct {
 	Ack                uint32
 	SYN                bool
 	ACK                bool
-	IsPortUndefined    bool
 	ApplicationLayer   gopacket.ApplicationLayer
 }
 
-// SrcAddr returns the source address of the packet
-func (indicator *packetIndicator) SrcAddr() *IPPort {
+// SrcIPPort returns the source IP and port of the packet
+func (indicator *packetIndicator) SrcIPPort() *IPPort {
 	return &IPPort{
-		IP:              indicator.SrcIP,
-		Port:            indicator.SrcPort,
-		IsPortUndefined: indicator.IsPortUndefined,
+		IP:   indicator.SrcIP,
+		Port: indicator.SrcPort,
 	}
 }
 
-// DstAddr returns the destination address of the packet
-func (indicator *packetIndicator) DstAddr() *IPPort {
+// DstIPPort returns the destination IP and port of the packet
+func (indicator *packetIndicator) DstIPPort() *IPPort {
 	return &IPPort{
-		IP:              indicator.DstIP,
-		Port:            indicator.DstPort,
-		IsPortUndefined: indicator.IsPortUndefined,
+		IP:   indicator.DstIP,
+		Port: indicator.DstPort,
 	}
 }
 
@@ -134,7 +131,6 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		transportLayerType gopacket.LayerType
 		srcPort            uint16
 		dstPort            uint16
-		isPortUndefined    bool
 		seq                uint32
 		ack                uint32
 		syn                bool
@@ -186,7 +182,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		srcPort = uint16(udpLayer.SrcPort)
 		dstPort = uint16(udpLayer.DstPort)
 	default:
-		isPortUndefined = true
+		return nil, fmt.Errorf("parse: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 	}
 
 	return &packetIndicator{
@@ -200,7 +196,6 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		TransportLayerType: transportLayerType,
 		SrcPort:            srcPort,
 		DstPort:            dstPort,
-		IsPortUndefined:    isPortUndefined,
 		Seq:                seq,
 		Ack:                ack,
 		SYN:                syn,

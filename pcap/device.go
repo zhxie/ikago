@@ -98,7 +98,7 @@ func (dev Device) String() string {
 		result = dev.Name + ": "
 	}
 	for i, addr := range dev.IPAddrs {
-		result = result + IPPort{IP: addr.IP, IsPortUndefined: true}.String()
+		result = result + addr.IP.String()
 		if i < len(dev.IPAddrs)-1 {
 			result = result + ", "
 		}
@@ -118,7 +118,7 @@ func (dev Device) AliasString() string {
 		result = dev.Alias + ": "
 	}
 	for i, addr := range dev.IPAddrs {
-		result = result + IPPort{IP: addr.IP, IsPortUndefined: true}.String()
+		result = result + addr.IP.String()
 		if i < len(dev.IPAddrs)-1 {
 			result = result + ", "
 		}

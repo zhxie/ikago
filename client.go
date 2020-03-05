@@ -95,8 +95,7 @@ func main() {
 						exist = true
 					}
 				default:
-					// TODO: escape default
-					break
+					log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("filter type %d not support", filter.FilterType())))
 				}
 				if exist {
 					break
@@ -117,7 +116,6 @@ func main() {
 				log.Fatalln(fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
 			}
 		default:
-			// TODO: escape default
 			break
 		}
 	}

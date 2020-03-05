@@ -46,7 +46,7 @@ func (filter IPFilter) DstBPFFilter() string {
 }
 
 func (filter IPFilter) String() string {
-	return IPPort{IP: filter.IP, IsPortUndefined: true}.String()
+	return filter.IP.String()
 }
 
 // IPPortFilter describes a filter with an IP and a port
@@ -108,14 +108,15 @@ func ParseFilter(s string) (Filter, error) {
 		}
 		return &PortFilter{Port: uint16(port)}, nil
 	}
-	// IP or IPPort
+	// Guess IP and port
 	ipPort, err := ParseIPPort(s)
 	if err != nil {
-		return nil, fmt.Errorf("parse filter: %w", err)
-	}
-	if ipPort.IsPortUndefined {
 		// IP
-		return &IPFilter{IP: ipPort.IP}, nil
+		ip := net.ParseIP(s)
+		if ip == nil {
+			return nil, fmt.Errorf("parse filter: %w", fmt.Errorf("invalid filter %s", s))
+		}
+		return &IPFilter{IP: ip}, nil
 	}
 	// IPPort
 	return &IPPortFilter{IP: ipPort.IP, Port: ipPort.Port}, nil
