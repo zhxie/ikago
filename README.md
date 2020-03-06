@@ -1,8 +1,15 @@
 # IkaGo
 
-**IkaGo** is a proxy which turns UDP traffic to TCP traffic written in Go.
+**IkaGo** is a proxy which helps bypass UDP blocking, UDP QoS and NAT firewall written in Go.
 
 *IkaGo is currently under development and may not suitable for production.*
+
+<p align="center">
+  <img src="/assets/squid.jpg">
+</p>
+<p align="center">
+  Pass the firewall like a squid : )
+</p>
 
 ## Dependencies
 
@@ -19,10 +26,10 @@
 
 ```
 # Client
-go run client.go -f [filters] -s [address:port]
+go run ./cmd/ikago-client -f [filters] -s [address:port]
 
 # Server
-go run server.go -p [port]
+go run ./cmd/ikago-server -p [port]
 ```
 
 `-list-devices`: (Optional, exclusively) List all valid pcap devices in current computer.
@@ -60,3 +67,4 @@ go run server.go -p [port]
 
 - [ ] Retransmission and out of order packets detection
 - [ ] Handle packets with unrecognizable transport layer
+
