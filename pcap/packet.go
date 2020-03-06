@@ -3,10 +3,11 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
 )
 
 type triple struct {

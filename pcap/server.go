@@ -1,15 +1,16 @@
 package pcap
 
 import (
-	"../log"
 	"errors"
 	"fmt"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
+	"ikago/log"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 // Server describes the packet capture on the server side

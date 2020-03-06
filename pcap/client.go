@@ -1,9 +1,9 @@
 package pcap
 
 import (
-	"../log"
 	"errors"
 	"fmt"
+	"ikago/log"
 	"net"
 	"sync"
 	"time"

@@ -3,9 +3,10 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"net"
 )
 
 func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {

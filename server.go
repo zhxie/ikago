@@ -1,11 +1,11 @@
 package main
 
 import (
-	"./log"
-	"./pcap"
 	"errors"
 	"flag"
 	"fmt"
+	"ikago/log"
+	"ikago/pcap"
 	"os"
 	"os/signal"
 	"strings"
