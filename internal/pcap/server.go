@@ -3,7 +3,7 @@ package pcap
 import (
 	"errors"
 	"fmt"
-	"ikago/log"
+	"ikago/internal/log"
 	"net"
 	"sync"
 	"time"
