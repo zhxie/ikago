@@ -18,6 +18,9 @@ jobs:
       with:
         go-version: 1.13
       id: go
+    
+    - name: Set up libpcap-dev
+      run: sudo apt-get install libpcap-dev -y
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
