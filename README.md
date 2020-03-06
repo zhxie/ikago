@@ -49,7 +49,7 @@ go run server.go -p [port]
 
 `-v`: (Optional) Print verbose messages.
 
-## Toubleshoot
+## Troubleshoot
 
 1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some Linux kernels may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure the iptables with the rule below to solve the problem:
 	```
@@ -58,7 +58,5 @@ go run server.go -p [port]
 
 ## Todo
 
-- [ ] Test NAT using STUN
 - [ ] Retransmission and out of order packets detection
 - [ ] Handle packets with unrecognizable transport layer
-
