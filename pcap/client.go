@@ -140,8 +140,6 @@ func (p *Client) Open() error {
 	// Close in advance
 	p.handshakeHandle.Close()
 
-	// TODO: STUN
-
 	// Handles for listening
 	p.listenHandles = make([]*pcap.Handle, 0)
 	for _, dev := range p.ListenDevs {
@@ -469,18 +467,6 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Record the source device of the packet
-	q := quintuple{
-		SrcIP:    indicator.SrcIP.String(),
-		SrcPort:  indicator.SrcPort,
-		DstIP:    indicator.DstIP.String(),
-		DstPort:  indicator.DstPort,
-		Protocol: indicator.TransportLayerType,
-	}
-	p.devMapLock.Lock()
-	p.devMap[q] = &devIndicator{Dev: dev, Handle: handle}
-	p.devMapLock.Unlock()
-
 	// Serialize layers
 	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, contents)
 	if err != nil {
@@ -494,6 +480,18 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
 		return
 	}
+
+	// Record the source device of the packet
+	q := quintuple{
+		SrcIP:    indicator.SrcIP.String(),
+		SrcPort:  indicator.SrcPort,
+		DstIP:    indicator.DstIP.String(),
+		DstPort:  indicator.DstPort,
+		Protocol: indicator.TransportLayerType,
+	}
+	p.devMapLock.Lock()
+	p.devMap[q] = &devIndicator{Dev: dev, Handle: handle}
+	p.devMapLock.Unlock()
 
 	// TCP Seq
 	p.seq = p.seq + uint32(len(contents))

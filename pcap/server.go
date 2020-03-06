@@ -4,12 +4,12 @@ import (
 	"../log"
 	"errors"
 	"fmt"
-	"net"
-	"sync"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"net"
+	"sync"
+	"time"
 )
 
 // Server describes the packet capture on the server side
@@ -26,12 +26,16 @@ type Server struct {
 	acksLock       sync.RWMutex
 	acks           map[string]uint32
 	id             uint16
-	tcpPort        uint16
-	udpPort        uint16
+	nextTCPPort    uint16
+	tcpPortPool    []time.Time
+	nextUDPPort    uint16
+	udpPortPool    []time.Time
 	portMap        map[quintuple]uint16
 	natLock        sync.RWMutex
 	nat            map[triple]*natIndicator
 }
+
+const portKeepAlive float64 = 30 // seconds
 
 // Open implements a method opens the pcap
 func (p *Server) Open() error {
@@ -39,6 +43,8 @@ func (p *Server) Open() error {
 	p.seqs = make(map[string]uint32)
 	p.acks = make(map[string]uint32)
 	p.id = 0
+	p.tcpPortPool = make([]time.Time, 16384)
+	p.udpPortPool = make([]time.Time, 16384)
 	p.portMap = make(map[quintuple]uint16)
 	p.nat = make(map[triple]*natIndicator)
 
@@ -304,7 +310,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Distribute port
+	// Distribute port by source and client address and protocol
 	q := quintuple{
 		SrcIP:    encappedIndicator.SrcIP.String(),
 		SrcPort:  encappedIndicator.SrcPort,
@@ -372,6 +378,19 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
+	// Serialize layers
+	data, err := serialize(newLinkLayer, newNetworkLayer, encappedIndicator.TransportLayer, encappedIndicator.Payload())
+	if err != nil {
+		log.Errorln(fmt.Errorf("handle listen: %w", err))
+		return
+	}
+
+	// Write packet data
+	err = p.upHandle.WritePacketData(data)
+	if err != nil {
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
+	}
+
 	// Record the source and the source device of the packet
 	t := triple{
 		IP:       p.UpDev.IPv4Addr().IP.String(),
@@ -390,17 +409,15 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	p.nat[t] = &natIndicator
 	p.natLock.Unlock()
 
-	// Serialize layers
-	data, err := serialize(newLinkLayer, newNetworkLayer, encappedIndicator.TransportLayer, encappedIndicator.Payload())
-	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
+	// Keep port alive
+	switch newNetworkLayerType {
+	case layers.LayerTypeTCP:
+		p.tcpPortPool[convertFromPort(upPort)] = time.Now()
+	case layers.LayerTypeUDP:
+		p.udpPortPool[convertFromPort(upPort)] = time.Now()
+	default:
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
-	}
-
-	// Write packet data
-	err = p.upHandle.WritePacketData(data)
-	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
@@ -436,6 +453,17 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	natIndicator, ok := p.nat[t]
 	p.natLock.RUnlock()
 	if !ok {
+		return
+	}
+
+	// Keep port alive
+	switch indicator.NetworkLayerType {
+	case layers.LayerTypeTCP:
+		p.tcpPortPool[convertFromPort(indicator.DstPort)] = time.Now()
+	case layers.LayerTypeUDP:
+		p.udpPortPool[convertFromPort(indicator.DstPort)] = time.Now()
+	default:
+		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", indicator.NetworkLayerType))))
 		return
 	}
 
@@ -581,16 +609,41 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 }
 
 func (p *Server) distPort(t gopacket.LayerType) (uint16, error) {
+	now := time.Now()
+
 	switch t {
 	case layers.LayerTypeTCP:
-		port := 49152 + p.tcpPort%16384
-		p.tcpPort++
-		return port, nil
+		for i := 0; i < 16384; i++ {
+			s := p.nextTCPPort % 16384
+
+			// Point to next port
+			p.nextTCPPort++
+
+			// Check if the port is alive
+			time := p.tcpPortPool[s]
+			if now.Sub(time).Seconds() > portKeepAlive {
+				return 49152 + s, nil
+			}
+		}
 	case layers.LayerTypeUDP:
-		port := 49152 + p.udpPort%16384
-		p.udpPort++
-		return port, nil
+		for i := 0; i < 16384; i++ {
+			s := p.nextUDPPort % 16384
+
+			// Point to next port
+			p.nextUDPPort++
+
+			// Check if the port is alive
+			time := p.udpPortPool[s]
+			if now.Sub(time).Seconds() > portKeepAlive {
+				return 49152 + s, nil
+			}
+		}
 	default:
 		return 0, fmt.Errorf("dist port: %w", fmt.Errorf("type %s not support", t))
 	}
+	return 0, fmt.Errorf("dist port: %w", fmt.Errorf("empty %s port pool", t))
+}
+
+func convertFromPort(port uint16) uint16 {
+	return port - 49152
 }
