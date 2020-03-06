@@ -410,13 +410,13 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	p.natLock.Unlock()
 
 	// Keep port alive
-	switch newNetworkLayerType {
+	switch encappedIndicator.TransportLayerType {
 	case layers.LayerTypeTCP:
 		p.tcpPortPool[convertFromPort(upPort)] = time.Now()
 	case layers.LayerTypeUDP:
 		p.udpPortPool[convertFromPort(upPort)] = time.Now()
 	default:
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", encappedIndicator.TransportLayerType))))
 		return
 	}
 
@@ -457,13 +457,13 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Keep port alive
-	switch indicator.NetworkLayerType {
+	switch indicator.TransportLayerType {
 	case layers.LayerTypeTCP:
 		p.tcpPortPool[convertFromPort(indicator.DstPort)] = time.Now()
 	case layers.LayerTypeUDP:
 		p.udpPortPool[convertFromPort(indicator.DstPort)] = time.Now()
 	default:
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", indicator.NetworkLayerType))))
+		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", indicator.TransportLayerType))))
 		return
 	}
 
