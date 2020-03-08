@@ -548,7 +548,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Empty payload
 	if applicationLayer == nil {
-		log.Verboseln(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
+		log.Errorln(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
 		return
 	}
 

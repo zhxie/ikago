@@ -295,9 +295,9 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Empty payload
+	// Empty payload (An ACK handshaking will also be recognized as empty payload)
 	if indicator.ApplicationLayer == nil {
-		log.Verboseln(fmt.Errorf("handle listen: %w", errors.New("empty payload")))
+		log.Errorln(fmt.Errorf("handle listen: %w", errors.New("empty payload")))
 		return
 	}
 
@@ -467,7 +467,6 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	natIndicator, ok := p.nat[t]
 	p.natLock.RUnlock()
 	if !ok {
-		log.Verboseln(fmt.Errorf("handle upstream: %w", errors.New("missing nat")))
 		return
 	}
 
