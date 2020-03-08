@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"os"
@@ -19,17 +20,20 @@ func main() {
 		listenDevs      = make([]*pcap.Device, 0)
 		upDev           *pcap.Device
 		gatewayDev      *pcap.Device
+		c               crypto.Crypto
 	)
 
 	var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
 	var argListenLoopDev = flag.Bool("listen-loopback-device", false, "Listen loopback device only.")
-	var argListenDevs = flag.String("listen-devices", "", "Designated pcap devices for listening.")
+	var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
 	var argUpLoopDev = flag.Bool("upstream-loopback-device", false, "Route upstream to loopback device only.")
-	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
-	var argIPv4Dev = flag.Bool("ipv4", false, "Use IPv4 only.")
-	var argIPv6Dev = flag.Bool("ipv6", false, "Use IPv6 only.")
-	var argListenPort = flag.Int("p", 0, "Port for listening.")
+	var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
+	var argIPv4Dev = flag.Bool("ipv4", false, "Use IPv4 devices only.")
+	var argIPv6Dev = flag.Bool("ipv6", false, "Use IPv6 devices only.")
+	var argMethod = flag.String("method", "plain", "Method of encryption.")
+	var argPassword = flag.String("password", "", "Password of the encryption.")
 	var argVerbose = flag.Bool("v", false, "Print verbose messages.")
+	var argListenPort = flag.Int("p", 0, "Port for listening.")
 
 	// Parse arguments
 	flag.Parse()
@@ -56,6 +60,10 @@ func main() {
 	}
 	if *argListenPort <= 0 || *argListenPort >= 65536 {
 		log.Fatalln(fmt.Errorf("parse: %w", errors.New("listen port out of range")))
+	}
+	c, err = crypto.ParseCrypto(*argMethod, *argPassword)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	log.Infof("Proxy from :%d\n", *argListenPort)
 
@@ -97,6 +105,7 @@ func main() {
 		ListenDevs: listenDevs,
 		UpDev:      upDev,
 		GatewayDev: gatewayDev,
+		Crypto:     c,
 	}
 
 	// Wait signals

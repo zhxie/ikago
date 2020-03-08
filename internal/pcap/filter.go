@@ -21,8 +21,11 @@ const (
 
 // Filter describes the BPF filter
 type Filter interface {
+	// FilterType returns the type of the filter
 	FilterType() FilterType
+	// SrcBPFFilter returns a string describes the BPF filter on the source side
 	SrcBPFFilter() string
+	// DstBPFFilter returns a string describes the BPF filter on the destination side
 	DstBPFFilter() string
 }
 
@@ -31,17 +34,14 @@ type IPFilter struct {
 	IP net.IP
 }
 
-// FilterType returns the type of the filter
 func (filter IPFilter) FilterType() FilterType {
 	return FilterTypeIP
 }
 
-// SrcBPFFilter returns a string describes the BPF filter on the source side
 func (filter IPFilter) SrcBPFFilter() string {
 	return fmt.Sprintf("(src host %s)", fullString(filter.IP))
 }
 
-// DstBPFFilter returns a string describes the BPF filter on the destination side
 func (filter IPFilter) DstBPFFilter() string {
 	return fmt.Sprintf("(dst host %s)", fullString(filter.IP))
 }
@@ -56,17 +56,14 @@ type IPPortFilter struct {
 	Port uint16
 }
 
-// FilterType returns the type of the filter
 func (filter IPPortFilter) FilterType() FilterType {
 	return FilterTypeIPPort
 }
 
-// SrcBPFFilter returns a string describes the BPF filter on the source side
 func (filter IPPortFilter) SrcBPFFilter() string {
 	return fmt.Sprintf("(src host %s && src port %d)", fullString(filter.IP), filter.Port)
 }
 
-// DstBPFFilter returns a string describes the BPF filter on the destination side
 func (filter IPPortFilter) DstBPFFilter() string {
 	return fmt.Sprintf("(dst host %s && dst port %d)", fullString(filter.IP), filter.Port)
 }
@@ -80,17 +77,14 @@ type PortFilter struct {
 	Port uint16
 }
 
-// FilterType returns the type of the filter
 func (filter PortFilter) FilterType() FilterType {
 	return FilterTypePort
 }
 
-// SrcBPFFilter returns a string describes the BPF filter on the source side
 func (filter PortFilter) SrcBPFFilter() string {
 	return fmt.Sprintf("(src port %d)", filter.Port)
 }
 
-// DstBPFFilter returns a string describes the BPF filter on the destination side
 func (filter PortFilter) DstBPFFilter() string {
 	return fmt.Sprintf("(dst port %d)", filter.Port)
 }
@@ -131,7 +125,7 @@ func ParseFilter(s string) (Filter, error) {
 		// IP
 		ip := net.ParseIP(s)
 		if ip == nil {
-			return nil, fmt.Errorf("parse filter: %w", fmt.Errorf("invalid filter %s", s))
+			return nil, fmt.Errorf("parse filter: %w", fmt.Errorf("invalid ip %s", s))
 		}
 		return &IPFilter{IP: ip}, nil
 	}

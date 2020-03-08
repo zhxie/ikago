@@ -1,6 +1,6 @@
 # IkaGo
 
-**IkaGo** is a proxy which helps bypass UDP blocking, UDP QoS and NAT firewall written in Go.
+**IkaGo** is a proxy which helps bypassing UDP blocking, UDP QoS and NAT firewall written in Go.
 
 *IkaGo is currently under development and may not suitable for production.*
 
@@ -21,6 +21,7 @@
 - **Multiple clients** One server can serve multiple clients.
 - **Cross platform** Works well with Windows and Linux, and macOS in theory.
 - **NAT support** Performs a full cone NAT.
+- **Encryption** Traffic can be encrypted with AES-GCM.
 
 ## Usage
 
@@ -32,29 +33,39 @@ go run ./cmd/ikago-client -f [filters] -s [address:port]
 go run ./cmd/ikago-server -p [port]
 ```
 
+### Common options
+
 `-list-devices`: (Optional, exclusively) List all valid pcap devices in current computer.
 
 `-listen-loopback-device`: (Optional) Listen loopback device only.
 
-`-listen-devices devices`: (Optional) Designated pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used. For example, `-listen-devices eth0,wifi0,lo`. Use `-listen-loopback-device` will select loopback device in designated devices.
+`-listen-devices devices`: (Optional) pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used. For example, `-listen-devices eth0,wifi0,lo`. Use `-listen-loopback-device` will select loopback device in designated devices.
 
 `-upstream-loopback-device`: (Optional) Route upstream to loopback device only.
 
-`-upstream-device device`: (Optional) Designated pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used. Use `-upstream-loopback-device` will select loopback device in designated devices.
+`-upstream-device device`: (Optional) pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used. Use `-upstream-loopback-device` will select loopback device in designated devices.
 
-`-ipv4-device`: (Optional) Use IPv4 device only. Use `-ipv4-device` and `-ipv6-device` together will use both IPv4 and IPv6 devices.
+`-ipv4-device`: (Optional) Use IPv4 devices only. Use `-ipv4-device` and `-ipv6-device` together will use all IPv4 and IPv6 devices.
 
-`-ipv6-device`: (Optional) Use IPv6 device only. Use `-ipv4-device` and `-ipv6-device` together will use both IPv4 and IPv6 devices.
-
-`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with a colon and any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
-
-`-p port`: (Server only) Port for listening.
+`-ipv6-device`: (Optional) Use IPv6 devices only. Use `-ipv4-device` and `-ipv6-device` together will use all IPv4 and IPv6 devices.
 
 `-upstream-port port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 
-`-s address:port`: (Client only) Server. Any IPv6 address should be encapsulated by a pair of brackets.
+`-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm` or `aes-256-gcm`. Default as `plain`.
+
+`-password password`: (Optional) Password of the encryption, must be set only when method is not `plain`.
 
 `-v`: (Optional) Print verbose messages.
+
+### Client options
+
+`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with a colon and any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
+
+`-s address:port`: (Client only) Server. Any IPv6 address should be encapsulated by a pair of brackets.
+
+### Server options
+
+`-p port`: (Server only) Port for listening.
 
 ## Troubleshoot
 

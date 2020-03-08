@@ -3,6 +3,7 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"net"
 	"sync"
@@ -22,6 +23,7 @@ type Client struct {
 	ListenDevs      []*Device
 	UpDev           *Device
 	GatewayDev      *Device
+	Crypto          crypto.Crypto
 	listenHandles   []*pcap.Handle
 	upHandle        *pcap.Handle
 	handshakeHandle *pcap.Handle
@@ -261,7 +263,7 @@ func (p *Client) handshakeSYN() error {
 	}
 
 	// Serialize layers
-	data, err := serialize(linkLayer, networkLayer, transportLayer, nil)
+	data, err := serialize(linkLayer.(gopacket.SerializableLayer), networkLayer.(gopacket.SerializableLayer), transportLayer)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
@@ -347,7 +349,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	}
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, nil)
+	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer), newNetworkLayer.(gopacket.SerializableLayer), newTransportLayer)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
@@ -407,7 +409,9 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Construct contents of new application layer
-	contents, err := serializeWithoutLinkLayer(indicator.NetworkLayer, indicator.TransportLayer, indicator.Payload())
+	contents, err := serialize(indicator.NetworkLayer.(gopacket.SerializableLayer),
+		indicator.TransportLayer.(gopacket.SerializableLayer),
+		gopacket.Payload(indicator.Payload()))
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create application layer: %w", err)))
 		return
@@ -467,8 +471,18 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
+	// Encrypt
+	contents, err = p.Crypto.Encrypt(contents)
+	if err != nil {
+		log.Errorln(fmt.Errorf("handle listen: %w", err))
+		return
+	}
+
 	// Serialize layers
-	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, contents)
+	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
+		newNetworkLayer.(gopacket.SerializableLayer),
+		newTransportLayer,
+		gopacket.Payload(contents))
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle listen: %w", err))
 		return
@@ -526,8 +540,15 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	// TCP Ack
 	p.ack = p.ack + uint32(len(applicationLayer.LayerContents()))
 
+	// Decrypt
+	contents, err := p.Crypto.Decrypt(applicationLayer.LayerContents())
+	if err != nil {
+		log.Errorln(fmt.Errorf("handle upstream: %w", err))
+		return
+	}
+
 	// Parse encapped packet
-	encappedIndicator, err := parseEncappedPacket(applicationLayer.LayerContents())
+	encappedIndicator, err = parseEncappedPacket(contents)
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle upstream: %w", err))
 		return
@@ -596,7 +617,10 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer, encappedIndicator.NetworkLayer, encappedIndicator.TransportLayer, encappedIndicator.Payload())
+	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
+		encappedIndicator.NetworkLayer.(gopacket.SerializableLayer),
+		encappedIndicator.TransportLayer.(gopacket.SerializableLayer),
+		gopacket.Payload(encappedIndicator.Payload()))
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle upstream: %w", err))
 		return

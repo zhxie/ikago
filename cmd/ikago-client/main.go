@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"math/rand"
@@ -25,19 +26,22 @@ func main() {
 		listenDevs      = make([]*pcap.Device, 0)
 		upDev           *pcap.Device
 		gatewayDev      *pcap.Device
+		c               crypto.Crypto
 	)
 
 	var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
 	var argListenLoopDev = flag.Bool("listen-loopback-device", false, "Listen loopback device only.")
-	var argListenDevs = flag.String("listen-devices", "", "Designated pcap devices for listening.")
+	var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
 	var argUpLoopDev = flag.Bool("upstream-loopback-device", false, "Route upstream to loopback device only.")
-	var argUpDev = flag.String("upstream-device", "", "Designated pcap device for routing upstream to.")
-	var argIPv4Dev = flag.Bool("ipv4-device", false, "Use IPv4 device only.")
-	var argIPv6Dev = flag.Bool("ipv6-device", false, "Use IPv6 device only.")
-	var argFilters = flag.String("f", "", "Filters.")
+	var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
+	var argIPv4Dev = flag.Bool("ipv4-device", false, "Use IPv4 devices only.")
+	var argIPv6Dev = flag.Bool("ipv6-device", false, "Use IPv6 devices only.")
 	var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
-	var argServer = flag.String("s", "", "Server.")
+	var argMethod = flag.String("method", "plain", "Method of encryption.")
+	var argPassword = flag.String("password", "", "Password of the encryption.")
 	var argVerbose = flag.Bool("v", false, "Print verbose messages.")
+	var argFilters = flag.String("f", "", "Filters.")
+	var argServer = flag.String("s", "", "Server.")
 
 	// Parse arguments
 	flag.Parse()
@@ -125,6 +129,10 @@ func main() {
 	}
 	serverIP = serverIPPort.IP
 	serverPort = serverIPPort.Port
+	c, err = crypto.ParseCrypto(*argMethod, *argPassword)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("parse: %w", err))
+	}
 	if len(filters) == 1 {
 		log.Infof("Proxy from %s through :%d to %s\n", filters[0], *argUpPort, serverIPPort)
 	} else {
@@ -200,6 +208,7 @@ func main() {
 		ListenDevs: listenDevs,
 		UpDev:      upDev,
 		GatewayDev: gatewayDev,
+		Crypto:     c,
 	}
 
 	// Wait signals
