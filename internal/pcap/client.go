@@ -387,20 +387,6 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Bypass
-	for _, addr := range dev.IPAddrs {
-		if addr.Contains(indicator.DstIP) {
-			err := p.bypass(packet)
-			if err != nil {
-				log.Errorln(fmt.Errorf("handle listen: %w", err))
-				return
-			}
-			log.Verbosef("Bypass an outbound %s packet: %s -> %s (%d Bytes)\n",
-				indicator.TransportLayerType, indicator.SrcIPPort(), indicator.DstIPPort(), packet.Metadata().Length)
-			return
-		}
-	}
-
 	// Set network layer for transport layer
 	switch indicator.TransportLayerType {
 	case layers.LayerTypeTCP:
