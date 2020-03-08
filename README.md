@@ -11,10 +11,6 @@
   Pass the firewall like a squid : )
 </p>
 
-## Dependencies
-
-1. pcap like [Npcap](http://www.npcap.org/) or WinPcap in Windows, and libpcap in macOS or Linux.
-
 ## Features
 
 - **FakeTCP** All TCP and UDP packets are sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
@@ -22,6 +18,10 @@
 - **Cross platform** Works well with Windows and Linux, and macOS in theory.
 - **NAT support** Performs a full cone NAT.
 - **Encryption** Traffic can be encrypted with AES-GCM.
+
+## Dependencies
+
+1. pcap like [Npcap](http://www.npcap.org/) or WinPcap in Windows, and libpcap in macOS or Linux.
 
 ## Usage
 
