@@ -387,6 +387,20 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
+	// Bypass
+	for _, addr := range dev.IPAddrs {
+		if addr.Contains(indicator.DstIP) {
+			err := p.bypass(packet)
+			if err != nil {
+				log.Errorln(fmt.Errorf("handle listen: %w", err))
+				return
+			}
+			log.Verbosef("Bypass an outbound %s packet: %s -> %s (%d Bytes)\n",
+				indicator.TransportLayerType, indicator.SrcIPPort(), indicator.DstIPPort(), packet.Metadata().Length)
+			return
+		}
+	}
+
 	// Set network layer for transport layer
 	switch indicator.TransportLayerType {
 	case layers.LayerTypeTCP:
@@ -516,7 +530,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
-		indicator.TransportLayerType, indicator.SrcIPPort(), indicator.SrcIPPort(), packet.Metadata().Length)
+		indicator.TransportLayerType, indicator.SrcIPPort(), indicator.DstIPPort(), packet.Metadata().Length)
 }
 
 // handleUpstream handles TCP packets from the server
@@ -634,5 +648,41 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-		encappedIndicator.TransportLayerType, encappedIndicator.SrcIPPort(), encappedIndicator.SrcIPPort(), len(data))
+		encappedIndicator.TransportLayerType, encappedIndicator.SrcIPPort(), encappedIndicator.DstIPPort(), len(data))
+}
+
+func (p *Client) bypass(packet gopacket.Packet) error {
+	if len(packet.Layers()) < 0 {
+		return fmt.Errorf("bypass: %w", fmt.Errorf("missing link layer"))
+	}
+	linkLayer := packet.Layers()[0]
+	if linkLayer == nil {
+		return fmt.Errorf("bypass: %w", fmt.Errorf("missing link layer"))
+	}
+
+	// Create link layer
+	linkLayerType := linkLayer.LayerType()
+	switch linkLayerType {
+	case layers.LayerTypeLoopback:
+		break
+	case layers.LayerTypeEthernet:
+		ethernetLayer := linkLayer.(*layers.Ethernet)
+		ethernetLayer.DstMAC = p.GatewayDev.HardwareAddr
+	default:
+		return fmt.Errorf("bypass: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
+	}
+
+	// Serialize layers
+	data, err := serializeRaw(linkLayer.(gopacket.SerializableLayer), gopacket.Payload(linkLayer.LayerPayload()))
+	if err != nil {
+		return fmt.Errorf("bypass: %w", err)
+	}
+
+	// Write packet data
+	err = p.upHandle.WritePacketData(data)
+	if err != nil {
+		return fmt.Errorf("bypass: %w", fmt.Errorf("write: %w", err))
+	}
+
+	return nil
 }

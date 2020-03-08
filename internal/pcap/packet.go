@@ -244,6 +244,9 @@ func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
 func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
 	// Guess link layer type
 	packet := gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
+	if len(packet.Layers()) < 0 {
+		return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
+	}
 	linkLayer := packet.Layers()[0]
 	if linkLayer == nil {
 		return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))

@@ -161,3 +161,16 @@ func serialize(layers ...gopacket.SerializableLayer) ([]byte, error) {
 
 	return buffer.Bytes(), nil
 }
+
+func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
+	// Recalculate checksum and length
+	options := gopacket.SerializeOptions{}
+	buffer := gopacket.NewSerializeBuffer()
+
+	err := gopacket.SerializeLayers(buffer, options, layers...)
+	if err != nil {
+		return nil, fmt.Errorf("serialize: %w", err)
+	}
+
+	return buffer.Bytes(), nil
+}

@@ -434,7 +434,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
-		encappedIndicator.TransportLayerType, encappedIndicator.SrcIPPort(), encappedIndicator.SrcIPPort(), packet.Metadata().Length)
+		encappedIndicator.TransportLayerType, encappedIndicator.SrcIPPort(), encappedIndicator.DstIPPort(), packet.Metadata().Length)
 }
 
 // handleUpstream handles TCP and UDP packets from destinations
