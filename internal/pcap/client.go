@@ -3,15 +3,14 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"net"
 	"sync"
 	"time"
-
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 )
 
 // Client describes the packet capture on the client side
@@ -108,6 +107,7 @@ func (p *Client) Open() error {
 	log.Infof("Connect to server %s\n", IPPort{IP: p.ServerIP, Port: p.ServerPort})
 
 	packet := <-c
+
 	if packet == nil {
 		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", errors.New("timeout")))
 	}

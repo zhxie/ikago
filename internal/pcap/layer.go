@@ -1,12 +1,12 @@
 package pcap
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"net"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"net"
 )
 
 func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {
@@ -173,4 +173,196 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
+}
+
+type icmpv4Indicator struct {
+	Type           uint8
+	Code           uint8
+	Id             uint16
+	Seq            uint16
+	Contents       []byte
+	IPv4Layer      *layers.IPv4
+	SrcIP          net.IP
+	DstIP          net.IP
+	TransportLayer []byte
+	SrcPort        uint16
+	DstPort        uint16
+}
+
+func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
+	var (
+		t              uint8
+		code           uint8
+		id             uint16
+		seq            uint16
+		contents       []byte
+		ipv4Layer      *layers.IPv4
+		srcIP          net.IP
+		dstIP          net.IP
+		transportLayer []byte
+		srcPort        uint16
+		dstPort        uint16
+	)
+
+	// Type and code
+	t = layer.TypeCode.Type()
+	code = layer.TypeCode.Code()
+	id = layer.Id
+	seq = layer.Seq
+	contents = layer.Contents
+
+	switch t {
+	case layers.ICMPv4TypeEchoReply:
+	case layers.ICMPv4TypeEchoRequest:
+	case layers.ICMPv4TypeRouterAdvertisement:
+	case layers.ICMPv4TypeRouterSolicitation:
+	case layers.ICMPv4TypeTimestampRequest:
+	case layers.ICMPv4TypeTimestampReply:
+	case layers.ICMPv4TypeInfoRequest:
+	case layers.ICMPv4TypeInfoReply:
+	case layers.ICMPv4TypeAddressMaskRequest:
+	case layers.ICMPv4TypeAddressMaskReply:
+		break
+	case layers.ICMPv4TypeDestinationUnreachable:
+	case layers.ICMPv4TypeSourceQuench:
+	case layers.ICMPv4TypeRedirect:
+	case layers.ICMPv4TypeTimeExceeded:
+	case layers.ICMPv4TypeParameterProblem:
+		// Parse IPv4 header and 8 bytes content
+		packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
+		if len(packet.Layers()) <= 0 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("missing network layer"))
+		}
+		if len(packet.Layers()) <= 1 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("missing transport layer"))
+		}
+
+		networkLayer := packet.Layers()[0]
+		if networkLayer.LayerType() != layers.LayerTypeIPv4 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("network layer type not support"))
+		}
+
+		ipv4Layer = networkLayer.(*layers.IPv4)
+		version := ipv4Layer.Version
+		if version != 4 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("ip version %d not support", version))
+		}
+
+		srcIP = ipv4Layer.SrcIP
+		dstIP = ipv4Layer.DstIP
+
+		transportLayer = ipv4Layer.Payload
+
+		if len(transportLayer) < 4 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("transport layer too short (%d Bytes)", len(transportLayer)))
+		}
+
+		// Regard the first 2 bytes as source port
+		srcPort = binary.BigEndian.Uint16(transportLayer[:2])
+		// Regard the next 2 bytes as destination port
+		dstPort = binary.BigEndian.Uint16(transportLayer[2:4])
+	default:
+		return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("invalid type %d", t))
+	}
+
+	return &icmpv4Indicator{
+		Type:           t,
+		Code:           code,
+		Id:             id,
+		Seq:            seq,
+		Contents:       contents,
+		IPv4Layer:      ipv4Layer,
+		SrcIP:          srcIP,
+		DstIP:          dstIP,
+		TransportLayer: transportLayer,
+		SrcPort:        srcPort,
+		DstPort:        dstPort,
+	}, nil
+}
+
+// Identifier returns available Id of the ICMPv4 layer
+func (indicator *icmpv4Indicator) Identifier() (uint16, bool) {
+	switch indicator.Type {
+	case layers.ICMPv4TypeEchoReply:
+	case layers.ICMPv4TypeEchoRequest:
+	case layers.ICMPv4TypeRouterAdvertisement:
+	case layers.ICMPv4TypeRouterSolicitation:
+	case layers.ICMPv4TypeTimestampRequest:
+	case layers.ICMPv4TypeTimestampReply:
+	case layers.ICMPv4TypeInfoRequest:
+	case layers.ICMPv4TypeInfoReply:
+	case layers.ICMPv4TypeAddressMaskRequest:
+	case layers.ICMPv4TypeAddressMaskReply:
+		return indicator.Id, true
+	case layers.ICMPv4TypeDestinationUnreachable:
+	case layers.ICMPv4TypeSourceQuench:
+	case layers.ICMPv4TypeRedirect:
+	case layers.ICMPv4TypeTimeExceeded:
+	case layers.ICMPv4TypeParameterProblem:
+		return 0, false
+	default:
+		break
+	}
+
+	panic(fmt.Errorf("identifier: %w", fmt.Errorf("invalid type %d", indicator.Type)))
+}
+
+// SrcIPPort returns available source IP and port of the ICMPv4 layer
+func (indicator *icmpv4Indicator) SrcIPPort() (*IPPort, bool) {
+	switch indicator.Type {
+	case layers.ICMPv4TypeEchoReply:
+	case layers.ICMPv4TypeEchoRequest:
+	case layers.ICMPv4TypeRouterAdvertisement:
+	case layers.ICMPv4TypeRouterSolicitation:
+	case layers.ICMPv4TypeTimestampRequest:
+	case layers.ICMPv4TypeTimestampReply:
+	case layers.ICMPv4TypeInfoRequest:
+	case layers.ICMPv4TypeInfoReply:
+	case layers.ICMPv4TypeAddressMaskRequest:
+	case layers.ICMPv4TypeAddressMaskReply:
+		return nil, false
+	case layers.ICMPv4TypeDestinationUnreachable:
+	case layers.ICMPv4TypeSourceQuench:
+	case layers.ICMPv4TypeRedirect:
+	case layers.ICMPv4TypeTimeExceeded:
+	case layers.ICMPv4TypeParameterProblem:
+		return &IPPort{
+			IP:   indicator.SrcIP,
+			Port: indicator.SrcPort,
+		}, true
+	default:
+		break
+	}
+
+	panic(fmt.Errorf("src ip port: %w", fmt.Errorf("invalid type %d", indicator.Type)))
+}
+
+// DstIPPort returns the available destination IP and port of the ICMPv4 layer
+func (indicator *icmpv4Indicator) DstIPPort() (*IPPort, bool) {
+	switch indicator.Type {
+	case layers.ICMPv4TypeEchoReply:
+	case layers.ICMPv4TypeEchoRequest:
+	case layers.ICMPv4TypeRouterAdvertisement:
+	case layers.ICMPv4TypeRouterSolicitation:
+	case layers.ICMPv4TypeTimestampRequest:
+	case layers.ICMPv4TypeTimestampReply:
+	case layers.ICMPv4TypeInfoRequest:
+	case layers.ICMPv4TypeInfoReply:
+	case layers.ICMPv4TypeAddressMaskRequest:
+	case layers.ICMPv4TypeAddressMaskReply:
+		return nil, false
+	case layers.ICMPv4TypeDestinationUnreachable:
+	case layers.ICMPv4TypeSourceQuench:
+	case layers.ICMPv4TypeRedirect:
+	case layers.ICMPv4TypeTimeExceeded:
+	case layers.ICMPv4TypeParameterProblem:
+		return &IPPort{
+			IP:   indicator.DstIP,
+			Port: indicator.DstPort,
+		}, true
+	default:
+		break
+	}
+
+	panic(fmt.Errorf("dst ip port: %w", fmt.Errorf("invalid type %d", indicator.Type)))
 }

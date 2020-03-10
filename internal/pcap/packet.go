@@ -242,15 +242,13 @@ func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
 }
 
 func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
-	// Guess link layer type
+	// Guess link layer type, and here we regard loopback layer as a link layer
 	packet := gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
 	if len(packet.Layers()) < 0 {
 		return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
 	}
+	// Raw packet must start from the link layer
 	linkLayer := packet.Layers()[0]
-	if linkLayer == nil {
-		return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
-	}
 	if linkLayer.LayerType() != layers.LayerTypeLoopback {
 		// Not Loopback, then Ethernet
 		packet = gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
