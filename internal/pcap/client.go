@@ -539,27 +539,6 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		return
 	}
 
-	// Set network layer for encapped transport layer
-	switch encappedIndicator.TransportLayerType {
-	case layers.LayerTypeTCP:
-		tcpLayer := encappedIndicator.TCPLayer()
-		err := tcpLayer.SetNetworkLayerForChecksum(encappedIndicator.NetworkLayer)
-		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", err)))
-			return
-		}
-	case layers.LayerTypeUDP:
-		udpLayer := encappedIndicator.UDPLayer()
-		err := udpLayer.SetNetworkLayerForChecksum(encappedIndicator.NetworkLayer)
-		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", err)))
-			return
-		}
-	default:
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("transport layer type %s not support", encappedIndicator.TransportLayerType))))
-		return
-	}
-
 	// Check map
 	q := quintuple{
 		SrcIP:    encappedIndicator.DstIP().String(),
@@ -602,8 +581,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Serialize layers
-	// TODO: maybe a serialize raw is enough
-	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
+	data, err := serializeRaw(newLinkLayer.(gopacket.SerializableLayer),
 		encappedIndicator.NetworkLayer.(gopacket.SerializableLayer),
 		encappedIndicator.TransportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(encappedIndicator.Payload()))
