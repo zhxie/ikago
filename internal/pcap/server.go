@@ -372,19 +372,53 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Create new network layer
-	// TODO: keep the original network layer
 	newNetworkLayerType = encappedIndicator.NetworkLayerType
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(p.UpDev.IPv4Addr().IP, encappedIndicator.DstIP(), encappedIndicator.IPv4Layer().Id, encappedIndicator.IPv4Layer().TTL-1, newTransportLayer)
+		ipv4Layer := encappedIndicator.NetworkLayer.(*layers.IPv4)
+		temp := *ipv4Layer
+		newNetworkLayer = &temp
+
+		newIPv4Layer := newNetworkLayer.(*layers.IPv4)
+
+		newIPv4Layer.SrcIP = p.UpDev.IPv4Addr().IP
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(p.UpDev.IPv6Addr().IP, encappedIndicator.DstIP(), newTransportLayer)
+		ipv6Layer := encappedIndicator.NetworkLayer.(*layers.IPv6)
+		temp := *ipv6Layer
+		newNetworkLayer = &temp
+
+		newIPv6Layer := newNetworkLayer.(*layers.IPv6)
+
+		newIPv6Layer.SrcIP = p.UpDev.IPv6Addr().IP
 	default:
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
 	}
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle listen: %w", err))
+		return
+	}
+
+	// Set network layer for transport layer
+	switch newTransportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := newTransportLayer.(*layers.TCP)
+
+		err := tcpLayer.SetNetworkLayerForChecksum(newNetworkLayer)
+		if err != nil {
+			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", err)))
+			return
+		}
+	case layers.LayerTypeUDP:
+		udpLayer := newTransportLayer.(*layers.UDP)
+
+		err := udpLayer.SetNetworkLayerForChecksum(newNetworkLayer)
+		if err != nil {
+			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", err)))
+			return
+		}
+	default:
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("transport layer type %s not support", newTransportLayerType))))
 		return
 	}
 
