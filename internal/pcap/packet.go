@@ -81,34 +81,108 @@ func sendUDPPacket(addr string, data []byte) error {
 type packetIndicator struct {
 	NetworkLayer       gopacket.NetworkLayer
 	NetworkLayerType   gopacket.LayerType
-	SrcIP              net.IP
-	DstIP              net.IP
-	Id                 uint16
-	TTL                uint8
 	TransportLayer     gopacket.TransportLayer
 	TransportLayerType gopacket.LayerType
-	SrcPort            uint16
-	DstPort            uint16
-	Seq                uint32
-	Ack                uint32
-	SYN                bool
-	ACK                bool
 	ApplicationLayer   gopacket.ApplicationLayer
+}
+
+// IPv4Layer returns the IPv4 layer of the packet
+func (indicator *packetIndicator) IPv4Layer() *layers.IPv4 {
+	if indicator.NetworkLayerType == layers.LayerTypeIPv4 {
+		return indicator.NetworkLayer.(*layers.IPv4)
+	}
+
+	return nil
+}
+
+// IPv6Layer returns the IPv6 layer of the packet
+func (indicator *packetIndicator) IPv6Layer() *layers.IPv6 {
+	if indicator.NetworkLayerType == layers.LayerTypeIPv6 {
+		return indicator.NetworkLayer.(*layers.IPv6)
+	}
+
+	return nil
+}
+
+// TCPLayer returns the TCP layer of the packet
+func (indicator *packetIndicator) TCPLayer() *layers.TCP {
+	if indicator.TransportLayerType == layers.LayerTypeTCP {
+		return indicator.TransportLayer.(*layers.TCP)
+	}
+
+	return nil
+}
+
+// UDPLayer returns the UDP layer of the packet
+func (indicator *packetIndicator) UDPLayer() *layers.UDP {
+	if indicator.TransportLayerType == layers.LayerTypeUDP {
+		return indicator.TransportLayer.(*layers.UDP)
+	}
+
+	return nil
+}
+
+// SrcIP returns the source IP of the packet
+func (indicator *packetIndicator) SrcIP() net.IP {
+	switch indicator.NetworkLayerType {
+	case layers.LayerTypeIPv4:
+		return indicator.IPv4Layer().SrcIP
+	case layers.LayerTypeIPv6:
+		return indicator.IPv6Layer().SrcIP
+	default:
+		panic(fmt.Errorf("src ip: %w", fmt.Errorf("invalid type %s", indicator.NetworkLayerType)))
+	}
+}
+
+// DstIP returns the destination IP of the packet
+func (indicator *packetIndicator) DstIP() net.IP {
+	switch indicator.NetworkLayerType {
+	case layers.LayerTypeIPv4:
+		return indicator.IPv4Layer().DstIP
+	case layers.LayerTypeIPv6:
+		return indicator.IPv6Layer().DstIP
+	default:
+		panic(fmt.Errorf("dst ip: %w", fmt.Errorf("invalid type %s", indicator.NetworkLayerType)))
+	}
+}
+
+// SrcPort returns the source port of the packet
+func (indicator *packetIndicator) SrcPort() uint16 {
+	switch indicator.TransportLayerType {
+	case layers.LayerTypeTCP:
+		return uint16(indicator.TCPLayer().SrcPort)
+	case layers.LayerTypeUDP:
+		return uint16(indicator.UDPLayer().SrcPort)
+	default:
+		panic(fmt.Errorf("src port: %w", fmt.Errorf("invalid type %s", indicator.TransportLayerType)))
+	}
+}
+
+// DstPort returns the source port of the packet
+func (indicator *packetIndicator) DstPort() uint16 {
+	switch indicator.TransportLayerType {
+	case layers.LayerTypeTCP:
+		return uint16(indicator.TCPLayer().DstPort)
+	case layers.LayerTypeUDP:
+		return uint16(indicator.UDPLayer().DstPort)
+	default:
+		panic(fmt.Errorf("dst port: %w", fmt.Errorf("invalid type %s", indicator.TransportLayerType)))
+	}
 }
 
 // SrcIPPort returns the source IP and port of the packet
 func (indicator *packetIndicator) SrcIPPort() *IPPort {
 	return &IPPort{
-		IP:   indicator.SrcIP,
-		Port: indicator.SrcPort,
+		IP:   indicator.SrcIP(),
+		Port: indicator.SrcPort(),
 	}
 }
 
 // DstIPPort returns the destination IP and port of the packet
 func (indicator *packetIndicator) DstIPPort() *IPPort {
 	return &IPPort{
-		IP:   indicator.DstIP,
-		Port: indicator.DstPort,
+		IP:   indicator.DstIP(),
+		Port: indicator.DstPort(),
 	}
 }
 
@@ -124,18 +198,8 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	var (
 		networkLayer       gopacket.NetworkLayer
 		networkLayerType   gopacket.LayerType
-		srcIP              net.IP
-		dstIP              net.IP
-		id                 uint16
-		ttl                uint8
 		transportLayer     gopacket.TransportLayer
 		transportLayerType gopacket.LayerType
-		srcPort            uint16
-		dstPort            uint16
-		seq                uint32
-		ack                uint32
-		syn                bool
-		bACK               bool
 		applicationLayer   gopacket.ApplicationLayer
 	)
 
@@ -155,15 +219,8 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	// Parse network layer
 	switch networkLayerType {
 	case layers.LayerTypeIPv4:
-		ipv4Layer := networkLayer.(*layers.IPv4)
-		srcIP = ipv4Layer.SrcIP
-		dstIP = ipv4Layer.DstIP
-		id = ipv4Layer.Id
-		ttl = ipv4Layer.TTL
 	case layers.LayerTypeIPv6:
-		ipv6Layer := networkLayer.(*layers.IPv6)
-		srcIP = ipv6Layer.SrcIP
-		dstIP = ipv6Layer.DstIP
+		break
 	default:
 		return nil, fmt.Errorf("parse: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 	}
@@ -171,17 +228,8 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	// Parse transport layer
 	switch transportLayerType {
 	case layers.LayerTypeTCP:
-		tcpLayer := transportLayer.(*layers.TCP)
-		srcPort = uint16(tcpLayer.SrcPort)
-		dstPort = uint16(tcpLayer.DstPort)
-		seq = tcpLayer.Seq
-		ack = tcpLayer.Ack
-		syn = tcpLayer.SYN
-		bACK = tcpLayer.ACK
 	case layers.LayerTypeUDP:
-		udpLayer := transportLayer.(*layers.UDP)
-		srcPort = uint16(udpLayer.SrcPort)
-		dstPort = uint16(udpLayer.DstPort)
+		break
 	default:
 		return nil, fmt.Errorf("parse: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 	}
@@ -189,18 +237,8 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	return &packetIndicator{
 		NetworkLayer:       networkLayer,
 		NetworkLayerType:   networkLayerType,
-		SrcIP:              srcIP,
-		DstIP:              dstIP,
-		Id:                 id,
-		TTL:                ttl,
 		TransportLayer:     transportLayer,
 		TransportLayerType: transportLayerType,
-		SrcPort:            srcPort,
-		DstPort:            dstPort,
-		Seq:                seq,
-		Ack:                ack,
-		SYN:                syn,
-		ACK:                bACK,
 		ApplicationLayer:   applicationLayer,
 	}, nil
 }

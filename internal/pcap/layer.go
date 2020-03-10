@@ -176,32 +176,34 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 }
 
 type icmpv4Indicator struct {
-	Type           uint8
-	Code           uint8
-	Id             uint16
-	Seq            uint16
-	Contents       []byte
-	IPv4Layer      *layers.IPv4
-	SrcIP          net.IP
-	DstIP          net.IP
-	TransportLayer []byte
-	SrcPort        uint16
-	DstPort        uint16
+	Type               uint8
+	Code               uint8
+	Id                 uint16
+	Seq                uint16
+	Contents           []byte
+	IPv4Layer          *layers.IPv4
+	SrcIP              net.IP
+	DstIP              net.IP
+	TransportLayer     gopacket.Layer
+	TransportLayerType gopacket.LayerType
+	SrcPort            uint16
+	DstPort            uint16
 }
 
 func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 	var (
-		t              uint8
-		code           uint8
-		id             uint16
-		seq            uint16
-		contents       []byte
-		ipv4Layer      *layers.IPv4
-		srcIP          net.IP
-		dstIP          net.IP
-		transportLayer []byte
-		srcPort        uint16
-		dstPort        uint16
+		t                  uint8
+		code               uint8
+		id                 uint16
+		seq                uint16
+		contents           []byte
+		ipv4Layer          *layers.IPv4
+		srcIP              net.IP
+		dstIP              net.IP
+		transportLayer     gopacket.Layer
+		transportLayerType gopacket.LayerType
+		srcPort            uint16
+		dstPort            uint16
 	)
 
 	// Type and code
@@ -251,32 +253,35 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 		srcIP = ipv4Layer.SrcIP
 		dstIP = ipv4Layer.DstIP
 
-		transportLayer = ipv4Layer.Payload
+		transportLayer = packet.Layers()[1]
+		transportLayerType = transportLayer.LayerType()
 
-		if len(transportLayer) < 4 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("transport layer too short (%d Bytes)", len(transportLayer)))
+		transportLayerContents := transportLayer.LayerContents()
+		if len(transportLayerContents) < 4 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("transport layer too short (%d Bytes)", len(transportLayerContents)))
 		}
 
 		// Regard the first 2 bytes as source port
-		srcPort = binary.BigEndian.Uint16(transportLayer[:2])
+		srcPort = binary.BigEndian.Uint16(transportLayerContents[:2])
 		// Regard the next 2 bytes as destination port
-		dstPort = binary.BigEndian.Uint16(transportLayer[2:4])
+		dstPort = binary.BigEndian.Uint16(transportLayerContents[2:4])
 	default:
 		return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("invalid type %d", t))
 	}
 
 	return &icmpv4Indicator{
-		Type:           t,
-		Code:           code,
-		Id:             id,
-		Seq:            seq,
-		Contents:       contents,
-		IPv4Layer:      ipv4Layer,
-		SrcIP:          srcIP,
-		DstIP:          dstIP,
-		TransportLayer: transportLayer,
-		SrcPort:        srcPort,
-		DstPort:        dstPort,
+		Type:               t,
+		Code:               code,
+		Id:                 id,
+		Seq:                seq,
+		Contents:           contents,
+		IPv4Layer:          ipv4Layer,
+		SrcIP:              srcIP,
+		DstIP:              dstIP,
+		TransportLayer:     transportLayer,
+		TransportLayerType: transportLayerType,
+		SrcPort:            srcPort,
+		DstPort:            dstPort,
 	}, nil
 }
 

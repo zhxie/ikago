@@ -302,14 +302,19 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 		return fmt.Errorf("handshake: %w", err)
 	}
 
+	transportLayerType := indicator.TransportLayerType
+	if transportLayerType != layers.LayerTypeTCP {
+		return fmt.Errorf("handshake: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
+	}
+
 	// TCP Ack
-	p.ack = indicator.Seq + 1
+	p.ack = indicator.TCPLayer().Seq + 1
 
 	// Create transport layer
-	newTransportLayer = createTCPLayerACK(indicator.DstPort, indicator.SrcPort, p.seq, p.ack)
+	newTransportLayer = createTCPLayerACK(indicator.DstPort(), indicator.SrcPort(), p.seq, p.ack)
 
 	// Decide IPv4 or IPv6
-	if indicator.DstIP.To4() != nil {
+	if indicator.DstIP().To4() != nil {
 		newNetworkLayerType = layers.LayerTypeIPv4
 	} else {
 		newNetworkLayerType = layers.LayerTypeIPv6
@@ -318,9 +323,9 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(indicator.DstIP, indicator.SrcIP, p.id, 128, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(indicator.DstIP(), indicator.SrcIP(), p.id, 128, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(indicator.DstIP, indicator.SrcIP, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(indicator.DstIP(), indicator.SrcIP(), newTransportLayer)
 	default:
 		return fmt.Errorf("handshake: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType)))
 	}
@@ -387,29 +392,8 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Set network layer for transport layer
-	switch indicator.TransportLayerType {
-	case layers.LayerTypeTCP:
-		tcpLayer := indicator.TransportLayer.(*layers.TCP)
-		err := tcpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
-		if err != nil {
-			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create encapped network layer: %w", err)))
-			return
-		}
-	case layers.LayerTypeUDP:
-		udpLayer := indicator.TransportLayer.(*layers.UDP)
-		err := udpLayer.SetNetworkLayerForChecksum(indicator.NetworkLayer)
-		if err != nil {
-			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create encapped network layer: %w", err)))
-			return
-		}
-	default:
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create encapped network layer: %w", fmt.Errorf("type %s not support", indicator.TransportLayerType))))
-		return
-	}
-
 	// Construct contents of new application layer
-	contents, err := serialize(indicator.NetworkLayer.(gopacket.SerializableLayer),
+	contents, err := serializeRaw(indicator.NetworkLayer.(gopacket.SerializableLayer),
 		indicator.TransportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.Payload()))
 	if err != nil {
@@ -437,7 +421,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, p.ServerIP, p.id, indicator.TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, p.ServerIP, p.id, indicator.IPv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, p.ServerIP, newTransportLayer)
 	default:
@@ -497,10 +481,10 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 	// Record the source device of the packet
 	q := quintuple{
-		SrcIP:    indicator.SrcIP.String(),
-		SrcPort:  indicator.SrcPort,
-		DstIP:    indicator.DstIP.String(),
-		DstPort:  indicator.DstPort,
+		SrcIP:    indicator.SrcIP().String(),
+		SrcPort:  indicator.SrcPort(),
+		DstIP:    indicator.DstIP().String(),
+		DstPort:  indicator.DstPort(),
 		Protocol: indicator.TransportLayerType,
 	}
 	p.devMapLock.Lock()
@@ -558,14 +542,14 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	// Set network layer for encapped transport layer
 	switch encappedIndicator.TransportLayerType {
 	case layers.LayerTypeTCP:
-		tcpLayer := encappedIndicator.TransportLayer.(*layers.TCP)
+		tcpLayer := encappedIndicator.TCPLayer()
 		err := tcpLayer.SetNetworkLayerForChecksum(encappedIndicator.NetworkLayer)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", err)))
 			return
 		}
 	case layers.LayerTypeUDP:
-		udpLayer := encappedIndicator.TransportLayer.(*layers.UDP)
+		udpLayer := encappedIndicator.UDPLayer()
 		err := udpLayer.SetNetworkLayerForChecksum(encappedIndicator.NetworkLayer)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", err)))
@@ -578,10 +562,10 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Check map
 	q := quintuple{
-		SrcIP:    encappedIndicator.DstIP.String(),
-		SrcPort:  encappedIndicator.DstPort,
-		DstIP:    encappedIndicator.SrcIP.String(),
-		DstPort:  encappedIndicator.SrcPort,
+		SrcIP:    encappedIndicator.DstIP().String(),
+		SrcPort:  encappedIndicator.DstPort(),
+		DstIP:    encappedIndicator.SrcIP().String(),
+		DstPort:  encappedIndicator.SrcPort(),
 		Protocol: encappedIndicator.TransportLayerType,
 	}
 	p.devMapLock.RLock()
@@ -618,6 +602,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Serialize layers
+	// TODO: maybe a serialize raw is enough
 	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
 		encappedIndicator.NetworkLayer.(gopacket.SerializableLayer),
 		encappedIndicator.TransportLayer.(gopacket.SerializableLayer),
