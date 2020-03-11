@@ -2,7 +2,7 @@
 
 **IkaGo** is a proxy which helps bypassing UDP blocking, UDP QoS and NAT firewall written in Go.
 
-*IkaGo is currently under development and may not suitable for production.*
+_IkaGo is currently under development and may not suitable for production._
 
 <p align="center">
   <img src="/assets/squid.jpg">
@@ -59,7 +59,7 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with a colon and any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
+`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with a colon. Any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
 
 `-s address:port`: (Client only) Server. Any IPv6 address should be encapsulated by a pair of brackets.
 
@@ -70,9 +70,9 @@ go run ./cmd/ikago-server -p [port]
 ## Troubleshoot
 
 1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some Linux kernels may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure the iptables with the rule below to solve the problem:
-	```
-	iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
-	```
+   ```
+   iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
+   ```
 
 ## Todo
 

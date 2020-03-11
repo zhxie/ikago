@@ -181,7 +181,7 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	}
 
 	// Initial TCP Seq
-	srcIPPort := indicator.SrcIPPort()
+	srcIPPort := IPPort{IP: indicator.SrcIP(), Port: indicator.SrcPort()}
 	p.seqsLock.Lock()
 	p.seqs[srcIPPort.String()] = 0
 	p.seqsLock.Unlock()
@@ -300,7 +300,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 			log.Errorln(fmt.Errorf("handle listen: %w", err))
 			return
 		}
-		log.Infof("Connect from client %s\n", indicator.SrcIPPort())
+		log.Infof("Connect from client %s\n", indicator.Source())
 		return
 	}
 
@@ -311,7 +311,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Ack
-	srcIPPort := indicator.SrcIPPort()
+	srcIPPort := IPPort{IP: indicator.SrcIP(), Port: indicator.SrcPort()}
 	p.acksLock.Lock()
 	p.acks[srcIPPort.String()] = p.acks[srcIPPort.String()] + uint32(len(indicator.Payload()))
 	p.acksLock.Unlock()
@@ -490,7 +490,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
-		encappedIndicator.TransportLayerType, encappedIndicator.SrcIPPort(), encappedIndicator.DstIPPort(), packet.Metadata().Length)
+		encappedIndicator.TransportLayerType, encappedIndicator.Source(), encappedIndicator.Destination(), packet.Metadata().Length)
 }
 
 // handleUpstream handles TCP and UDP packets from destinations
@@ -714,7 +714,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",
-		indicator.TransportLayerType, IPPort{IP: net.ParseIP(natIndicator.EncappedSrcIP), Port: natIndicator.EncappedSrcPort}, indicator.SrcIPPort(), len(data))
+		indicator.TransportLayerType, IPPort{IP: net.ParseIP(natIndicator.EncappedSrcIP), Port: natIndicator.EncappedSrcPort}, indicator.Source(), len(data))
 }
 
 func (p *Server) distPort(t gopacket.LayerType) (uint16, error) {

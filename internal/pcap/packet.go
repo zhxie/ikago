@@ -24,6 +24,12 @@ type quintuple struct {
 	Protocol gopacket.LayerType
 }
 
+type stringQuintuple struct {
+	Src      string
+	Dst      string
+	Protocol gopacket.LayerType
+}
+
 type devPacket struct {
 	Packet gopacket.Packet
 	Dev    *Device
@@ -81,8 +87,9 @@ func sendUDPPacket(addr string, data []byte) error {
 type packetIndicator struct {
 	NetworkLayer       gopacket.NetworkLayer
 	NetworkLayerType   gopacket.LayerType
-	TransportLayer     gopacket.TransportLayer
+	TransportLayer     gopacket.Layer
 	TransportLayerType gopacket.LayerType
+	ICMPv4Indicator    *icmpv4Indicator
 	ApplicationLayer   gopacket.ApplicationLayer
 }
 
@@ -130,7 +137,7 @@ func (indicator *packetIndicator) SrcIP() net.IP {
 	case layers.LayerTypeIPv6:
 		return indicator.IPv6Layer().SrcIP
 	default:
-		panic(fmt.Errorf("src ip: %w", fmt.Errorf("invalid type %s", indicator.NetworkLayerType)))
+		panic(fmt.Errorf("src ip: %w", fmt.Errorf("type %s not support", indicator.NetworkLayerType)))
 	}
 }
 
@@ -142,7 +149,7 @@ func (indicator *packetIndicator) DstIP() net.IP {
 	case layers.LayerTypeIPv6:
 		return indicator.IPv6Layer().DstIP
 	default:
-		panic(fmt.Errorf("dst ip: %w", fmt.Errorf("invalid type %s", indicator.NetworkLayerType)))
+		panic(fmt.Errorf("dst ip: %w", fmt.Errorf("type %s not support", indicator.NetworkLayerType)))
 	}
 }
 
@@ -154,7 +161,7 @@ func (indicator *packetIndicator) SrcPort() uint16 {
 	case layers.LayerTypeUDP:
 		return uint16(indicator.UDPLayer().SrcPort)
 	default:
-		panic(fmt.Errorf("src port: %w", fmt.Errorf("invalid type %s", indicator.TransportLayerType)))
+		panic(fmt.Errorf("src port: %w", fmt.Errorf("type %s not support", indicator.TransportLayerType)))
 	}
 }
 
@@ -166,23 +173,63 @@ func (indicator *packetIndicator) DstPort() uint16 {
 	case layers.LayerTypeUDP:
 		return uint16(indicator.UDPLayer().DstPort)
 	default:
-		panic(fmt.Errorf("dst port: %w", fmt.Errorf("invalid type %s", indicator.TransportLayerType)))
+		panic(fmt.Errorf("dst port: %w", fmt.Errorf("type %s not support", indicator.TransportLayerType)))
 	}
 }
 
-// SrcIPPort returns the source IP and port of the packet
-func (indicator *packetIndicator) SrcIPPort() *IPPort {
-	return &IPPort{
-		IP:   indicator.SrcIP(),
-		Port: indicator.SrcPort(),
+// SrcIPPort returns the source of the packet
+func (indicator *packetIndicator) Source() string {
+	t := indicator.TransportLayerType
+	switch t {
+	case layers.LayerTypeTCP, layers.LayerTypeUDP:
+		return IPPort{
+			IP:   indicator.SrcIP(),
+			Port: indicator.SrcPort(),
+		}.String()
+	case layers.LayerTypeICMPv4:
+		var ip string
+		srcIP := indicator.SrcIP()
+		if srcIP.To4() != nil {
+			ip = srcIP.String()
+		} else {
+			ip = fmt.Sprintf("[%s]", srcIP)
+		}
+		icmpv4Source := indicator.ICMPv4Indicator.Source()
+		if icmpv4Source == "" {
+			return ip
+		} else {
+			return fmt.Sprintf("%s@%s", ip, icmpv4Source)
+		}
+	default:
+		panic(fmt.Errorf("source: %w", fmt.Errorf("type %s not support", t)))
 	}
 }
 
-// DstIPPort returns the destination IP and port of the packet
-func (indicator *packetIndicator) DstIPPort() *IPPort {
-	return &IPPort{
-		IP:   indicator.DstIP(),
-		Port: indicator.DstPort(),
+// DstIPPort returns the destination of the packet
+func (indicator *packetIndicator) Destination() string {
+	t := indicator.TransportLayerType
+	switch t {
+	case layers.LayerTypeTCP, layers.LayerTypeUDP:
+		return IPPort{
+			IP:   indicator.DstIP(),
+			Port: indicator.DstPort(),
+		}.String()
+	case layers.LayerTypeICMPv4:
+		var ip string
+		srcIP := indicator.SrcIP()
+		if srcIP.To4() != nil {
+			ip = srcIP.String()
+		} else {
+			ip = fmt.Sprintf("[%s]", srcIP)
+		}
+		icmpv4Destination := indicator.ICMPv4Indicator.Destination()
+		if icmpv4Destination == "" {
+			return ip
+		} else {
+			return fmt.Sprintf("%s@%s", ip, icmpv4Destination)
+		}
+	default:
+		panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
 	}
 }
 
@@ -198,8 +245,9 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	var (
 		networkLayer       gopacket.NetworkLayer
 		networkLayerType   gopacket.LayerType
-		transportLayer     gopacket.TransportLayer
+		transportLayer     gopacket.Layer
 		transportLayerType gopacket.LayerType
+		icmpv4Indicator    *icmpv4Indicator
 		applicationLayer   gopacket.ApplicationLayer
 	)
 
@@ -211,15 +259,18 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	networkLayerType = networkLayer.LayerType()
 	transportLayer = packet.TransportLayer()
 	if transportLayer == nil {
-		return nil, fmt.Errorf("parse: %w", errors.New("missing transport layer"))
+		// Guess ICMPv4
+		transportLayer = packet.Layer(layers.LayerTypeICMPv4)
+		if transportLayer == nil {
+			return nil, fmt.Errorf("parse: %w", errors.New("missing transport layer"))
+		}
 	}
 	transportLayerType = transportLayer.LayerType()
 	applicationLayer = packet.ApplicationLayer()
 
 	// Parse network layer
 	switch networkLayerType {
-	case layers.LayerTypeIPv4:
-	case layers.LayerTypeIPv6:
+	case layers.LayerTypeIPv4, layers.LayerTypeIPv6:
 		break
 	default:
 		return nil, fmt.Errorf("parse: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
@@ -227,9 +278,14 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 
 	// Parse transport layer
 	switch transportLayerType {
-	case layers.LayerTypeTCP:
-	case layers.LayerTypeUDP:
+	case layers.LayerTypeTCP, layers.LayerTypeUDP:
 		break
+	case layers.LayerTypeICMPv4:
+		var err error
+		icmpv4Indicator, err = parseICMPv4Layer(transportLayer.(*layers.ICMPv4))
+		if err != nil {
+			return nil, fmt.Errorf("parse: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("parse: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 	}
@@ -239,6 +295,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		NetworkLayerType:   networkLayerType,
 		TransportLayer:     transportLayer,
 		TransportLayerType: transportLayerType,
+		ICMPv4Indicator:    icmpv4Indicator,
 		ApplicationLayer:   applicationLayer,
 	}, nil
 }

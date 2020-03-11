@@ -1,12 +1,12 @@
 package pcap
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"net"
 )
 
 func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {
@@ -176,62 +176,39 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 }
 
 type icmpv4Indicator struct {
-	Type               uint8
-	Code               uint8
-	Id                 uint16
-	Seq                uint16
-	Contents           []byte
-	IPv4Layer          *layers.IPv4
-	SrcIP              net.IP
-	DstIP              net.IP
-	TransportLayer     gopacket.Layer
-	TransportLayerType gopacket.LayerType
-	SrcPort            uint16
-	DstPort            uint16
+	Layer                      *layers.ICMPv4
+	EncappedIPv4Layer          *layers.IPv4
+	EncappedTransportLayer     gopacket.Layer
+	EncappedTransportLayerType gopacket.LayerType
 }
 
 func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 	var (
-		t                  uint8
-		code               uint8
-		id                 uint16
-		seq                uint16
-		contents           []byte
-		ipv4Layer          *layers.IPv4
-		srcIP              net.IP
-		dstIP              net.IP
-		transportLayer     gopacket.Layer
-		transportLayerType gopacket.LayerType
-		srcPort            uint16
-		dstPort            uint16
+		encappedIPv4Layer          *layers.IPv4
+		encappedTransportLayer     gopacket.Layer
+		encappedTransportLayerType gopacket.LayerType
 	)
 
-	// Type and code
-	t = layer.TypeCode.Type()
-	code = layer.TypeCode.Code()
-	id = layer.Id
-	seq = layer.Seq
-	contents = layer.Contents
-
+	t := layer.TypeCode.Type()
 	switch t {
-	case layers.ICMPv4TypeEchoReply:
-	case layers.ICMPv4TypeEchoRequest:
-	case layers.ICMPv4TypeRouterAdvertisement:
-	case layers.ICMPv4TypeRouterSolicitation:
-	case layers.ICMPv4TypeTimestampRequest:
-	case layers.ICMPv4TypeTimestampReply:
-	case layers.ICMPv4TypeInfoRequest:
-	case layers.ICMPv4TypeInfoReply:
-	case layers.ICMPv4TypeAddressMaskRequest:
-	case layers.ICMPv4TypeAddressMaskReply:
+	case layers.ICMPv4TypeEchoReply,
+		layers.ICMPv4TypeEchoRequest,
+		layers.ICMPv4TypeRouterAdvertisement,
+		layers.ICMPv4TypeRouterSolicitation,
+		layers.ICMPv4TypeTimestampRequest,
+		layers.ICMPv4TypeTimestampReply,
+		layers.ICMPv4TypeInfoRequest,
+		layers.ICMPv4TypeInfoReply,
+		layers.ICMPv4TypeAddressMaskRequest,
+		layers.ICMPv4TypeAddressMaskReply:
 		break
-	case layers.ICMPv4TypeDestinationUnreachable:
-	case layers.ICMPv4TypeSourceQuench:
-	case layers.ICMPv4TypeRedirect:
-	case layers.ICMPv4TypeTimeExceeded:
-	case layers.ICMPv4TypeParameterProblem:
+	case layers.ICMPv4TypeDestinationUnreachable,
+		layers.ICMPv4TypeSourceQuench,
+		layers.ICMPv4TypeRedirect,
+		layers.ICMPv4TypeTimeExceeded,
+		layers.ICMPv4TypeParameterProblem:
 		// Parse IPv4 header and 8 bytes content
-		packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
+		packet := gopacket.NewPacket(layer.Payload, layers.LayerTypeIPv4, gopacket.Default)
 		if len(packet.Layers()) <= 0 {
 			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("missing network layer"))
 		}
@@ -244,130 +221,208 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("network layer type not support"))
 		}
 
-		ipv4Layer = networkLayer.(*layers.IPv4)
-		version := ipv4Layer.Version
+		encappedIPv4Layer = networkLayer.(*layers.IPv4)
+		version := encappedIPv4Layer.Version
 		if version != 4 {
 			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("ip version %d not support", version))
 		}
 
-		srcIP = ipv4Layer.SrcIP
-		dstIP = ipv4Layer.DstIP
-
-		transportLayer = packet.Layers()[1]
-		transportLayerType = transportLayer.LayerType()
-
-		transportLayerContents := transportLayer.LayerContents()
-		if len(transportLayerContents) < 4 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("transport layer too short (%d Bytes)", len(transportLayerContents)))
-		}
-
-		// Regard the first 2 bytes as source port
-		srcPort = binary.BigEndian.Uint16(transportLayerContents[:2])
-		// Regard the next 2 bytes as destination port
-		dstPort = binary.BigEndian.Uint16(transportLayerContents[2:4])
+		encappedTransportLayer = packet.Layers()[1]
+		encappedTransportLayerType = encappedTransportLayer.LayerType()
 	default:
-		return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("invalid type %d", t))
+		return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("type %d not support", t))
 	}
 
 	return &icmpv4Indicator{
-		Type:               t,
-		Code:               code,
-		Id:                 id,
-		Seq:                seq,
-		Contents:           contents,
-		IPv4Layer:          ipv4Layer,
-		SrcIP:              srcIP,
-		DstIP:              dstIP,
-		TransportLayer:     transportLayer,
-		TransportLayerType: transportLayerType,
-		SrcPort:            srcPort,
-		DstPort:            dstPort,
+		Layer:                      layer,
+		EncappedIPv4Layer:          encappedIPv4Layer,
+		EncappedTransportLayer:     encappedTransportLayer,
+		EncappedTransportLayerType: encappedTransportLayerType,
 	}, nil
 }
 
-// Identifier returns available Id of the ICMPv4 layer
-func (indicator *icmpv4Indicator) Identifier() (uint16, bool) {
-	switch indicator.Type {
-	case layers.ICMPv4TypeEchoReply:
-	case layers.ICMPv4TypeEchoRequest:
-	case layers.ICMPv4TypeRouterAdvertisement:
-	case layers.ICMPv4TypeRouterSolicitation:
-	case layers.ICMPv4TypeTimestampRequest:
-	case layers.ICMPv4TypeTimestampReply:
-	case layers.ICMPv4TypeInfoRequest:
-	case layers.ICMPv4TypeInfoReply:
-	case layers.ICMPv4TypeAddressMaskRequest:
-	case layers.ICMPv4TypeAddressMaskReply:
-		return indicator.Id, true
-	case layers.ICMPv4TypeDestinationUnreachable:
-	case layers.ICMPv4TypeSourceQuench:
-	case layers.ICMPv4TypeRedirect:
-	case layers.ICMPv4TypeTimeExceeded:
-	case layers.ICMPv4TypeParameterProblem:
-		return 0, false
+// IsQuery returns if the ICMPv4 message is either a query or an error
+func (indicator *icmpv4Indicator) IsQuery() bool {
+	t := indicator.Layer.TypeCode.Type()
+	switch t {
+	case layers.ICMPv4TypeEchoReply,
+		layers.ICMPv4TypeEchoRequest,
+		layers.ICMPv4TypeRouterAdvertisement,
+		layers.ICMPv4TypeRouterSolicitation,
+		layers.ICMPv4TypeTimestampRequest,
+		layers.ICMPv4TypeTimestampReply,
+		layers.ICMPv4TypeInfoRequest,
+		layers.ICMPv4TypeInfoReply,
+		layers.ICMPv4TypeAddressMaskRequest,
+		layers.ICMPv4TypeAddressMaskReply:
+		return true
+	case layers.ICMPv4TypeDestinationUnreachable,
+		layers.ICMPv4TypeSourceQuench,
+		layers.ICMPv4TypeRedirect,
+		layers.ICMPv4TypeTimeExceeded,
+		layers.ICMPv4TypeParameterProblem:
+		return false
 	default:
-		break
+		panic(fmt.Errorf("is query: %w", fmt.Errorf("type %d not support", t)))
 	}
-
-	panic(fmt.Errorf("identifier: %w", fmt.Errorf("invalid type %d", indicator.Type)))
 }
 
-// SrcIPPort returns available source IP and port of the ICMPv4 layer
-func (indicator *icmpv4Indicator) SrcIPPort() (*IPPort, bool) {
-	switch indicator.Type {
-	case layers.ICMPv4TypeEchoReply:
-	case layers.ICMPv4TypeEchoRequest:
-	case layers.ICMPv4TypeRouterAdvertisement:
-	case layers.ICMPv4TypeRouterSolicitation:
-	case layers.ICMPv4TypeTimestampRequest:
-	case layers.ICMPv4TypeTimestampReply:
-	case layers.ICMPv4TypeInfoRequest:
-	case layers.ICMPv4TypeInfoReply:
-	case layers.ICMPv4TypeAddressMaskRequest:
-	case layers.ICMPv4TypeAddressMaskReply:
-		return nil, false
-	case layers.ICMPv4TypeDestinationUnreachable:
-	case layers.ICMPv4TypeSourceQuench:
-	case layers.ICMPv4TypeRedirect:
-	case layers.ICMPv4TypeTimeExceeded:
-	case layers.ICMPv4TypeParameterProblem:
-		return &IPPort{
-			IP:   indicator.SrcIP,
-			Port: indicator.SrcPort,
-		}, true
-	default:
-		break
-	}
-
-	panic(fmt.Errorf("src ip port: %w", fmt.Errorf("invalid type %d", indicator.Type)))
+// EncappedSrcIP returns the encapped source IP of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedSrcIP() net.IP {
+	return indicator.EncappedIPv4Layer.SrcIP
 }
 
-// DstIPPort returns the available destination IP and port of the ICMPv4 layer
-func (indicator *icmpv4Indicator) DstIPPort() (*IPPort, bool) {
-	switch indicator.Type {
-	case layers.ICMPv4TypeEchoReply:
-	case layers.ICMPv4TypeEchoRequest:
-	case layers.ICMPv4TypeRouterAdvertisement:
-	case layers.ICMPv4TypeRouterSolicitation:
-	case layers.ICMPv4TypeTimestampRequest:
-	case layers.ICMPv4TypeTimestampReply:
-	case layers.ICMPv4TypeInfoRequest:
-	case layers.ICMPv4TypeInfoReply:
-	case layers.ICMPv4TypeAddressMaskRequest:
-	case layers.ICMPv4TypeAddressMaskReply:
-		return nil, false
-	case layers.ICMPv4TypeDestinationUnreachable:
-	case layers.ICMPv4TypeSourceQuench:
-	case layers.ICMPv4TypeRedirect:
-	case layers.ICMPv4TypeTimeExceeded:
-	case layers.ICMPv4TypeParameterProblem:
-		return &IPPort{
-			IP:   indicator.DstIP,
-			Port: indicator.DstPort,
-		}, true
-	default:
-		break
+// EncappedDstIP returns the encapped destination IP of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedDstIP() net.IP {
+	return indicator.EncappedIPv4Layer.DstIP
+}
+
+// EncappedTCPLayer returns the encapped TCP layer of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedTCPLayer() *layers.TCP {
+	if indicator.EncappedTransportLayerType == layers.LayerTypeTCP {
+		return indicator.EncappedTransportLayer.(*layers.TCP)
 	}
 
-	panic(fmt.Errorf("dst ip port: %w", fmt.Errorf("invalid type %d", indicator.Type)))
+	return nil
+}
+
+// EncappedUDPLayer returns the encapped UDP layer of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedUDPLayer() *layers.UDP {
+	if indicator.EncappedTransportLayerType == layers.LayerTypeUDP {
+		return indicator.EncappedTransportLayer.(*layers.UDP)
+	}
+
+	return nil
+}
+
+// EncappedICMPv4Layer returns the encapped ICMPv4 layer of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedICMPv4Layer() *layers.ICMPv4 {
+	if indicator.EncappedTransportLayerType == layers.LayerTypeICMPv4 {
+		return indicator.EncappedTransportLayer.(*layers.ICMPv4)
+	}
+
+	return nil
+}
+
+// EncappedSrcPort returns the encapped source port of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedSrcPort() uint16 {
+	switch indicator.EncappedTransportLayerType {
+	case layers.LayerTypeTCP:
+		return uint16(indicator.EncappedTCPLayer().SrcPort)
+	case layers.LayerTypeUDP:
+		return uint16(indicator.EncappedUDPLayer().SrcPort)
+	default:
+		panic(fmt.Errorf("encapped src port: %w", fmt.Errorf("type %s not support", indicator.EncappedTransportLayerType)))
+	}
+}
+
+// EncappedDstPort returns the encapped destination port of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedDstPort() uint16 {
+	switch indicator.EncappedTransportLayerType {
+	case layers.LayerTypeTCP:
+		return uint16(indicator.EncappedTCPLayer().DstPort)
+	case layers.LayerTypeUDP:
+		return uint16(indicator.EncappedUDPLayer().DstPort)
+	default:
+		panic(fmt.Errorf("encapped dst port: %w", fmt.Errorf("type %s not support", indicator.EncappedTransportLayerType)))
+	}
+}
+
+// EncappedId returns the encapped Id of ICMPv4 layer of the ICMPv4 layer
+func (indicator *icmpv4Indicator) EncappedId() uint16 {
+	switch indicator.EncappedTransportLayerType {
+	case layers.LayerTypeICMPv4:
+		return uint16(indicator.EncappedICMPv4Layer().Id)
+	default:
+		panic(fmt.Errorf("encapped id: %w", fmt.Errorf("type %s not support", indicator.EncappedTransportLayerType)))
+	}
+}
+
+// IsEncappedQuery returns if the encapped ICMPv4 message is either a query or an error
+func (indicator *icmpv4Indicator) IsEncappedQuery() bool {
+	t := indicator.EncappedICMPv4Layer().TypeCode.Type()
+	switch t {
+	case layers.ICMPv4TypeEchoReply,
+		layers.ICMPv4TypeEchoRequest,
+		layers.ICMPv4TypeRouterAdvertisement,
+		layers.ICMPv4TypeRouterSolicitation,
+		layers.ICMPv4TypeTimestampRequest,
+		layers.ICMPv4TypeTimestampReply,
+		layers.ICMPv4TypeInfoRequest,
+		layers.ICMPv4TypeInfoReply,
+		layers.ICMPv4TypeAddressMaskRequest,
+		layers.ICMPv4TypeAddressMaskReply:
+		return true
+	case layers.ICMPv4TypeDestinationUnreachable,
+		layers.ICMPv4TypeSourceQuench,
+		layers.ICMPv4TypeRedirect,
+		layers.ICMPv4TypeTimeExceeded,
+		layers.ICMPv4TypeParameterProblem:
+		return false
+	default:
+		panic(fmt.Errorf("is encapped query: %w", fmt.Errorf("type %d not support", t)))
+	}
+}
+
+// Id returns available Id of the ICMPv4 layer
+func (indicator *icmpv4Indicator) Id() uint16 {
+	return indicator.Layer.Id
+}
+
+// SrcIPPort returns the source of the packet
+func (indicator *icmpv4Indicator) Source() string {
+	if indicator.IsQuery() {
+		return fmt.Sprintf("%d", indicator.Id())
+	} else {
+		t := indicator.EncappedTransportLayerType
+		switch t {
+		case layers.LayerTypeTCP, layers.LayerTypeUDP:
+			return IPPort{
+				IP:   indicator.EncappedSrcIP(),
+				Port: indicator.EncappedSrcPort(),
+			}.String()
+		case layers.LayerTypeICMPv4:
+			var ip string
+			encappedSrcIP := indicator.EncappedSrcIP()
+			if encappedSrcIP.To4() != nil {
+				ip = encappedSrcIP.String()
+			} else {
+				ip = fmt.Sprintf("[%s]", encappedSrcIP)
+			}
+			if indicator.IsEncappedQuery() {
+				return fmt.Sprintf("%s@%d", ip, indicator.EncappedId())
+			} else {
+				return ip
+			}
+		default:
+			panic(fmt.Errorf("source: %w", fmt.Errorf("type %s not support", t)))
+		}
+	}
+}
+
+// DstIPPort returns the destination of the packet
+func (indicator *icmpv4Indicator) Destination() string {
+	if indicator.IsQuery() {
+		return ""
+	} else {
+		t := indicator.EncappedTransportLayerType
+		switch t {
+		case layers.LayerTypeTCP, layers.LayerTypeUDP:
+			return IPPort{
+				IP:   indicator.EncappedDstIP(),
+				Port: indicator.EncappedDstPort(),
+			}.String()
+		case layers.LayerTypeICMPv4:
+			var ip string
+			encappedSrcIP := indicator.EncappedSrcIP()
+			if encappedSrcIP.To4() != nil {
+				ip = encappedSrcIP.String()
+			} else {
+				ip = fmt.Sprintf("[%s]", encappedSrcIP)
+			}
+			return ip
+		default:
+			panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
+		}
+	}
 }

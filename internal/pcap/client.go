@@ -31,13 +31,13 @@ type Client struct {
 	ack             uint32
 	id              uint16
 	devMapLock      sync.RWMutex
-	devMap          map[quintuple]*devIndicator
+	devMap          map[stringQuintuple]*devIndicator
 }
 
 // Open implements a method opens the pcap
 func (p *Client) Open() error {
 	p.cListenPackets = make(chan devPacket, 1000)
-	p.devMap = make(map[quintuple]*devIndicator)
+	p.devMap = make(map[stringQuintuple]*devIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -149,8 +149,9 @@ func (p *Client) Open() error {
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
-		err = handle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && %s && not (src host %s && src port %d)",
-			formatOrSrcFilters(p.Filters), p.ServerIP, p.ServerPort))
+		f := formatOrSrcFilters(p.Filters)
+		err = handle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && %s && not (src host %s && src port %d)) || (icmp && %s && not src host %s)",
+			f, p.ServerIP, p.ServerPort, f, p.ServerIP))
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
@@ -162,8 +163,8 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	err = p.upHandle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d && (src host %s && src port %d)",
-		p.UpPort, p.ServerIP, p.ServerPort))
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d)) || (icmp && src host %s)",
+		p.UpPort, p.ServerIP, p.ServerPort, p.ServerIP))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
@@ -480,11 +481,9 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Record the source device of the packet
-	q := quintuple{
-		SrcIP:    indicator.SrcIP().String(),
-		SrcPort:  indicator.SrcPort(),
-		DstIP:    indicator.DstIP().String(),
-		DstPort:  indicator.DstPort(),
+	q := stringQuintuple{
+		Src:      indicator.Source(),
+		Dst:      indicator.Destination(),
 		Protocol: indicator.TransportLayerType,
 	}
 	p.devMapLock.Lock()
@@ -500,7 +499,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
-		indicator.TransportLayerType, indicator.SrcIPPort(), indicator.DstIPPort(), packet.Metadata().Length)
+		indicator.TransportLayerType, indicator.Source(), indicator.Destination(), packet.Metadata().Length)
 }
 
 // handleUpstream handles TCP packets from the server
@@ -540,11 +539,9 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Check map
-	q := quintuple{
-		SrcIP:    encappedIndicator.DstIP().String(),
-		SrcPort:  encappedIndicator.DstPort(),
-		DstIP:    encappedIndicator.SrcIP().String(),
-		DstPort:  encappedIndicator.SrcPort(),
+	q := stringQuintuple{
+		Src:      encappedIndicator.Source(),
+		Dst:      encappedIndicator.Destination(),
 		Protocol: encappedIndicator.TransportLayerType,
 	}
 	p.devMapLock.RLock()
@@ -598,7 +595,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-		encappedIndicator.TransportLayerType, encappedIndicator.SrcIPPort(), encappedIndicator.DstIPPort(), len(data))
+		encappedIndicator.TransportLayerType, encappedIndicator.Source(), encappedIndicator.Destination(), len(data))
 }
 
 func (p *Client) bypass(packet gopacket.Packet) error {

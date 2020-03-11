@@ -91,8 +91,7 @@ func main() {
 			var exist bool
 			for _, filter := range filters {
 				switch filter.FilterType() {
-				case pcap.FilterTypeIP:
-				case pcap.FilterTypeIPPort:
+				case pcap.FilterTypeIP, pcap.FilterTypeIPPort:
 					break
 				case pcap.FilterTypePort:
 					if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
@@ -112,8 +111,7 @@ func main() {
 	}
 	for _, filter := range filters {
 		switch filter.FilterType() {
-		case pcap.FilterTypeIP:
-		case pcap.FilterTypeIPPort:
+		case pcap.FilterTypeIP, pcap.FilterTypeIPPort:
 			break
 		case pcap.FilterTypePort:
 			if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
@@ -178,8 +176,7 @@ func main() {
 					log.Fatalln(fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
 				}
 			}
-		case pcap.FilterTypeIP:
-		case pcap.FilterTypePort:
+		case pcap.FilterTypeIP, pcap.FilterTypePort:
 			break
 		default:
 			break
