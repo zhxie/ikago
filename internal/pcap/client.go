@@ -31,13 +31,13 @@ type Client struct {
 	ack             uint32
 	id              uint16
 	devMapLock      sync.RWMutex
-	devMap          map[stringQuintuple]*devIndicator
+	devMap          map[string]*devIndicator
 }
 
 // Open implements a method opens the pcap
 func (p *Client) Open() error {
 	p.cListenPackets = make(chan devPacket, 1000)
-	p.devMap = make(map[stringQuintuple]*devIndicator)
+	p.devMap = make(map[string]*devIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -481,13 +481,8 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Record the source device of the packet
-	q := stringQuintuple{
-		Src:      indicator.Source(),
-		Dst:      indicator.Destination(),
-		Protocol: indicator.TransportLayerType,
-	}
 	p.devMapLock.Lock()
-	p.devMap[q] = &devIndicator{Dev: dev, Handle: handle}
+	p.devMap[indicator.NATSource()] = &devIndicator{Dev: dev, Handle: handle}
 	p.devMapLock.Unlock()
 
 	// TCP Seq
@@ -517,7 +512,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Empty payload
 	if applicationLayer == nil {
-		log.Errorln(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
+		log.Verboseln(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
 		return
 	}
 
@@ -539,15 +534,11 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Check map
-	q := stringQuintuple{
-		Src:      encappedIndicator.Source(),
-		Dst:      encappedIndicator.Destination(),
-		Protocol: encappedIndicator.TransportLayerType,
-	}
 	p.devMapLock.RLock()
-	ps, ok := p.devMap[q]
+	ps, ok := p.devMap[encappedIndicator.NATDestination()]
 	p.devMapLock.RUnlock()
 	if !ok {
+		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", encappedIndicator.NATDestination())))
 		dev = p.UpDev
 		handle = p.upHandle
 	} else {
@@ -595,7 +586,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-		encappedIndicator.TransportLayerType, encappedIndicator.Source(), encappedIndicator.Destination(), len(data))
+		encappedIndicator.TransportLayerType, encappedIndicator.Destination(), encappedIndicator.Source(), len(data))
 }
 
 func (p *Client) bypass(packet gopacket.Packet) error {

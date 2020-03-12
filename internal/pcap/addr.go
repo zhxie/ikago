@@ -26,13 +26,7 @@ type IPPort struct {
 }
 
 func (i IPPort) String() string {
-	var ip string
-	if i.IP.To4() != nil {
-		ip = i.IP.String()
-	} else {
-		ip = fmt.Sprintf("[%s]", i.IP)
-	}
-	return fmt.Sprintf("%s:%d", ip, i.Port)
+	return fmt.Sprintf("%s:%d", formatIP(i.IP), i.Port)
 }
 
 // ParseIPPort returns an IPPort by the given string of address
@@ -73,4 +67,22 @@ func ParseIPPort(s string) (*IPPort, error) {
 		IP:   ip,
 		Port: uint16(port),
 	}, nil
+}
+
+// IPId describes a network endpoint with at an IP and an Id
+type IPId struct {
+	IP net.IP
+	Id uint16
+}
+
+func (i IPId) String() string {
+	return fmt.Sprintf("%s@%d", formatIP(i.IP), i.Id)
+}
+
+func formatIP(ip net.IP) string {
+	if ip.To4() != nil {
+		return ip.String()
+	} else {
+		return fmt.Sprintf("[%s]", ip)
+	}
 }

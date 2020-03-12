@@ -127,7 +127,7 @@ func (p *Server) Open() error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp || udp) && not dst port %d", p.ListenPort))
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", p.ListenPort))
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
@@ -300,13 +300,13 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 			log.Errorln(fmt.Errorf("handle listen: %w", err))
 			return
 		}
-		log.Infof("Connect from client %s\n", indicator.Source())
+		log.Infof("Connect from client %s\n", indicator.NATSource())
 		return
 	}
 
 	// Empty payload (An ACK handshaking will also be recognized as empty payload)
 	if len(indicator.Payload()) <= 0 {
-		log.Errorln(fmt.Errorf("handle listen: %w", errors.New("empty payload")))
+		log.Verboseln(fmt.Errorf("handle listen: %w", errors.New("empty payload")))
 		return
 	}
 
