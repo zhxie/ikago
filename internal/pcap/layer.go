@@ -176,10 +176,10 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 }
 
 type icmpv4Indicator struct {
-	Layer                      *layers.ICMPv4
-	EncappedIPv4Layer          *layers.IPv4
-	EncappedTransportLayer     gopacket.Layer
-	EncappedTransportLayerType gopacket.LayerType
+	layer                      *layers.ICMPv4
+	encappedIPv4Layer          *layers.IPv4
+	encappedTransportLayer     gopacket.Layer
+	encappedTransportLayerType gopacket.LayerType
 }
 
 func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
@@ -234,16 +234,15 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 	}
 
 	return &icmpv4Indicator{
-		Layer:                      layer,
-		EncappedIPv4Layer:          encappedIPv4Layer,
-		EncappedTransportLayer:     encappedTransportLayer,
-		EncappedTransportLayerType: encappedTransportLayerType,
+		layer:                      layer,
+		encappedIPv4Layer:          encappedIPv4Layer,
+		encappedTransportLayer:     encappedTransportLayer,
+		encappedTransportLayerType: encappedTransportLayerType,
 	}, nil
 }
 
-// IsQuery returns if the ICMPv4 message is either a query or an error
-func (indicator *icmpv4Indicator) IsQuery() bool {
-	t := indicator.Layer.TypeCode.Type()
+func (indicator *icmpv4Indicator) isQuery() bool {
+	t := indicator.layer.TypeCode.Type()
 	switch t {
 	case layers.ICMPv4TypeEchoReply,
 		layers.ICMPv4TypeEchoRequest,
@@ -267,85 +266,75 @@ func (indicator *icmpv4Indicator) IsQuery() bool {
 	}
 }
 
-// EncappedSrcIP returns the encapped source IP of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedSrcIP() net.IP {
-	return indicator.EncappedIPv4Layer.SrcIP
+func (indicator *icmpv4Indicator) encappedSrcIP() net.IP {
+	return indicator.encappedIPv4Layer.SrcIP
 }
 
-// EncappedDstIP returns the encapped destination IP of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedDstIP() net.IP {
-	return indicator.EncappedIPv4Layer.DstIP
+func (indicator *icmpv4Indicator) encappedDstIP() net.IP {
+	return indicator.encappedIPv4Layer.DstIP
 }
 
-// EncappedTCPLayer returns the encapped TCP layer of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedTCPLayer() *layers.TCP {
-	if indicator.EncappedTransportLayerType == layers.LayerTypeTCP {
-		return indicator.EncappedTransportLayer.(*layers.TCP)
+func (indicator *icmpv4Indicator) encappedTCPLayer() *layers.TCP {
+	if indicator.encappedTransportLayerType == layers.LayerTypeTCP {
+		return indicator.encappedTransportLayer.(*layers.TCP)
 	}
 
 	return nil
 }
 
-// EncappedUDPLayer returns the encapped UDP layer of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedUDPLayer() *layers.UDP {
-	if indicator.EncappedTransportLayerType == layers.LayerTypeUDP {
-		return indicator.EncappedTransportLayer.(*layers.UDP)
+func (indicator *icmpv4Indicator) encappedUDPLayer() *layers.UDP {
+	if indicator.encappedTransportLayerType == layers.LayerTypeUDP {
+		return indicator.encappedTransportLayer.(*layers.UDP)
 	}
 
 	return nil
 }
 
-// EncappedICMPv4Layer returns the encapped ICMPv4 layer of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedICMPv4Layer() *layers.ICMPv4 {
-	if indicator.EncappedTransportLayerType == layers.LayerTypeICMPv4 {
-		return indicator.EncappedTransportLayer.(*layers.ICMPv4)
+func (indicator *icmpv4Indicator) encappedICMPv4Layer() *layers.ICMPv4 {
+	if indicator.encappedTransportLayerType == layers.LayerTypeICMPv4 {
+		return indicator.encappedTransportLayer.(*layers.ICMPv4)
 	}
 
 	return nil
 }
 
-// Id returns available Id of the ICMPv4 layer
-func (indicator *icmpv4Indicator) Id() uint16 {
-	return indicator.Layer.Id
+func (indicator *icmpv4Indicator) id() uint16 {
+	return indicator.layer.Id
 }
 
-// EncappedId returns the encapped Id of ICMPv4 layer of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedId() uint16 {
-	switch indicator.EncappedTransportLayerType {
+func (indicator *icmpv4Indicator) encappedId() uint16 {
+	switch indicator.encappedTransportLayerType {
 	case layers.LayerTypeICMPv4:
-		return uint16(indicator.EncappedICMPv4Layer().Id)
+		return uint16(indicator.encappedICMPv4Layer().Id)
 	default:
-		panic(fmt.Errorf("encapped id: %w", fmt.Errorf("type %s not support", indicator.EncappedTransportLayerType)))
+		panic(fmt.Errorf("encapped id: %w", fmt.Errorf("type %s not support", indicator.encappedTransportLayerType)))
 	}
 }
 
-// EncappedSrcPort returns the encapped source port of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedSrcPort() uint16 {
-	switch indicator.EncappedTransportLayerType {
+func (indicator *icmpv4Indicator) encappedSrcPort() uint16 {
+	switch indicator.encappedTransportLayerType {
 	case layers.LayerTypeTCP:
-		return uint16(indicator.EncappedTCPLayer().SrcPort)
+		return uint16(indicator.encappedTCPLayer().SrcPort)
 	case layers.LayerTypeUDP:
-		return uint16(indicator.EncappedUDPLayer().SrcPort)
+		return uint16(indicator.encappedUDPLayer().SrcPort)
 	default:
-		panic(fmt.Errorf("encapped src port: %w", fmt.Errorf("type %s not support", indicator.EncappedTransportLayerType)))
+		panic(fmt.Errorf("encapped src port: %w", fmt.Errorf("type %s not support", indicator.encappedTransportLayerType)))
 	}
 }
 
-// EncappedDstPort returns the encapped destination port of the ICMPv4 layer
-func (indicator *icmpv4Indicator) EncappedDstPort() uint16 {
-	switch indicator.EncappedTransportLayerType {
+func (indicator *icmpv4Indicator) encappedDstPort() uint16 {
+	switch indicator.encappedTransportLayerType {
 	case layers.LayerTypeTCP:
-		return uint16(indicator.EncappedTCPLayer().DstPort)
+		return uint16(indicator.encappedTCPLayer().DstPort)
 	case layers.LayerTypeUDP:
-		return uint16(indicator.EncappedUDPLayer().DstPort)
+		return uint16(indicator.encappedUDPLayer().DstPort)
 	default:
-		panic(fmt.Errorf("encapped dst port: %w", fmt.Errorf("type %s not support", indicator.EncappedTransportLayerType)))
+		panic(fmt.Errorf("encapped dst port: %w", fmt.Errorf("type %s not support", indicator.encappedTransportLayerType)))
 	}
 }
 
-// IsEncappedQuery returns if the encapped ICMPv4 message is either a query or an error
-func (indicator *icmpv4Indicator) IsEncappedQuery() bool {
-	t := indicator.EncappedICMPv4Layer().TypeCode.Type()
+func (indicator *icmpv4Indicator) isEncappedQuery() bool {
+	t := indicator.encappedICMPv4Layer().TypeCode.Type()
 	switch t {
 	case layers.ICMPv4TypeEchoReply,
 		layers.ICMPv4TypeEchoRequest,
@@ -369,26 +358,25 @@ func (indicator *icmpv4Indicator) IsEncappedQuery() bool {
 	}
 }
 
-// Source returns the source of the packet
-func (indicator *icmpv4Indicator) Source() string {
-	if indicator.IsQuery() {
-		return fmt.Sprintf("%d", indicator.Id())
+func (indicator *icmpv4Indicator) source() string {
+	if indicator.isQuery() {
+		return fmt.Sprintf("%d", indicator.id())
 	} else {
-		t := indicator.EncappedTransportLayerType
+		t := indicator.encappedTransportLayerType
 		switch t {
 		case layers.LayerTypeTCP, layers.LayerTypeUDP:
 			return IPPort{
-				IP:   indicator.EncappedSrcIP(),
-				Port: indicator.EncappedSrcPort(),
+				IP:   indicator.encappedSrcIP(),
+				Port: indicator.encappedSrcPort(),
 			}.String()
 		case layers.LayerTypeICMPv4:
-			if indicator.IsEncappedQuery() {
+			if indicator.isEncappedQuery() {
 				return IPId{
-					IP: indicator.EncappedSrcIP(),
-					Id: indicator.EncappedId(),
+					IP: indicator.encappedSrcIP(),
+					Id: indicator.encappedId(),
 				}.String()
 			} else {
-				return formatIP(indicator.EncappedSrcIP())
+				return formatIP(indicator.encappedSrcIP())
 			}
 		default:
 			panic(fmt.Errorf("source: %w", fmt.Errorf("type %s not support", t)))
@@ -396,26 +384,25 @@ func (indicator *icmpv4Indicator) Source() string {
 	}
 }
 
-// Destination returns the destination of the packet
-func (indicator *icmpv4Indicator) Destination() string {
-	if indicator.IsQuery() {
-		return fmt.Sprintf("%d", indicator.Id())
+func (indicator *icmpv4Indicator) destination() string {
+	if indicator.isQuery() {
+		return fmt.Sprintf("%d", indicator.id())
 	} else {
-		t := indicator.EncappedTransportLayerType
+		t := indicator.encappedTransportLayerType
 		switch t {
 		case layers.LayerTypeTCP, layers.LayerTypeUDP:
 			return IPPort{
-				IP:   indicator.EncappedDstIP(),
-				Port: indicator.EncappedDstPort(),
+				IP:   indicator.encappedDstIP(),
+				Port: indicator.encappedDstPort(),
 			}.String()
 		case layers.LayerTypeICMPv4:
-			if indicator.IsEncappedQuery() {
+			if indicator.isEncappedQuery() {
 				return IPId{
-					IP: indicator.EncappedDstIP(),
-					Id: indicator.EncappedId(),
+					IP: indicator.encappedDstIP(),
+					Id: indicator.encappedId(),
 				}.String()
 			} else {
-				return formatIP(indicator.EncappedDstIP())
+				return formatIP(indicator.encappedDstIP())
 			}
 		default:
 			panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
