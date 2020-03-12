@@ -10,12 +10,21 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-type triple struct {
-	IP       string
-	Port     uint16
+type devPacket struct {
+	Packet gopacket.Packet
+	Dev    *Device
+	Handle *pcap.Handle
+}
+
+// quadruple describes the source and destination's IP, and Id and protocol of a packet for NAT Id distribution
+type quadruple struct {
+	SrcIP    string
+	DstIP    string
+	Id       uint16
 	Protocol gopacket.LayerType
 }
 
+// quintuple describes the source and destination's IP and ports, and protocol of a packet for NAT port distribution
 type quintuple struct {
 	SrcIP    string
 	SrcPort  uint16
@@ -24,24 +33,46 @@ type quintuple struct {
 	Protocol gopacket.LayerType
 }
 
-type devPacket struct {
-	Packet gopacket.Packet
-	Dev    *Device
-	Handle *pcap.Handle
+type natGuide struct {
+	Src      string
+	Protocol gopacket.LayerType
 }
 
-type devIndicator struct {
-	Dev    *Device
-	Handle *pcap.Handle
+type natIndicator interface {
+	// Dev returns the device of the indicator
+	Dev() *Device
+	// Handle returns the pcap handle of the indicator
+	Handle() *pcap.Handle
 }
 
-type natIndicator struct {
+type devNATIndicator struct {
+	DevMember    *Device
+	HandleMember *pcap.Handle
+}
+
+func (indicator *devNATIndicator) Dev() *Device {
+	return indicator.DevMember
+}
+
+func (indicator *devNATIndicator) Handle() *pcap.Handle {
+	return indicator.HandleMember
+}
+
+type portNATIndicator struct {
 	SrcIP           string
 	SrcPort         uint16
 	EncappedSrcIP   string
 	EncappedSrcPort uint16
-	Dev             *Device
-	Handle          *pcap.Handle
+	DevMember       *Device
+	HandleMember    *pcap.Handle
+}
+
+func (indicator *portNATIndicator) Dev() *Device {
+	return indicator.DevMember
+}
+
+func (indicator *portNATIndicator) Handle() *pcap.Handle {
+	return indicator.HandleMember
 }
 
 // sendTCPPacket implements a method sends a TCP packet

@@ -35,7 +35,7 @@ type Server struct {
 	udpPortPool    []time.Time
 	portMap        map[quintuple]uint16
 	natLock        sync.RWMutex
-	nat            map[triple]*natIndicator
+	nat            map[natGuide]natIndicator
 }
 
 const portKeepAlive float64 = 30 // seconds
@@ -49,7 +49,7 @@ func (p *Server) Open() error {
 	p.tcpPortPool = make([]time.Time, 16384)
 	p.udpPortPool = make([]time.Time, 16384)
 	p.portMap = make(map[quintuple]uint16)
-	p.nat = make(map[triple]*natIndicator)
+	p.nat = make(map[natGuide]natIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -272,10 +272,12 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	var (
 		indicator             *packetIndicator
 		encappedIndicator     *packetIndicator
+		upPort                uint16
 		newTransportLayerType gopacket.LayerType
 		newTransportLayer     gopacket.TransportLayer
 		newNetworkLayerType   gopacket.LayerType
 		newNetworkLayer       gopacket.NetworkLayer
+		upIP                  net.IP
 		newLinkLayerType      gopacket.LayerType
 		newLinkLayer          gopacket.Layer
 	)
@@ -343,6 +345,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		upPort, err = p.distPort(encappedIndicator.TransportLayerType)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle listen: %w", err))
+			return
 		}
 		p.portMap[q] = upPort
 	}
@@ -382,6 +385,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		newIPv4Layer := newNetworkLayer.(*layers.IPv4)
 
 		newIPv4Layer.SrcIP = p.UpDev.IPv4Addr().IP
+		upIP = newIPv4Layer.SrcIP
 	case layers.LayerTypeIPv6:
 		ipv6Layer := encappedIndicator.NetworkLayer.(*layers.IPv6)
 		temp := *ipv6Layer
@@ -390,6 +394,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		newIPv6Layer := newNetworkLayer.(*layers.IPv6)
 
 		newIPv6Layer.SrcIP = p.UpDev.IPv6Addr().IP
+		upIP = newIPv6Layer.SrcIP
 	default:
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
@@ -458,24 +463,27 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	err = p.upHandle.WritePacketData(data)
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
+		return
 	}
 
 	// Record the source and the source device of the packet
-	t := triple{
-		IP:       p.UpDev.IPv4Addr().IP.String(),
-		Port:     upPort,
+	guide := natGuide{
+		Src:      IPPort{
+			IP:   upIP,
+			Port: upPort,
+		}.String(),
 		Protocol: encappedIndicator.TransportLayerType,
 	}
-	natIndicator := natIndicator{
+	natIndicator := portNATIndicator{
 		SrcIP:           indicator.SrcIP().String(),
 		SrcPort:         indicator.SrcPort(),
 		EncappedSrcIP:   encappedIndicator.SrcIP().String(),
 		EncappedSrcPort: encappedIndicator.SrcPort(),
-		Dev:             dev,
-		Handle:          handle,
+		DevMember:       dev,
+		HandleMember:    handle,
 	}
 	p.natLock.Lock()
-	p.nat[t] = &natIndicator
+	p.nat[guide] = &natIndicator
 	p.natLock.Unlock()
 
 	// Keep port alive
@@ -517,13 +525,12 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// NAT
-	t := triple{
-		IP:       indicator.DstIP().String(),
-		Port:     indicator.DstPort(),
+	guide := natGuide{
+		Src:      indicator.Destination(),
 		Protocol: indicator.TransportLayerType,
 	}
 	p.natLock.RLock()
-	natIndicator, ok := p.nat[t]
+	natIndicator, ok := p.nat[guide]
 	p.natLock.RUnlock()
 	if !ok {
 		return
@@ -550,7 +557,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 
 		newTCPLayer := encappedTransportLayer.(*layers.TCP)
 
-		newTCPLayer.DstPort = layers.TCPPort(natIndicator.EncappedSrcPort)
+		newTCPLayer.DstPort = layers.TCPPort(natIndicator.(*portNATIndicator).EncappedSrcPort)
 	case layers.LayerTypeUDP:
 		udpLayer := indicator.TransportLayer.(*layers.UDP)
 		temp := *udpLayer
@@ -558,7 +565,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 
 		newUDPLayer := encappedTransportLayer.(*layers.UDP)
 
-		newUDPLayer.DstPort = layers.UDPPort(natIndicator.EncappedSrcPort)
+		newUDPLayer.DstPort = layers.UDPPort(natIndicator.(*portNATIndicator).EncappedSrcPort)
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create encapped transport layer: %w", fmt.Errorf("type %s not support", encappedTransportLayerType))))
 		return
@@ -574,7 +581,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 
 		newIPv4Layer := encappedNetworkLayer.(*layers.IPv4)
 
-		newIPv4Layer.DstIP = net.ParseIP(natIndicator.EncappedSrcIP)
+		newIPv4Layer.DstIP = net.ParseIP(natIndicator.(*portNATIndicator).EncappedSrcIP)
 	case layers.LayerTypeIPv6:
 		ipv6Layer := indicator.NetworkLayer.(*layers.IPv6)
 		temp := *ipv6Layer
@@ -582,7 +589,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 
 		newIPv6Layer := encappedNetworkLayer.(*layers.IPv6)
 
-		newIPv6Layer.DstIP = net.ParseIP(natIndicator.EncappedSrcIP)
+		newIPv6Layer.DstIP = net.ParseIP(natIndicator.(*portNATIndicator).EncappedSrcIP)
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create encapped network layer: %w", fmt.Errorf("type %s not support", encappedNetworkLayerType))))
 		return
@@ -621,10 +628,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Create new transport layer
-	addr := IPPort{IP: net.ParseIP(natIndicator.SrcIP), Port: natIndicator.SrcPort}.String()
+	addr := IPPort{IP: net.ParseIP(natIndicator.(*portNATIndicator).SrcIP), Port: natIndicator.(*portNATIndicator).SrcPort}.String()
 	p.seqsLock.RLock()
 	p.acksLock.RLock()
-	newTransportLayer = createTransportLayerTCP(p.ListenPort, natIndicator.SrcPort, p.seqs[addr], p.acks[addr])
+	newTransportLayer = createTransportLayerTCP(p.ListenPort, natIndicator.(*portNATIndicator).SrcPort, p.seqs[addr], p.acks[addr])
 	p.seqsLock.RUnlock()
 	p.acksLock.RUnlock()
 
@@ -645,9 +652,9 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, net.ParseIP(natIndicator.SrcIP), p.id, indicator.IPv4Layer().TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, net.ParseIP(natIndicator.(*portNATIndicator).SrcIP), p.id, indicator.IPv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, net.ParseIP(natIndicator.SrcIP), newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, net.ParseIP(natIndicator.(*portNATIndicator).SrcIP), newTransportLayer)
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
@@ -658,7 +665,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Decide Loopback or Ethernet
-	if natIndicator.Dev.IsLoop {
+	if natIndicator.Dev().IsLoop {
 		newLinkLayerType = layers.LayerTypeLoopback
 	} else {
 		newLinkLayerType = layers.LayerTypeEthernet
@@ -669,7 +676,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = createLinkLayerLoopback()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(natIndicator.Dev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
+		newLinkLayer, err = createLinkLayerEthernet(natIndicator.Dev().HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
 		return
@@ -697,7 +704,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Write packet data
-	err = natIndicator.Handle.WritePacketData(data)
+	err = natIndicator.(*portNATIndicator).Handle().WritePacketData(data)
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("write: %w", err)))
 		return
@@ -714,7 +721,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",
-		indicator.TransportLayerType, IPPort{IP: net.ParseIP(natIndicator.EncappedSrcIP), Port: natIndicator.EncappedSrcPort}, indicator.Source(), len(data))
+		indicator.TransportLayerType, IPPort{IP: net.ParseIP(natIndicator.(*portNATIndicator).EncappedSrcIP), Port: natIndicator.(*portNATIndicator).EncappedSrcPort}, indicator.Source(), len(data))
 }
 
 func (p *Server) distPort(t gopacket.LayerType) (uint16, error) {
