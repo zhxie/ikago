@@ -500,11 +500,11 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 // handleUpstream handles TCP packets from the server
 func (p *Client) handleUpstream(packet gopacket.Packet) {
 	var (
-		encappedIndicator *packetIndicator
-		newLinkLayer      gopacket.Layer
-		newLinkLayerType  gopacket.LayerType
-		dev               *Device
-		handle            *pcap.Handle
+		encIndicator     *packetIndicator
+		newLinkLayer     gopacket.Layer
+		newLinkLayerType gopacket.LayerType
+		dev              *Device
+		handle           *pcap.Handle
 	)
 
 	// Parse packet
@@ -527,7 +527,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	// Parse encapped packet
-	encappedIndicator, err = parseEncappedPacket(contents)
+	encIndicator, err = parseEncPacket(contents)
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle upstream: %w", err))
 		return
@@ -535,10 +535,10 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Check map
 	p.devMapLock.RLock()
-	ps, ok := p.devMap[encappedIndicator.natDestination()]
+	ps, ok := p.devMap[encIndicator.natDestination()]
 	p.devMapLock.RUnlock()
 	if !ok {
-		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", encappedIndicator.natDestination())))
+		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", encIndicator.natDestination())))
 		dev = p.UpDev
 		handle = p.upHandle
 	} else {
@@ -558,7 +558,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = createLinkLayerLoopback()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(dev.HardwareAddr, p.GatewayDev.HardwareAddr, encappedIndicator.networkLayer)
+		newLinkLayer, err = createLinkLayerEthernet(dev.HardwareAddr, p.GatewayDev.HardwareAddr, encIndicator.networkLayer)
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
 		return
@@ -570,9 +570,9 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Serialize layers
 	data, err := serializeRaw(newLinkLayer.(gopacket.SerializableLayer),
-		encappedIndicator.networkLayer.(gopacket.SerializableLayer),
-		encappedIndicator.transportLayer.(gopacket.SerializableLayer),
-		gopacket.Payload(encappedIndicator.payload()))
+		encIndicator.networkLayer.(gopacket.SerializableLayer),
+		encIndicator.transportLayer.(gopacket.SerializableLayer),
+		gopacket.Payload(encIndicator.payload()))
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle upstream: %w", err))
 		return
@@ -586,7 +586,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-		encappedIndicator.transportLayerType, encappedIndicator.destination(), encappedIndicator.source(), len(data))
+		encIndicator.transportLayerType, encIndicator.destination(), encIndicator.source(), len(data))
 }
 
 func (p *Client) bypass(packet gopacket.Packet) error {

@@ -18,24 +18,24 @@ type devPacket struct {
 
 // quadruple describes the source and destination's IP, and Id and protocol of a packet for NAT Id distribution
 type quadruple struct {
-	srcIP    string
-	dstIP    string
-	id       uint16
-	protocol gopacket.LayerType
+	srcIP string
+	dstIP string
+	id    uint16
+	proto gopacket.LayerType
 }
 
 // quintuple describes the source and destination's IP and ports, and protocol of a packet for NAT port distribution
 type quintuple struct {
-	srcIP    string
-	srcPort  uint16
-	dstIP    string
-	dstPort  uint16
-	protocol gopacket.LayerType
+	srcIP   string
+	srcPort uint16
+	dstIP   string
+	dstPort uint16
+	proto   gopacket.LayerType
 }
 
 type natGuide struct {
-	src      string
-	protocol gopacket.LayerType
+	src   string
+	proto gopacket.LayerType
 }
 
 type natIndicator interface {
@@ -57,12 +57,12 @@ func (indicator *devNATIndicator) handle() *pcap.Handle {
 }
 
 type portNATIndicator struct {
-	srcIP           string
-	srcPort         uint16
-	encappedSrcIP   string
-	encappedSrcPort uint16
-	mDev            *Device
-	mHandle         *pcap.Handle
+	srcIP      string
+	srcPort    uint16
+	encSrcIP   string
+	encSrcPort uint16
+	mDev       *Device
+	mHandle    *pcap.Handle
 }
 
 func (indicator *portNATIndicator) dev() *Device {
@@ -111,7 +111,7 @@ type packetIndicator struct {
 	transportLayer     gopacket.Layer
 	transportLayerType gopacket.LayerType
 	icmpv4Indicator    *icmpv4Indicator
-	appliecationLayer  gopacket.ApplicationLayer
+	applicationLayer   gopacket.ApplicationLayer
 }
 
 func (indicator *packetIndicator) ipv4Layer() *layers.IPv4 {
@@ -273,7 +273,7 @@ func (indicator *packetIndicator) destination() string {
 	}
 }
 
-func (indicator *packetIndicator) natProtocol() gopacket.LayerType {
+func (indicator *packetIndicator) natProto() gopacket.LayerType {
 	t := indicator.transportLayerType
 	switch t {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
@@ -282,18 +282,18 @@ func (indicator *packetIndicator) natProtocol() gopacket.LayerType {
 		if indicator.icmpv4Indicator.isQuery() {
 			return t
 		} else {
-			return indicator.icmpv4Indicator.encappedTransportLayerType
+			return indicator.icmpv4Indicator.encTransportLayerType
 		}
 	default:
-		panic(fmt.Errorf("protocol: %w", fmt.Errorf("type %s not support", t)))
+		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", t)))
 	}
 }
 
 func (indicator *packetIndicator) payload() []byte {
-	if indicator.appliecationLayer == nil {
+	if indicator.applicationLayer == nil {
 		return nil
 	}
-	return indicator.appliecationLayer.LayerContents()
+	return indicator.applicationLayer.LayerContents()
 }
 
 func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
@@ -351,19 +351,19 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		transportLayer:     transportLayer,
 		transportLayerType: transportLayerType,
 		icmpv4Indicator:    icmpv4Indicator,
-		appliecationLayer:  applicationLayer,
+		applicationLayer:   applicationLayer,
 	}, nil
 }
 
-func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
+func parseEncPacket(contents []byte) (*packetIndicator, error) {
 	// Guess network layer type
 	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
 	networkLayer := packet.NetworkLayer()
 	if networkLayer == nil {
-		return nil, fmt.Errorf("parse encapped: %w", errors.New("missing network layer"))
+		return nil, fmt.Errorf("parse enc: %w", errors.New("missing network layer"))
 	}
 	if networkLayer.LayerType() != layers.LayerTypeIPv4 {
-		return nil, fmt.Errorf("parse encapped: %w", errors.New("network layer type not support"))
+		return nil, fmt.Errorf("parse enc: %w", errors.New("network layer type not support"))
 	}
 	ipVersion := networkLayer.(*layers.IPv4).Version
 	switch ipVersion {
@@ -371,22 +371,22 @@ func parseEncappedPacket(contents []byte) (*packetIndicator, error) {
 		break
 	case 6:
 		// Not IPv4, but IPv6
-		encappedPacket := gopacket.NewPacket(contents, layers.LayerTypeIPv6, gopacket.Default)
-		networkLayer = encappedPacket.NetworkLayer()
+		encPacket := gopacket.NewPacket(contents, layers.LayerTypeIPv6, gopacket.Default)
+		networkLayer = encPacket.NetworkLayer()
 		if networkLayer == nil {
-			return nil, fmt.Errorf("parse encapped: %w", errors.New("missing network layer"))
+			return nil, fmt.Errorf("parse enc: %w", errors.New("missing network layer"))
 		}
 		if networkLayer.LayerType() != layers.LayerTypeIPv6 {
-			return nil, fmt.Errorf("parse encapped: %w", errors.New("network layer type not support"))
+			return nil, fmt.Errorf("parse enc: %w", errors.New("network layer type not support"))
 		}
 	default:
-		return nil, fmt.Errorf("parse encapped: %w", fmt.Errorf("ip version %d not support", ipVersion))
+		return nil, fmt.Errorf("parse enc: %w", fmt.Errorf("ip version %d not support", ipVersion))
 	}
 
 	// Parse packet
 	indicator, err := parsePacket(packet)
 	if err != nil {
-		return nil, fmt.Errorf("parse encapped: %w", err)
+		return nil, fmt.Errorf("parse enc: %w", err)
 	}
 	return indicator, nil
 }
