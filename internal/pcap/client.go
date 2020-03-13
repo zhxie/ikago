@@ -31,13 +31,13 @@ type Client struct {
 	ack             uint32
 	id              uint16
 	devMapLock      sync.RWMutex
-	devMap          map[string]natIndicator
+	devMap          map[string]*devIndicator
 }
 
 // Open implements a method opens the pcap
 func (p *Client) Open() error {
 	p.cListenPackets = make(chan devPacket, 1000)
-	p.devMap = make(map[string]natIndicator)
+	p.devMap = make(map[string]*devIndicator)
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
@@ -482,7 +482,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 	// Record the source device of the packet
 	p.devMapLock.Lock()
-	p.devMap[indicator.natSource()] = &devNATIndicator{mDev: dev, mHandle: handle}
+	p.devMap[indicator.natSource()] = &devIndicator{dev: dev, handle: handle}
 	p.devMapLock.Unlock()
 
 	// TCP Seq
@@ -535,15 +535,15 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Check map
 	p.devMapLock.RLock()
-	ps, ok := p.devMap[encIndicator.natDestination()]
+	devIndicator, ok := p.devMap[encIndicator.natDestination()]
 	p.devMapLock.RUnlock()
 	if !ok {
 		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", encIndicator.natDestination())))
 		dev = p.UpDev
 		handle = p.upHandle
 	} else {
-		dev = ps.dev()
-		handle = ps.handle()
+		dev = devIndicator.dev
+		handle = devIndicator.handle
 	}
 
 	// Decide Loopback or Ethernet

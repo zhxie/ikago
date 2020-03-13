@@ -16,21 +16,17 @@ type devPacket struct {
 	handle *pcap.Handle
 }
 
-// quadruple describes the source and destination's IP, and Id and protocol of a packet for NAT Id distribution
-type quadruple struct {
-	srcIP string
-	dstIP string
-	id    uint16
-	proto gopacket.LayerType
+type quintuple struct {
+	srcIP    string
+	srcValue uint16
+	dstIP    string
+	dstValue uint16
+	proto    gopacket.LayerType
 }
 
-// quintuple describes the source and destination's IP and ports, and protocol of a packet for NAT port distribution
-type quintuple struct {
-	srcIP   string
-	srcPort uint16
-	dstIP   string
-	dstPort uint16
-	proto   gopacket.LayerType
+type devIndicator struct {
+	dev    *Device
+	handle *pcap.Handle
 }
 
 type natGuide struct {
@@ -41,19 +37,7 @@ type natGuide struct {
 type natIndicator interface {
 	dev() *Device
 	handle() *pcap.Handle
-}
-
-type devNATIndicator struct {
-	mDev    *Device
-	mHandle *pcap.Handle
-}
-
-func (indicator *devNATIndicator) dev() *Device {
-	return indicator.mDev
-}
-
-func (indicator *devNATIndicator) handle() *pcap.Handle {
-	return indicator.mHandle
+	encSource() string
 }
 
 type portNATIndicator struct {
@@ -73,36 +57,35 @@ func (indicator *portNATIndicator) handle() *pcap.Handle {
 	return indicator.mHandle
 }
 
-func sendTCPPacket(addr string, data []byte) error {
-	// Create connection
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("send tcp packet: %w", err)
-	}
-	defer conn.Close()
-
-	// Write data
-	_, err = conn.Write(data)
-	if err != nil {
-		return fmt.Errorf("send tcp packet: %w", err)
-	}
-	return nil
+func (indicator *portNATIndicator) encSource() string {
+	return IPPort{
+		IP:   net.ParseIP(indicator.encSrcIP),
+		Port: indicator.encSrcPort,
+	}.String()
 }
 
-func sendUDPPacket(addr string, data []byte) error {
-	// Create connection
-	conn, err := net.Dial("udp", addr)
-	if err != nil {
-		return fmt.Errorf("send udp packet: %w", err)
-	}
-	defer conn.Close()
+type idNATIndicator struct {
+	srcIP    string
+	srcPort  uint16
+	encSrcIP string
+	encId    uint16
+	mDev     *Device
+	mHandle  *pcap.Handle
+}
 
-	// Write data
-	_, err = conn.Write(data)
-	if err != nil {
-		return fmt.Errorf("send udp packet: %w", err)
-	}
-	return nil
+func (indicator *idNATIndicator) dev() *Device {
+	return indicator.mDev
+}
+
+func (indicator *idNATIndicator) handle() *pcap.Handle {
+	return indicator.mHandle
+}
+
+func (indicator *idNATIndicator) encSource() string {
+	return IPId{
+		IP: net.ParseIP(indicator.encSrcIP),
+		Id: indicator.encId,
+	}.String()
 }
 
 type packetIndicator struct {
@@ -236,6 +219,22 @@ func (indicator *packetIndicator) natDestination() string {
 	}
 }
 
+func (indicator *packetIndicator) natProto() gopacket.LayerType {
+	t := indicator.transportLayerType
+	switch t {
+	case layers.LayerTypeTCP, layers.LayerTypeUDP:
+		return t
+	case layers.LayerTypeICMPv4:
+		if indicator.icmpv4Indicator.isQuery() {
+			return t
+		} else {
+			return indicator.icmpv4Indicator.encTransportLayerType
+		}
+	default:
+		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", t)))
+	}
+}
+
 func (indicator *packetIndicator) source() string {
 	t := indicator.transportLayerType
 	switch t {
@@ -267,25 +266,9 @@ func (indicator *packetIndicator) destination() string {
 			Port: indicator.dstPort(),
 		}.String()
 	case layers.LayerTypeICMPv4:
-		return formatIP(indicator.srcIP())
+		return formatIP(indicator.dstIP())
 	default:
 		panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
-	}
-}
-
-func (indicator *packetIndicator) natProto() gopacket.LayerType {
-	t := indicator.transportLayerType
-	switch t {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return t
-	case layers.LayerTypeICMPv4:
-		if indicator.icmpv4Indicator.isQuery() {
-			return t
-		} else {
-			return indicator.icmpv4Indicator.encTransportLayerType
-		}
-	default:
-		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", t)))
 	}
 }
 
@@ -412,4 +395,36 @@ func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
 	}
 
 	return &packet, nil
+}
+
+func sendTCPPacket(addr string, data []byte) error {
+	// Create connection
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("send tcp packet: %w", err)
+	}
+	defer conn.Close()
+
+	// Write data
+	_, err = conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("send tcp packet: %w", err)
+	}
+	return nil
+}
+
+func sendUDPPacket(addr string, data []byte) error {
+	// Create connection
+	conn, err := net.Dial("udp", addr)
+	if err != nil {
+		return fmt.Errorf("send udp packet: %w", err)
+	}
+	defer conn.Close()
+
+	// Write data
+	_, err = conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("send udp packet: %w", err)
+	}
+	return nil
 }

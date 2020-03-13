@@ -33,12 +33,14 @@ type Server struct {
 	tcpPortPool    []time.Time
 	nextUDPPort    uint16
 	udpPortPool    []time.Time
-	portMap        map[quintuple]uint16
+	nextICMPv4Id   uint16
+	icmpv4IdPool   []time.Time
+	valueMap       map[quintuple]uint16
 	natLock        sync.RWMutex
 	nat            map[natGuide]natIndicator
 }
 
-const portKeepAlive float64 = 30 // seconds
+const keepAlive float64 = 30 // seconds
 
 // Open implements a method opens the pcap
 func (p *Server) Open() error {
@@ -48,7 +50,8 @@ func (p *Server) Open() error {
 	p.id = 0
 	p.tcpPortPool = make([]time.Time, 16384)
 	p.udpPortPool = make([]time.Time, 16384)
-	p.portMap = make(map[quintuple]uint16)
+	p.icmpv4IdPool = make([]time.Time, 65536)
+	p.valueMap = make(map[quintuple]uint16)
 	p.nat = make(map[natGuide]natIndicator)
 
 	// Verify
@@ -272,14 +275,16 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	var (
 		indicator             *packetIndicator
 		encIndicator          *packetIndicator
-		upPort                uint16
+		upValue               uint16
 		newTransportLayerType gopacket.LayerType
-		newTransportLayer     gopacket.TransportLayer
+		newTransportLayer     gopacket.Layer
 		newNetworkLayerType   gopacket.LayerType
 		newNetworkLayer       gopacket.NetworkLayer
 		upIP                  net.IP
 		newLinkLayerType      gopacket.LayerType
 		newLinkLayer          gopacket.Layer
+		guide                 natGuide
+		natIndicator          natIndicator
 	)
 
 	// Parse packet
@@ -332,22 +337,43 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Distribute port by source and client address and protocol
-	q := quintuple{
-		srcIP:   encIndicator.srcIP().String(),
-		srcPort: encIndicator.srcPort(),
-		dstIP:   indicator.srcIP().String(),
-		dstPort: indicator.srcPort(),
-		proto:   encIndicator.transportLayerType,
+	// Distribute port/Id by source and client address and protocol
+	var q quintuple
+	encTransportLayerType := encIndicator.transportLayerType
+	switch encTransportLayerType {
+	case layers.LayerTypeTCP, layers.LayerTypeUDP:
+		q = quintuple{
+			srcIP:    encIndicator.srcIP().String(),
+			srcValue: encIndicator.srcPort(),
+			dstIP:    indicator.srcIP().String(),
+			dstValue: indicator.srcPort(),
+			proto:    encIndicator.transportLayerType,
+		}
+	case layers.LayerTypeICMPv4:
+		if encIndicator.icmpv4Indicator.isQuery() {
+			q = quintuple{
+				srcIP:    encIndicator.srcIP().String(),
+				srcValue: encIndicator.icmpv4Indicator.id(),
+				dstIP:    indicator.srcIP().String(),
+				dstValue: indicator.srcPort(),
+				proto:    encIndicator.transportLayerType,
+			}
+		} else {
+			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", errors.New("icmpv4 error not support"))))
+			return
+		}
+	default:
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("transport layer type %s not support", encIndicator.transportLayerType))))
+		return
 	}
-	upPort, ok := p.portMap[q]
+	upValue, ok := p.valueMap[q]
 	if !ok {
-		upPort, err = p.distPort(encIndicator.transportLayerType)
+		upValue, err = p.dist(encIndicator.transportLayerType)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle listen: %w", err))
 			return
 		}
-		p.portMap[q] = upPort
+		p.valueMap[q] = upValue
 	}
 
 	// Create new transport layer
@@ -360,7 +386,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 		newTCPLayer := newTransportLayer.(*layers.TCP)
 
-		newTCPLayer.SrcPort = layers.TCPPort(upPort)
+		newTCPLayer.SrcPort = layers.TCPPort(upValue)
 	case layers.LayerTypeUDP:
 		udpLayer := encIndicator.udpLayer()
 		temp := *udpLayer
@@ -368,7 +394,19 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 		newUDPLayer := newTransportLayer.(*layers.UDP)
 
-		newUDPLayer.SrcPort = layers.UDPPort(upPort)
+		newUDPLayer.SrcPort = layers.UDPPort(upValue)
+	case layers.LayerTypeICMPv4:
+		if encIndicator.icmpv4Indicator.isQuery() {
+			icmpv4Layer := encIndicator.icmpv4Indicator.layer
+			temp := *icmpv4Layer
+			newTransportLayer = &temp
+
+			newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
+
+			newICMPv4Layer.Id = upValue
+		} else {
+			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", errors.New("icmpv4 error not support"))))
+		}
 	default:
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", fmt.Errorf("type %s not support", newTransportLayerType))))
 		return
@@ -399,10 +437,6 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
 		return
 	}
-	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
-		return
-	}
 
 	// Set network layer for transport layer
 	switch newTransportLayerType {
@@ -422,6 +456,8 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", err)))
 			return
 		}
+	case layers.LayerTypeICMPv4:
+		break
 	default:
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("transport layer type %s not support", newTransportLayerType))))
 		return
@@ -467,33 +503,67 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Record the source and the source device of the packet
-	guide := natGuide{
-		src:      IPPort{
-			IP:   upIP,
-			Port: upPort,
-		}.String(),
-		proto: encIndicator.transportLayerType,
-	}
-	natIndicator := portNATIndicator{
-		srcIP:      indicator.srcIP().String(),
-		srcPort:    indicator.srcPort(),
-		encSrcIP:   encIndicator.srcIP().String(),
-		encSrcPort: encIndicator.srcPort(),
-		mDev:       dev,
-		mHandle:    handle,
+	switch newTransportLayerType {
+	case layers.LayerTypeTCP, layers.LayerTypeUDP:
+		guide = natGuide{
+			src: IPPort{
+				IP:   upIP,
+				Port: upValue,
+			}.String(),
+			proto: newTransportLayerType,
+		}
+		natIndicator = &portNATIndicator{
+			srcIP:      indicator.srcIP().String(),
+			srcPort:    indicator.srcPort(),
+			encSrcIP:   encIndicator.srcIP().String(),
+			encSrcPort: encIndicator.srcPort(),
+			mDev:       dev,
+			mHandle:    handle,
+		}
+	case layers.LayerTypeICMPv4:
+		if encIndicator.icmpv4Indicator.isQuery() {
+			guide = natGuide{
+				src: IPId{
+					IP: upIP,
+					Id: upValue,
+				}.String(),
+				proto: newTransportLayerType,
+			}
+			natIndicator = &idNATIndicator{
+				srcIP:    indicator.srcIP().String(),
+				srcPort:  indicator.srcPort(),
+				encSrcIP: encIndicator.srcIP().String(),
+				encId:    encIndicator.srcPort(),
+				mDev:     dev,
+				mHandle:  handle,
+			}
+		} else {
+			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", errors.New("icmpv4 error not support"))))
+			return
+		}
+	default:
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("transport layer type %s not support", newTransportLayerType))))
+		return
 	}
 	p.natLock.Lock()
-	p.nat[guide] = &natIndicator
+	p.nat[guide] = natIndicator
 	p.natLock.Unlock()
 
-	// Keep port alive
+	// Keep alive
 	switch encIndicator.transportLayerType {
 	case layers.LayerTypeTCP:
-		p.tcpPortPool[convertFromPort(upPort)] = time.Now()
+		p.tcpPortPool[convertFromPort(upValue)] = time.Now()
 	case layers.LayerTypeUDP:
-		p.udpPortPool[convertFromPort(upPort)] = time.Now()
+		p.udpPortPool[convertFromPort(upValue)] = time.Now()
+	case layers.LayerTypeICMPv4:
+		if encIndicator.icmpv4Indicator.isQuery() {
+			p.icmpv4IdPool[upValue] = time.Now()
+		} else {
+			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", errors.New("icmpv4 error not support"))))
+			return
+		}
 	default:
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", encIndicator.transportLayerType))))
+		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("transport layer type %s not support", encIndicator.transportLayerType))))
 		return
 	}
 
@@ -508,7 +578,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		newTransportLayer     *layers.TCP
 		upDevIP               net.IP
 		encTransportLayerType gopacket.LayerType
-		encTransportLayer     gopacket.TransportLayer
+		encTransportLayer     gopacket.Layer
 		encNetworkLayerType   gopacket.LayerType
 		encNetworkLayer       gopacket.NetworkLayer
 		newNetworkLayerType   gopacket.LayerType
@@ -526,7 +596,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 
 	// NAT
 	guide := natGuide{
-		src:   indicator.destination(),
+		src:   indicator.natDestination(),
 		proto: indicator.transportLayerType,
 	}
 	p.natLock.RLock()
@@ -536,12 +606,19 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		return
 	}
 
-	// Keep port alive
+	// Keep alive
 	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP:
 		p.tcpPortPool[convertFromPort(indicator.dstPort())] = time.Now()
 	case layers.LayerTypeUDP:
 		p.udpPortPool[convertFromPort(indicator.dstPort())] = time.Now()
+	case layers.LayerTypeICMPv4:
+		if indicator.icmpv4Indicator.isQuery() {
+			p.icmpv4IdPool[indicator.icmpv4Indicator.id()] = time.Now()
+		} else {
+			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("nat: %w", errors.New("icmpv4 error not support"))))
+			return
+		}
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("nat: %w", fmt.Errorf("type %s not support", indicator.transportLayerType))))
 		return
@@ -566,6 +643,19 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		newUDPLayer := encTransportLayer.(*layers.UDP)
 
 		newUDPLayer.DstPort = layers.UDPPort(natIndicator.(*portNATIndicator).encSrcPort)
+	case layers.LayerTypeICMPv4:
+		if indicator.icmpv4Indicator.isQuery() {
+			icmpv4Layer := indicator.icmpv4Indicator.layer
+			temp := *icmpv4Layer
+			encTransportLayer = &temp
+
+			newICMPv4Layer := encTransportLayer.(*layers.ICMPv4)
+
+			newICMPv4Layer.Id = natIndicator.(*idNATIndicator).encId
+		} else {
+			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", errors.New("icmpv4 error not support"))))
+			return
+		}
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", fmt.Errorf("type %s not support", encTransportLayerType))))
 		return
@@ -613,6 +703,8 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc network layer: %w", err)))
 			return
 		}
+	case layers.LayerTypeICMPv4:
+		break
 	default:
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc network layer: %w", fmt.Errorf("transport layer type %s not support", encTransportLayerType))))
 		return
@@ -724,7 +816,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		indicator.transportLayerType, IPPort{IP: net.ParseIP(natIndicator.(*portNATIndicator).encSrcIP), Port: natIndicator.(*portNATIndicator).encSrcPort}, indicator.source(), len(data))
 }
 
-func (p *Server) distPort(t gopacket.LayerType) (uint16, error) {
+func (p *Server) dist(t gopacket.LayerType) (uint16, error) {
 	now := time.Now()
 
 	switch t {
@@ -737,7 +829,7 @@ func (p *Server) distPort(t gopacket.LayerType) (uint16, error) {
 
 			// Check if the port is alive
 			last := p.tcpPortPool[s]
-			if now.Sub(last).Seconds() > portKeepAlive {
+			if now.Sub(last).Seconds() > keepAlive {
 				return 49152 + s, nil
 			}
 		}
@@ -750,8 +842,21 @@ func (p *Server) distPort(t gopacket.LayerType) (uint16, error) {
 
 			// Check if the port is alive
 			last := p.udpPortPool[s]
-			if now.Sub(last).Seconds() > portKeepAlive {
+			if now.Sub(last).Seconds() > keepAlive {
 				return 49152 + s, nil
+			}
+		}
+	case layers.LayerTypeICMPv4:
+		for i := 0; i < 65536; i++ {
+			s := p.nextICMPv4Id
+
+			// Point to next Id
+			p.nextICMPv4Id++
+
+			// Check if the Id is alive
+			last := p.icmpv4IdPool[s]
+			if now.Sub(last).Seconds() > keepAlive {
+				return s, nil
 			}
 		}
 	default:
