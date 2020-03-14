@@ -19,10 +19,32 @@ const (
 	IPv6Only
 )
 
+type IPEndpoint interface {
+	ip() net.IP
+	String() string
+}
+
+// IP describes a network endpoint with an IP only
+type IP struct {
+	IP net.IP
+}
+
+func (i *IP) ip() net.IP {
+	return i.IP
+}
+
+func (i IP) String() string {
+	return formatIP(i.IP)
+}
+
 // IPPort describes a network endpoint with an IP and a port
 type IPPort struct {
 	IP   net.IP
 	Port uint16
+}
+
+func (i *IPPort) ip() net.IP {
+	return i.IP
 }
 
 func (i IPPort) String() string {
@@ -73,6 +95,10 @@ func ParseIPPort(s string) (*IPPort, error) {
 type IPId struct {
 	IP net.IP
 	Id uint16
+}
+
+func (i *IPId) ip() net.IP {
+	return i.IP
 }
 
 func (i IPId) String() string {

@@ -303,9 +303,8 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 		return fmt.Errorf("handshake: %w", err)
 	}
 
-	transportLayerType := indicator.transportLayerType
-	if transportLayerType != layers.LayerTypeTCP {
-		return fmt.Errorf("handshake: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
+	if indicator.transportLayerType != layers.LayerTypeTCP {
+		return fmt.Errorf("handshake: %w", fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 
 	// TCP Ack
@@ -482,7 +481,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 	// Record the source device of the packet
 	p.devMapLock.Lock()
-	p.devMap[indicator.natSource()] = &devIndicator{dev: dev, handle: handle}
+	p.devMap[indicator.natSrc().String()] = &devIndicator{dev: dev, handle: handle}
 	p.devMapLock.Unlock()
 
 	// TCP Seq
@@ -494,7 +493,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
-		indicator.transportLayerType, indicator.source(), indicator.destination(), packet.Metadata().Length)
+		indicator.transportLayerType, indicator.src(), indicator.dst(), packet.Metadata().Length)
 }
 
 // handleUpstream handles TCP packets from the server
@@ -535,10 +534,10 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Check map
 	p.devMapLock.RLock()
-	devIndicator, ok := p.devMap[encIndicator.natDestination()]
+	devIndicator, ok := p.devMap[encIndicator.natDst().String()]
 	p.devMapLock.RUnlock()
 	if !ok {
-		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", encIndicator.natDestination())))
+		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", encIndicator.natDst())))
 		dev = p.UpDev
 		handle = p.upHandle
 	} else {
@@ -586,7 +585,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-		encIndicator.transportLayerType, encIndicator.destination(), encIndicator.source(), len(data))
+		encIndicator.transportLayerType, encIndicator.dst(), encIndicator.src(), len(data))
 }
 
 func (p *Client) bypass(packet gopacket.Packet) error {

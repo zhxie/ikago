@@ -17,11 +17,9 @@ type devPacket struct {
 }
 
 type quintuple struct {
-	srcIP    string
-	srcValue uint16
-	dstIP    string
-	dstValue uint16
-	proto    gopacket.LayerType
+	src   string
+	dst   string
+	proto gopacket.LayerType
 }
 
 type devIndicator struct {
@@ -34,58 +32,11 @@ type natGuide struct {
 	proto gopacket.LayerType
 }
 
-type natIndicator interface {
-	dev() *Device
-	handle() *pcap.Handle
-	encSource() string
-}
-
-type portNATIndicator struct {
-	srcIP      string
-	srcPort    uint16
-	encSrcIP   string
-	encSrcPort uint16
-	mDev       *Device
-	mHandle    *pcap.Handle
-}
-
-func (indicator *portNATIndicator) dev() *Device {
-	return indicator.mDev
-}
-
-func (indicator *portNATIndicator) handle() *pcap.Handle {
-	return indicator.mHandle
-}
-
-func (indicator *portNATIndicator) encSource() string {
-	return IPPort{
-		IP:   net.ParseIP(indicator.encSrcIP),
-		Port: indicator.encSrcPort,
-	}.String()
-}
-
-type idNATIndicator struct {
-	srcIP    string
-	srcPort  uint16
-	encSrcIP string
-	encId    uint16
-	mDev     *Device
-	mHandle  *pcap.Handle
-}
-
-func (indicator *idNATIndicator) dev() *Device {
-	return indicator.mDev
-}
-
-func (indicator *idNATIndicator) handle() *pcap.Handle {
-	return indicator.mHandle
-}
-
-func (indicator *idNATIndicator) encSource() string {
-	return IPId{
-		IP: net.ParseIP(indicator.encSrcIP),
-		Id: indicator.encId,
-	}.String()
+type natIndicator struct {
+	src    *IPPort
+	encSrc IPEndpoint
+	dev    *Device
+	handle *pcap.Handle
 }
 
 type packetIndicator struct {
@@ -173,102 +124,106 @@ func (indicator *packetIndicator) dstPort() uint16 {
 	}
 }
 
-func (indicator *packetIndicator) natSource() string {
-	t := indicator.transportLayerType
-	switch t {
+func (indicator *packetIndicator) natSrc() IPEndpoint {
+	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return IPPort{
+		return &IPPort{
 			IP:   indicator.srcIP(),
 			Port: indicator.srcPort(),
-		}.String()
+		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return IPId{
+			return &IPId{
 				IP: indicator.srcIP(),
 				Id: indicator.icmpv4Indicator.id(),
-			}.String()
+			}
 		} else {
-			// The ICMPv4 error includes the original packet, so flip it
-			return indicator.icmpv4Indicator.destination()
+			return indicator.icmpv4Indicator.natSrc()
 		}
 	default:
-		panic(fmt.Errorf("source: %w", fmt.Errorf("type %s not support", t)))
+		panic(fmt.Errorf("src: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
 	}
 }
 
-func (indicator *packetIndicator) natDestination() string {
-	t := indicator.transportLayerType
-	switch t {
+func (indicator *packetIndicator) natDst() IPEndpoint {
+	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return IPPort{
+		return &IPPort{
 			IP:   indicator.dstIP(),
 			Port: indicator.dstPort(),
-		}.String()
+		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return IPId{
+			return &IPId{
 				IP: indicator.dstIP(),
 				Id: indicator.icmpv4Indicator.id(),
-			}.String()
+			}
 		} else {
-			// The ICMPv4 error includes the original packet, so flip it
-			return indicator.icmpv4Indicator.source()
+			return indicator.icmpv4Indicator.natDst()
 		}
 	default:
-		panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
+		panic(fmt.Errorf("dst: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
 	}
 }
 
 func (indicator *packetIndicator) natProto() gopacket.LayerType {
-	t := indicator.transportLayerType
-	switch t {
+	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return t
+		return indicator.transportLayerType
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return t
+			return indicator.transportLayerType
 		} else {
 			return indicator.icmpv4Indicator.encTransportLayerType
 		}
 	default:
-		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", t)))
+		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
 	}
 }
 
-func (indicator *packetIndicator) source() string {
-	t := indicator.transportLayerType
-	switch t {
+func (indicator *packetIndicator) src() IPEndpoint {
+	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return IPPort{
+		return &IPPort{
 			IP:   indicator.srcIP(),
 			Port: indicator.srcPort(),
-		}.String()
+		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return IPId{
+			return &IPId{
 				IP: indicator.srcIP(),
 				Id: indicator.icmpv4Indicator.id(),
-			}.String()
+			}
 		} else {
-			return formatIP(indicator.srcIP())
+			return &IP{
+				IP: indicator.srcIP(),
+			}
 		}
 	default:
-		panic(fmt.Errorf("source: %w", fmt.Errorf("type %s not support", t)))
+		panic(fmt.Errorf("src: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
 	}
 }
 
-func (indicator *packetIndicator) destination() string {
-	t := indicator.transportLayerType
-	switch t {
+func (indicator *packetIndicator) dst() IPEndpoint {
+	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return IPPort{
+		return &IPPort{
 			IP:   indicator.dstIP(),
 			Port: indicator.dstPort(),
-		}.String()
+		}
 	case layers.LayerTypeICMPv4:
-		return formatIP(indicator.dstIP())
+		if indicator.icmpv4Indicator.isQuery() {
+			return &IPId{
+				IP: indicator.dstIP(),
+				Id: indicator.icmpv4Indicator.id(),
+			}
+		} else {
+			return &IP{
+				IP: indicator.dstIP(),
+			}
+		}
 	default:
-		panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
+		panic(fmt.Errorf("dst: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
 	}
 }
 

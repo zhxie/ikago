@@ -222,9 +222,8 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 		}
 
 		encIPv4Layer = networkLayer.(*layers.IPv4)
-		version := encIPv4Layer.Version
-		if version != 4 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("ip version %d not support", version))
+		if encIPv4Layer.Version != 4 {
+			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("ip version %d not support", encIPv4Layer.Version))
 		}
 
 		encTransportLayer = packet.Layers()[1]
@@ -239,6 +238,14 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 		encTransportLayer:     encTransportLayer,
 		encTransportLayerType: encTransportLayerType,
 	}, nil
+}
+
+func (indicator *icmpv4Indicator) newPureICMPv4Layer() *layers.ICMPv4 {
+	return &layers.ICMPv4{
+		TypeCode:  indicator.layer.TypeCode,
+		Id:        indicator.layer.Id,
+		Seq:       indicator.layer.Seq,
+	}
 }
 
 func (indicator *icmpv4Indicator) isQuery() bool {
@@ -358,54 +365,58 @@ func (indicator *icmpv4Indicator) isEncQuery() bool {
 	}
 }
 
-func (indicator *icmpv4Indicator) source() string {
+func (indicator *icmpv4Indicator) natSrc() IPEndpoint {
 	if indicator.isQuery() {
-		return fmt.Sprintf("%d", indicator.id())
+		panic(fmt.Errorf("src: %w", errors.New("icmpv4 query not support")))
 	} else {
-		t := indicator.encTransportLayerType
-		switch t {
+		// Flip source and destination
+		switch indicator.encTransportLayerType {
 		case layers.LayerTypeTCP, layers.LayerTypeUDP:
-			return IPPort{
-				IP:   indicator.encSrcIP(),
-				Port: indicator.encSrcPort(),
-			}.String()
+			return &IPPort{
+				IP:   indicator.encDstIP(),
+				Port: indicator.encDstPort(),
+			}
 		case layers.LayerTypeICMPv4:
 			if indicator.isEncQuery() {
-				return IPId{
-					IP: indicator.encSrcIP(),
+				return &IPId{
+					IP: indicator.encDstIP(),
 					Id: indicator.encId(),
-				}.String()
+				}
 			} else {
-				return formatIP(indicator.encSrcIP())
+				return &IP{
+					IP: indicator.encDstIP(),
+				}
 			}
 		default:
-			panic(fmt.Errorf("source: %w", fmt.Errorf("type %s not support", t)))
+			panic(fmt.Errorf("src: %w", fmt.Errorf("type %s not support", indicator.encTransportLayerType)))
 		}
 	}
 }
 
-func (indicator *icmpv4Indicator) destination() string {
+func (indicator *icmpv4Indicator) natDst() IPEndpoint {
 	if indicator.isQuery() {
-		return fmt.Sprintf("%d", indicator.id())
+		panic(fmt.Errorf("dst: %w", errors.New("icmpv4 query not support")))
 	} else {
-		t := indicator.encTransportLayerType
-		switch t {
+		// Flip source and destination
+		switch indicator.encTransportLayerType {
 		case layers.LayerTypeTCP, layers.LayerTypeUDP:
-			return IPPort{
-				IP:   indicator.encDstIP(),
-				Port: indicator.encDstPort(),
-			}.String()
+			return &IPPort{
+				IP:   indicator.encSrcIP(),
+				Port: indicator.encSrcPort(),
+			}
 		case layers.LayerTypeICMPv4:
 			if indicator.isEncQuery() {
-				return IPId{
-					IP: indicator.encDstIP(),
+				return &IPId{
+					IP: indicator.encSrcIP(),
 					Id: indicator.encId(),
-				}.String()
+				}
 			} else {
-				return formatIP(indicator.encDstIP())
+				return &IP{
+					IP: indicator.encSrcIP(),
+				}
 			}
 		default:
-			panic(fmt.Errorf("destination: %w", fmt.Errorf("type %s not support", t)))
+			panic(fmt.Errorf("dst: %w", fmt.Errorf("type %s not support", indicator.encTransportLayerType)))
 		}
 	}
 }
