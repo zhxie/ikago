@@ -13,7 +13,7 @@ _IkaGo is currently under development and may not suitable for production._
 
 ## Features
 
-- **FakeTCP** All TCP and UDP packets are sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
+- **FakeTCP** All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
 - **Multiple clients** One server can serve multiple clients.
 - **Cross platform** Works well with Windows and Linux, and macOS in theory.
 - **NAT support** Performs a full cone NAT.
@@ -69,7 +69,7 @@ go run ./cmd/ikago-server -p [port]
 
 ## Troubleshoot
 
-1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some Linux kernels may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure the iptables with the rule below to solve the problem:
+1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some Linux kernels may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` with the rule below to solve the problem:
    ```
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
    ```
@@ -77,5 +77,4 @@ go run ./cmd/ikago-server -p [port]
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
-- [ ] Handle ICMP packets
 - [ ] Bypass filters
