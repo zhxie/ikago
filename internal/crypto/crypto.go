@@ -15,6 +15,10 @@ const (
 	MethodAESCFB
 	// MethodAESGCM describes the encryption is in AES-GCM
 	MethodAESGCM
+	// MethodChaCha20Poly1305 describes the encryption is in ChaCha20-Poly1305
+	MethodChaCha20Poly1305
+	// MethodXChaCha20Poly1305 describes the encryption is in XChaCha20-Poly1305
+	MethodXChaCha20Poly1305
 )
 
 // Crypto describes crypto of encryption
@@ -40,6 +44,10 @@ func ParseCrypto(method, password string) (Crypto, error) {
 		c = &AESGCMCrypto{Key: DeriveKey(password, 24)}
 	case "aes-256-gcm":
 		c = &AESGCMCrypto{Key: DeriveKey(password, 32)}
+	case "chacha20-poly1305":
+		c = &ChaCha20Poly1305Crypto{Key: DeriveKey(password, 32)}
+	case "xchacha20-poly1305":
+		c = &XChaCha20Poly1305Crypto{Key: DeriveKey(password, 32)}
 	default:
 		return nil, fmt.Errorf("parse crypto: %w", fmt.Errorf("method %s not support", method))
 	}

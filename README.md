@@ -51,7 +51,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-upstream-port port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 
-`-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm` or `aes-256-gcm`. Default as `plain`.
+`-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305`, `xchacha20-poly1305`. Default as `plain`.
 
 `-password password`: (Optional) Password of the encryption, must be set only when method is not `plain`.
 
@@ -78,3 +78,4 @@ go run ./cmd/ikago-server -p [port]
 
 - [ ] Retransmission and out of order packets detection
 - [ ] Bypass filters
+- [ ] Load configuration from file

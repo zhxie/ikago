@@ -92,12 +92,13 @@ func (c *AESGCMCrypto) Encrypt(data []byte) ([]byte, error) {
 }
 
 func (c *AESGCMCrypto) Decrypt(data []byte) ([]byte, error) {
-	if len(data) < 12 {
+	size := c.aead.NonceSize()
+	if len(data) < size {
 		return nil, fmt.Errorf("decrypt: %w", fmt.Errorf("missing nonce"))
 	}
-	nonce := data[:12]
+	nonce := data[:size]
 
-	result, err := c.aead.Open(nil, nonce, data[12:], nil)
+	result, err := c.aead.Open(nil, nonce, data[size:], nil)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt: %w", err)
 	}
