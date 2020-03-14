@@ -34,7 +34,7 @@ type natGuide struct {
 
 type natIndicator struct {
 	src    *IPPort
-	encSrc IPEndpoint
+	embSrc IPEndpoint
 	dev    *Device
 	handle *pcap.Handle
 }
@@ -174,7 +174,7 @@ func (indicator *packetIndicator) natProto() gopacket.LayerType {
 		if indicator.icmpv4Indicator.isQuery() {
 			return indicator.transportLayerType
 		} else {
-			return indicator.icmpv4Indicator.encTransportLayerType
+			return indicator.icmpv4Indicator.embTransportLayerType
 		}
 	default:
 		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
@@ -293,15 +293,15 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	}, nil
 }
 
-func parseEncPacket(contents []byte) (*packetIndicator, error) {
+func parseEmbPacket(contents []byte) (*packetIndicator, error) {
 	// Guess network layer type
 	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
 	networkLayer := packet.NetworkLayer()
 	if networkLayer == nil {
-		return nil, fmt.Errorf("parse enc: %w", errors.New("missing network layer"))
+		return nil, fmt.Errorf("parse emb: %w", errors.New("missing network layer"))
 	}
 	if networkLayer.LayerType() != layers.LayerTypeIPv4 {
-		return nil, fmt.Errorf("parse enc: %w", errors.New("network layer type not support"))
+		return nil, fmt.Errorf("parse emb: %w", errors.New("network layer type not support"))
 	}
 	ipVersion := networkLayer.(*layers.IPv4).Version
 	switch ipVersion {
@@ -309,22 +309,22 @@ func parseEncPacket(contents []byte) (*packetIndicator, error) {
 		break
 	case 6:
 		// Not IPv4, but IPv6
-		encPacket := gopacket.NewPacket(contents, layers.LayerTypeIPv6, gopacket.Default)
-		networkLayer = encPacket.NetworkLayer()
+		embPacket := gopacket.NewPacket(contents, layers.LayerTypeIPv6, gopacket.Default)
+		networkLayer = embPacket.NetworkLayer()
 		if networkLayer == nil {
-			return nil, fmt.Errorf("parse enc: %w", errors.New("missing network layer"))
+			return nil, fmt.Errorf("parse emb: %w", errors.New("missing network layer"))
 		}
 		if networkLayer.LayerType() != layers.LayerTypeIPv6 {
-			return nil, fmt.Errorf("parse enc: %w", errors.New("network layer type not support"))
+			return nil, fmt.Errorf("parse emb: %w", errors.New("network layer type not support"))
 		}
 	default:
-		return nil, fmt.Errorf("parse enc: %w", fmt.Errorf("ip version %d not support", ipVersion))
+		return nil, fmt.Errorf("parse emb: %w", fmt.Errorf("ip version %d not support", ipVersion))
 	}
 
 	// Parse packet
 	indicator, err := parsePacket(packet)
 	if err != nil {
-		return nil, fmt.Errorf("parse enc: %w", err)
+		return nil, fmt.Errorf("parse emb: %w", err)
 	}
 	return indicator, nil
 }

@@ -273,7 +273,7 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.Handle) {
 	var (
 		indicator             *packetIndicator
-		encIndicator          *packetIndicator
+		embIndicator          *packetIndicator
 		upValue               uint16
 		newTransportLayerType gopacket.LayerType
 		newTransportLayer     gopacket.Layer
@@ -328,8 +328,8 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		return
 	}
 
-	// Parse encapped packet
-	encIndicator, err = parseEncPacket(contents)
+	// Parse embedded packet
+	embIndicator, err = parseEmbPacket(contents)
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle listen: %w", err))
 		return
@@ -337,18 +337,18 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 	// Distribute port/Id by source and client address and protocol
 	q := quintuple{
-		src:   encIndicator.natSrc().String(),
+		src:   embIndicator.natSrc().String(),
 		dst:   indicator.natSrc().String(),
-		proto: encIndicator.natProto(),
+		proto: embIndicator.natProto(),
 	}
 	upValue, ok := p.valueMap[q]
 	if !ok {
 		// if ICMPv4 error is not in NAT, drop it
-		if encIndicator.transportLayerType == layers.LayerTypeICMPv4 && !encIndicator.icmpv4Indicator.isQuery() {
+		if embIndicator.transportLayerType == layers.LayerTypeICMPv4 && !embIndicator.icmpv4Indicator.isQuery() {
 			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", fmt.Errorf("missing nat"))))
 			return
 		}
-		upValue, err = p.dist(encIndicator.transportLayerType)
+		upValue, err = p.dist(embIndicator.transportLayerType)
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("nat: %w", err)))
 			return
@@ -357,10 +357,10 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Create new transport layer
-	newTransportLayerType = encIndicator.transportLayerType
+	newTransportLayerType = embIndicator.transportLayerType
 	switch newTransportLayerType {
 	case layers.LayerTypeTCP:
-		tcpLayer := encIndicator.tcpLayer()
+		tcpLayer := embIndicator.tcpLayer()
 		temp := *tcpLayer
 		newTransportLayer = &temp
 
@@ -368,7 +368,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 		newTCPLayer.SrcPort = layers.TCPPort(upValue)
 	case layers.LayerTypeUDP:
-		udpLayer := encIndicator.udpLayer()
+		udpLayer := embIndicator.udpLayer()
 		temp := *udpLayer
 		newTransportLayer = &temp
 
@@ -376,63 +376,63 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 		newUDPLayer.SrcPort = layers.UDPPort(upValue)
 	case layers.LayerTypeICMPv4:
-		if encIndicator.icmpv4Indicator.isQuery() {
-			temp := *encIndicator.icmpv4Indicator.layer
+		if embIndicator.icmpv4Indicator.isQuery() {
+			temp := *embIndicator.icmpv4Indicator.layer
 			newTransportLayer = &temp
 
 			newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
 
 			newICMPv4Layer.Id = upValue
 		} else {
-			newTransportLayer = encIndicator.icmpv4Indicator.newPureICMPv4Layer()
+			newTransportLayer = embIndicator.icmpv4Indicator.newPureICMPv4Layer()
 
 			newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
 
-			temp := *encIndicator.icmpv4Indicator.encIPv4Layer
-			newEncIPv4Layer := &temp
+			temp := *embIndicator.icmpv4Indicator.embIPv4Layer
+			newEmbIPv4Layer := &temp
 
-			newEncIPv4Layer.DstIP = p.UpDev.IPv4Addr().IP
+			newEmbIPv4Layer.DstIP = p.UpDev.IPv4Addr().IP
 
-			var newEncTransportLayer gopacket.Layer
-			switch encIndicator.icmpv4Indicator.encTransportLayerType {
+			var newEmbTransportLayer gopacket.Layer
+			switch embIndicator.icmpv4Indicator.embTransportLayerType {
 			case layers.LayerTypeTCP:
-				temp := *encIndicator.icmpv4Indicator.encTransportLayer.(*layers.TCP)
-				newEncTransportLayer = &temp
+				temp := *embIndicator.icmpv4Indicator.embTransportLayer.(*layers.TCP)
+				newEmbTransportLayer = &temp
 
-				newEncTCPLayer := newEncTransportLayer.(*layers.TCP)
+				newEmbTCPLayer := newEmbTransportLayer.(*layers.TCP)
 
-				newEncTCPLayer.DstPort = layers.TCPPort(upValue)
+				newEmbTCPLayer.DstPort = layers.TCPPort(upValue)
 
-				err := newEncTCPLayer.SetNetworkLayerForChecksum(newEncIPv4Layer)
+				err := newEmbTCPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
 				if err != nil {
-					log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", err)))
+					log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", fmt.Errorf("create emb network layer: %w", err))))
 				}
 			case layers.LayerTypeUDP:
-				temp := *encIndicator.icmpv4Indicator.encTransportLayer.(*layers.UDP)
-				newEncTransportLayer = &temp
+				temp := *embIndicator.icmpv4Indicator.embTransportLayer.(*layers.UDP)
+				newEmbTransportLayer = &temp
 
-				newEncUDPLayer := newEncTransportLayer.(*layers.UDP)
+				newEmbUDPLayer := newEmbTransportLayer.(*layers.UDP)
 
-				newEncUDPLayer.DstPort = layers.UDPPort(upValue)
+				newEmbUDPLayer.DstPort = layers.UDPPort(upValue)
 
-				err := newEncUDPLayer.SetNetworkLayerForChecksum(newEncIPv4Layer)
+				err := newEmbUDPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
 				if err != nil {
-					log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", err)))
+					log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", fmt.Errorf("create emb network layer: %w", err))))
 				}
 			case layers.LayerTypeICMPv4:
-				temp := *encIndicator.icmpv4Indicator.encTransportLayer.(*layers.ICMPv4)
-				newEncTransportLayer = &temp
+				temp := *embIndicator.icmpv4Indicator.embTransportLayer.(*layers.ICMPv4)
+				newEmbTransportLayer = &temp
 
-				if encIndicator.icmpv4Indicator.isEncQuery() {
-					newEncICMPv4Layer := newEncTransportLayer.(*layers.ICMPv4)
+				if embIndicator.icmpv4Indicator.isEmbQuery() {
+					newEmbICMPv4Layer := newEmbTransportLayer.(*layers.ICMPv4)
 
-					newEncICMPv4Layer.Id = upValue
+					newEmbICMPv4Layer.Id = upValue
 				}
 			default:
-				log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", fmt.Errorf("type %s not support", encIndicator.icmpv4Indicator.encTransportLayerType))))
+				log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", fmt.Errorf("create emb transport layer: %w", fmt.Errorf("type %s not support", embIndicator.icmpv4Indicator.embTransportLayerType)))))
 			}
 
-			payload, err := serialize(newEncIPv4Layer, newEncTransportLayer.(gopacket.SerializableLayer))
+			payload, err := serialize(newEmbIPv4Layer, newEmbTransportLayer.(gopacket.SerializableLayer))
 			if err != nil {
 				log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create transport layer: %w", err)))
 			}
@@ -445,10 +445,10 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Create new network layer
-	newNetworkLayerType = encIndicator.networkLayerType
+	newNetworkLayerType = embIndicator.networkLayerType
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		ipv4Layer := encIndicator.networkLayer.(*layers.IPv4)
+		ipv4Layer := embIndicator.networkLayer.(*layers.IPv4)
 		temp := *ipv4Layer
 		newNetworkLayer = &temp
 
@@ -457,7 +457,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		newIPv4Layer.SrcIP = p.UpDev.IPv4Addr().IP
 		upIP = newIPv4Layer.SrcIP
 	case layers.LayerTypeIPv6:
-		ipv6Layer := encIndicator.networkLayer.(*layers.IPv6)
+		ipv6Layer := embIndicator.networkLayer.(*layers.IPv6)
 		temp := *ipv6Layer
 		newNetworkLayer = &temp
 
@@ -507,13 +507,15 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	case layers.LayerTypeLoopback:
 		newLinkLayer = createLinkLayerLoopback()
 	case layers.LayerTypeEthernet:
+		var err error
+
 		newLinkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
+		if err != nil {
+			log.Errorln(fmt.Errorf("handle listen: %w", err))
+			return
+		}
 	default:
 		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
-		return
-	}
-	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
 		return
 	}
 
@@ -521,7 +523,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
 		newNetworkLayer.(gopacket.SerializableLayer),
 		newTransportLayer.(gopacket.SerializableLayer),
-		gopacket.Payload(encIndicator.payload()))
+		gopacket.Payload(embIndicator.payload()))
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle listen: %w", err))
 		return
@@ -547,7 +549,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		}
 		addNAT = true
 	case layers.LayerTypeICMPv4:
-		if encIndicator.icmpv4Indicator.isQuery() {
+		if embIndicator.icmpv4Indicator.isQuery() {
 			guide = natGuide{
 				src: IPId{
 					IP: upIP,
@@ -564,7 +566,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	if addNAT {
 		ni = &natIndicator{
 			src:    indicator.src().(*IPPort),
-			encSrc: encIndicator.natSrc(),
+			embSrc: embIndicator.natSrc(),
 			dev:    dev,
 			handle: handle,
 		}
@@ -574,7 +576,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Keep alive
-	proto := encIndicator.natProto()
+	proto := embIndicator.natProto()
 	switch proto {
 	case layers.LayerTypeTCP:
 		p.tcpPortPool[convertFromPort(upValue)] = time.Now()
@@ -588,7 +590,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
-		encIndicator.transportLayerType, encIndicator.src(), encIndicator.dst(), packet.Metadata().Length)
+		embIndicator.transportLayerType, embIndicator.src(), embIndicator.dst(), packet.Metadata().Length)
 }
 
 // handleUpstream handles TCP and UDP packets from destinations
@@ -597,10 +599,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		indicator             *packetIndicator
 		newTransportLayer     *layers.TCP
 		upDevIP               net.IP
-		encTransportLayerType gopacket.LayerType
-		encTransportLayer     gopacket.Layer
-		encNetworkLayerType   gopacket.LayerType
-		encNetworkLayer       gopacket.NetworkLayer
+		embTransportLayerType gopacket.LayerType
+		embTransportLayer     gopacket.Layer
+		embNetworkLayerType   gopacket.LayerType
+		embNetworkLayer       gopacket.NetworkLayer
 		newNetworkLayerType   gopacket.LayerType
 		newNetworkLayer       gopacket.NetworkLayer
 		newLinkLayerType      gopacket.LayerType
@@ -640,147 +642,147 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 		return
 	}
 
-	// Create encapped transport layer
-	encTransportLayerType = indicator.transportLayerType
-	switch encTransportLayerType {
+	// Create embedded transport layer
+	embTransportLayerType = indicator.transportLayerType
+	switch embTransportLayerType {
 	case layers.LayerTypeTCP:
-		tcpLayer := indicator.transportLayer.(*layers.TCP)
-		temp := *tcpLayer
-		encTransportLayer = &temp
+		embTCPLayer := indicator.transportLayer.(*layers.TCP)
+		temp := *embTCPLayer
+		embTransportLayer = &temp
 
-		newTCPLayer := encTransportLayer.(*layers.TCP)
+		newEmbTCPLayer := embTransportLayer.(*layers.TCP)
 
-		newTCPLayer.DstPort = layers.TCPPort(ni.encSrc.(*IPPort).Port)
+		newEmbTCPLayer.DstPort = layers.TCPPort(ni.embSrc.(*IPPort).Port)
 	case layers.LayerTypeUDP:
-		udpLayer := indicator.transportLayer.(*layers.UDP)
-		temp := *udpLayer
-		encTransportLayer = &temp
+		embUDPLayer := indicator.transportLayer.(*layers.UDP)
+		temp := *embUDPLayer
+		embTransportLayer = &temp
 
-		newUDPLayer := encTransportLayer.(*layers.UDP)
+		newEmbUDPLayer := embTransportLayer.(*layers.UDP)
 
-		newUDPLayer.DstPort = layers.UDPPort(ni.encSrc.(*IPPort).Port)
+		newEmbUDPLayer.DstPort = layers.UDPPort(ni.embSrc.(*IPPort).Port)
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			icmpv4Layer := indicator.icmpv4Indicator.layer
-			temp := *icmpv4Layer
-			encTransportLayer = &temp
+			embICMPv4Layer := indicator.icmpv4Indicator.layer
+			temp := *embICMPv4Layer
+			embTransportLayer = &temp
 
-			newICMPv4Layer := encTransportLayer.(*layers.ICMPv4)
+			newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
 
-			newICMPv4Layer.Id = ni.encSrc.(*IPId).Id
+			newEmbICMPv4Layer.Id = ni.embSrc.(*IPId).Id
 		} else {
-			encTransportLayer = indicator.icmpv4Indicator.newPureICMPv4Layer()
+			embTransportLayer = indicator.icmpv4Indicator.newPureICMPv4Layer()
 
-			newICMPv4Layer := encTransportLayer.(*layers.ICMPv4)
+			newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
 
-			temp := *indicator.icmpv4Indicator.encIPv4Layer
-			newEncIPv4Layer := &temp
+			temp := *indicator.icmpv4Indicator.embIPv4Layer
+			newEmbEmbIPv4Layer := &temp
 
-			newEncIPv4Layer.SrcIP = ni.encSrc.ip()
+			newEmbEmbIPv4Layer.SrcIP = ni.embSrc.ip()
 
-			var newEncTransportLayer gopacket.Layer
-			switch indicator.icmpv4Indicator.encTransportLayerType {
+			var newEmbEmbTransportLayer gopacket.Layer
+			switch indicator.icmpv4Indicator.embTransportLayerType {
 			case layers.LayerTypeTCP:
-				temp := *indicator.icmpv4Indicator.encTransportLayer.(*layers.TCP)
-				newEncTransportLayer = &temp
+				temp := *indicator.icmpv4Indicator.embTransportLayer.(*layers.TCP)
+				newEmbEmbTransportLayer = &temp
 
-				newEncTCPLayer := newEncTransportLayer.(*layers.TCP)
+				newEmbEmbTCPLayer := newEmbEmbTransportLayer.(*layers.TCP)
 
-				newEncTCPLayer.SrcPort = layers.TCPPort(ni.encSrc.(*IPPort).Port)
+				newEmbEmbTCPLayer.SrcPort = layers.TCPPort(ni.embSrc.(*IPPort).Port)
 
-				err := newEncTCPLayer.SetNetworkLayerForChecksum(newEncIPv4Layer)
+				err := newEmbEmbTCPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
 				if err != nil {
-					log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", err)))
+					log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb transport layer: %w", fmt.Errorf("create emb network layer: %w", err))))
 				}
 			case layers.LayerTypeUDP:
-				temp := *indicator.icmpv4Indicator.encTransportLayer.(*layers.UDP)
-				newEncTransportLayer = &temp
+				temp := *indicator.icmpv4Indicator.embTransportLayer.(*layers.UDP)
+				newEmbEmbTransportLayer = &temp
 
-				newEncUDPLayer := newEncTransportLayer.(*layers.UDP)
+				newEmbEmbUDPLayer := newEmbEmbTransportLayer.(*layers.UDP)
 
-				newEncUDPLayer.SrcPort = layers.UDPPort(ni.encSrc.(*IPPort).Port)
+				newEmbEmbUDPLayer.SrcPort = layers.UDPPort(ni.embSrc.(*IPPort).Port)
 
-				err := newEncUDPLayer.SetNetworkLayerForChecksum(newEncIPv4Layer)
+				err := newEmbEmbUDPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
 				if err != nil {
-					log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", err)))
+					log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb transport layer: %w", fmt.Errorf("create emb network layer: %w", err))))
 				}
 			case layers.LayerTypeICMPv4:
-				temp := *indicator.icmpv4Indicator.encTransportLayer.(*layers.ICMPv4)
-				newEncTransportLayer = &temp
+				temp := *indicator.icmpv4Indicator.embTransportLayer.(*layers.ICMPv4)
+				newEmbEmbTransportLayer = &temp
 
-				if indicator.icmpv4Indicator.isEncQuery() {
-					newEncICMPv4Layer := newEncTransportLayer.(*layers.ICMPv4)
+				if indicator.icmpv4Indicator.isEmbQuery() {
+					newEmbEmbICMPv4Layer := newEmbEmbTransportLayer.(*layers.ICMPv4)
 
-					newEncICMPv4Layer.Id = ni.encSrc.(*IPId).Id
+					newEmbEmbICMPv4Layer.Id = ni.embSrc.(*IPId).Id
 				}
 			default:
-				log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", fmt.Errorf("type %s not support", indicator.icmpv4Indicator.encTransportLayerType))))
+				log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb transport layer: %w", fmt.Errorf("create emb transport layer: %w", fmt.Errorf("type %s not support", indicator.icmpv4Indicator.embTransportLayerType)))))
 			}
 
-			payload, err := serialize(newEncIPv4Layer, newEncTransportLayer.(gopacket.SerializableLayer))
+			payload, err := serialize(newEmbEmbIPv4Layer, newEmbEmbTransportLayer.(gopacket.SerializableLayer))
 			if err != nil {
-				log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", err)))
+				log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb transport layer: %w", err)))
 			}
 
-			newICMPv4Layer.Payload = payload
+			newEmbICMPv4Layer.Payload = payload
 		}
 	default:
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc transport layer: %w", fmt.Errorf("type %s not support", encTransportLayerType))))
+		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb transport layer: %w", fmt.Errorf("type %s not support", embTransportLayerType))))
 		return
 	}
 
-	// Create encapped network layer
-	encNetworkLayerType = indicator.networkLayerType
-	switch encNetworkLayerType {
+	// Create embedded network layer
+	embNetworkLayerType = indicator.networkLayerType
+	switch embNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		ipv4Layer := indicator.networkLayer.(*layers.IPv4)
-		temp := *ipv4Layer
-		encNetworkLayer = &temp
+		embIPv4Layer := indicator.networkLayer.(*layers.IPv4)
+		temp := *embIPv4Layer
+		embNetworkLayer = &temp
 
-		newIPv4Layer := encNetworkLayer.(*layers.IPv4)
+		newEmbIPv4Layer := embNetworkLayer.(*layers.IPv4)
 
-		newIPv4Layer.DstIP = ni.encSrc.ip()
+		newEmbIPv4Layer.DstIP = ni.embSrc.ip()
 	case layers.LayerTypeIPv6:
-		ipv6Layer := indicator.networkLayer.(*layers.IPv6)
-		temp := *ipv6Layer
-		encNetworkLayer = &temp
+		embIPv6Layer := indicator.networkLayer.(*layers.IPv6)
+		temp := *embIPv6Layer
+		embNetworkLayer = &temp
 
-		newIPv6Layer := encNetworkLayer.(*layers.IPv6)
+		newEmbIPv6Layer := embNetworkLayer.(*layers.IPv6)
 
-		newIPv6Layer.DstIP = ni.encSrc.ip()
+		newEmbIPv6Layer.DstIP = ni.embSrc.ip()
 	default:
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc network layer: %w", fmt.Errorf("type %s not support", encNetworkLayerType))))
+		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb network layer: %w", fmt.Errorf("type %s not support", embNetworkLayerType))))
 		return
 	}
 
 	// Set network layer for transport layer
-	switch encTransportLayerType {
+	switch embTransportLayerType {
 	case layers.LayerTypeTCP:
-		tcpLayer := encTransportLayer.(*layers.TCP)
+		embTCPLayer := embTransportLayer.(*layers.TCP)
 
-		err := tcpLayer.SetNetworkLayerForChecksum(encNetworkLayer)
+		err := embTCPLayer.SetNetworkLayerForChecksum(embNetworkLayer)
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc network layer: %w", err)))
+			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb network layer: %w", err)))
 			return
 		}
 	case layers.LayerTypeUDP:
-		udpLayer := encTransportLayer.(*layers.UDP)
+		embUDPLayer := embTransportLayer.(*layers.UDP)
 
-		err := udpLayer.SetNetworkLayerForChecksum(encNetworkLayer)
+		err := embUDPLayer.SetNetworkLayerForChecksum(embNetworkLayer)
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc network layer: %w", err)))
+			log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb network layer: %w", err)))
 			return
 		}
 	case layers.LayerTypeICMPv4:
 		break
 	default:
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create enc network layer: %w", fmt.Errorf("transport layer type %s not support", encTransportLayerType))))
+		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create emb network layer: %w", fmt.Errorf("transport layer type %s not support", embTransportLayerType))))
 		return
 	}
 
 	// Construct contents of new application layer
-	contents, err := serialize(encNetworkLayer.(gopacket.SerializableLayer),
-		encTransportLayer.(gopacket.SerializableLayer),
+	contents, err := serialize(embNetworkLayer.(gopacket.SerializableLayer),
+		embTransportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.payload()))
 	if err != nil {
 		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create application layer: %w", err)))
@@ -881,7 +883,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) {
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",
-		indicator.transportLayerType, ni.encSrc.String(), indicator.src(), len(data))
+		indicator.transportLayerType, ni.embSrc.String(), indicator.src(), len(data))
 }
 
 func (p *Server) dist(t gopacket.LayerType) (uint16, error) {
