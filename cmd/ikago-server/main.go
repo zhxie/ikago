@@ -13,33 +13,30 @@ import (
 	"syscall"
 )
 
-func main() {
-	var (
-		err             error
-		ipVersionOption = pcap.IPv4AndIPv6
-		listenDevs      = make([]*pcap.Device, 0)
-		upDev           *pcap.Device
-		gatewayDev      *pcap.Device
-		c               crypto.Crypto
-	)
+var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
+var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
+var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
+var argMethod = flag.String("method", "plain", "Method of encryption.")
+var argPassword = flag.String("password", "", "Password of the encryption.")
+var argVerbose = flag.Bool("v", false, "Print verbose messages.")
+var argListenPort = flag.Int("p", 0, "Port for listening.")
 
-	var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
-	var argListenLoopDev = flag.Bool("listen-loopback-device", false, "Listen loopback device only.")
-	var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
-	var argUpLoopDev = flag.Bool("upstream-loopback-device", false, "Route upstream to loopback device only.")
-	var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
-	var argIPv4Dev = flag.Bool("ipv4", false, "Use IPv4 devices only.")
-	var argIPv6Dev = flag.Bool("ipv6", false, "Use IPv6 devices only.")
-	var argMethod = flag.String("method", "plain", "Method of encryption.")
-	var argPassword = flag.String("password", "", "Password of the encryption.")
-	var argVerbose = flag.Bool("v", false, "Print verbose messages.")
-	var argListenPort = flag.Int("p", 0, "Port for listening.")
-
+func init() {
 	// Parse arguments
 	flag.Parse()
 
 	// Log
 	log.SetVerbose(*argVerbose)
+}
+
+func main() {
+	var (
+		err        error
+		listenDevs = make([]*pcap.Device, 0)
+		upDev      *pcap.Device
+		gatewayDev *pcap.Device
+		c          crypto.Crypto
+	)
 
 	// Exclusive commands
 	if *argListDevs {
@@ -68,16 +65,10 @@ func main() {
 	log.Infof("Proxy from :%d\n", *argListenPort)
 
 	// Find devices
-	if *argIPv4Dev && !*argIPv6Dev {
-		ipVersionOption = pcap.IPv4Only
-	}
-	if *argIPv6Dev && !*argIPv4Dev {
-		ipVersionOption = pcap.IPv6Only
-	}
 	if *argListenDevs == "" {
-		listenDevs, err = pcap.FindListenDevs(nil, *argListenLoopDev, ipVersionOption)
+		listenDevs, err = pcap.FindListenDevs(nil)
 	} else {
-		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","), *argListenLoopDev, ipVersionOption)
+		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","))
 	}
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
@@ -85,7 +76,7 @@ func main() {
 	if len(listenDevs) <= 0 {
 		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev, *argUpLoopDev, ipVersionOption)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}

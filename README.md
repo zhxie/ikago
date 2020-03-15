@@ -17,7 +17,7 @@ _IkaGo is currently under development and may not suitable for production._
 - **Multiple clients** One server can serve multiple clients.
 - **Cross platform** Works well with Windows and Linux, and macOS in theory.
 - **NAT support** Performs a full cone NAT.
-- **Encryption** Traffic can be encrypted with AES-GCM.
+- **Encryption** Traffic can be encrypted.
 
 ## Dependencies
 
@@ -37,17 +37,9 @@ go run ./cmd/ikago-server -p [port]
 
 `-list-devices`: (Optional, exclusively) List all valid pcap devices in current computer.
 
-`-listen-loopback-device`: (Optional) Listen loopback device only.
-
 `-listen-devices devices`: (Optional) pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used. For example, `-listen-devices eth0,wifi0,lo`. Use `-listen-loopback-device` will select loopback device in designated devices.
 
-`-upstream-loopback-device`: (Optional) Route upstream to loopback device only.
-
 `-upstream-device device`: (Optional) pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used. Use `-upstream-loopback-device` will select loopback device in designated devices.
-
-`-ipv4-device`: (Optional) Use IPv4 devices only. Use `-ipv4-device` and `-ipv6-device` together will use all IPv4 and IPv6 devices.
-
-`-ipv6-device`: (Optional) Use IPv6 devices only. Use `-ipv4-device` and `-ipv6-device` together will use all IPv4 and IPv6 devices.
 
 `-upstream-port port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as 0, a random port from 49152 to 65535 will be used.
 

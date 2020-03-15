@@ -329,33 +329,16 @@ func FindGatewayDev(dev string) (*Device, error) {
 }
 
 // FindListenDevs returns all valid pcap devices for listening
-func FindListenDevs(strDevs []string, isLocal bool, option IPVersionOption) ([]*Device, error) {
+func FindListenDevs(strDevs []string) ([]*Device, error) {
 	result := make([]*Device, 0)
 
-	var devs []*Device
-	var err error
-	switch option {
-	case IPv4AndIPv6:
-		devs, err = FindAllDevs()
-	case IPv4Only:
-		devs, err = FindAllIPv4Devs()
-	case IPv6Only:
-		devs, err = FindAllIPv6Devs()
-	}
+	devs, err := FindAllDevs()
 	if err != nil {
 		return nil, fmt.Errorf("find listen devs: %w", err)
 	}
 
 	if len(strDevs) <= 0 {
-		if isLocal {
-			for _, dev := range devs {
-				if dev.IsLoop {
-					result = append(result, dev)
-				}
-			}
-		} else {
-			result = devs
-		}
+		result = devs
 	} else {
 		m := make(map[string]*Device)
 		for _, dev := range devs {
@@ -367,13 +350,7 @@ func FindListenDevs(strDevs []string, isLocal bool, option IPVersionOption) ([]*
 			if !ok {
 				return nil, fmt.Errorf("find listen devs: %w", fmt.Errorf("unknown device %s", strDev))
 			}
-			if isLocal {
-				if dev.IsLoop {
-					result = append(result, dev)
-				}
-			} else {
-				result = append(result, dev)
-			}
+			result = append(result, dev)
 		}
 	}
 
@@ -381,16 +358,8 @@ func FindListenDevs(strDevs []string, isLocal bool, option IPVersionOption) ([]*
 }
 
 // FindUpstreamDevAndGateway returns the pcap device for routing upstream and the gateway
-func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOption) (upDev, gatewayDev *Device, err error) {
-	var devs []*Device
-	switch option {
-	case IPv4AndIPv6:
-		devs, err = FindAllDevs()
-	case IPv4Only:
-		devs, err = FindAllIPv4Devs()
-	case IPv6Only:
-		devs, err = FindAllIPv6Devs()
-	}
+func FindUpstreamDevAndGateway(strDev string) (upDev, gatewayDev *Device, err error) {
+	devs, err := FindAllDevs()
 	if err != nil {
 		return nil, nil, fmt.Errorf("find upstream devs and gateway: %w", err)
 	}
@@ -399,11 +368,7 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 		// Find upstream device
 		for _, dev := range devs {
 			if dev.Name == strDev {
-				if isLocal {
-					upDev = FindLoopDev(devs)
-				} else {
-					upDev = dev
-				}
+				upDev = dev
 				break
 			}
 		}
@@ -438,41 +403,34 @@ func FindUpstreamDevAndGateway(strDev string, isLocal bool, option IPVersionOpti
 			upDev = newUpDev
 		}
 	} else {
-		if isLocal {
-			// Find upstream device and gateway
-			loopDev := FindLoopDev(devs)
-			upDev = loopDev
-			gatewayDev = upDev
-		} else {
-			// Find upstream device and gateway
-			gatewayAddr, err := FindGatewayAddr()
-			if err != nil {
-				return nil, nil, fmt.Errorf("find upstream dev: %w", fmt.Errorf("find gateway's address: %w", err))
+		// Find upstream device and gateway
+		gatewayAddr, err := FindGatewayAddr()
+		if err != nil {
+			return nil, nil, fmt.Errorf("find upstream dev: %w", fmt.Errorf("find gateway's address: %w", err))
+		}
+		for _, dev := range devs {
+			if dev.IsLoop {
+				continue
 			}
-			for _, dev := range devs {
-				if dev.IsLoop {
-					continue
-				}
-				// Test if device's IP is in the same domain of the gateway's
-				for _, addr := range dev.IPAddrs {
-					if addr.Contains(gatewayAddr.IP) {
-						gatewayDev, err = FindGatewayDev(dev.Name)
-						if err != nil {
-							continue
-						}
-						upDev = &Device{
-							Name:         dev.Name,
-							Alias:        dev.Alias,
-							IPAddrs:      append(make([]*net.IPNet, 0), addr),
-							HardwareAddr: dev.HardwareAddr,
-							IsLoop:       dev.IsLoop,
-						}
-						break
+			// Test if device's IP is in the same domain of the gateway's
+			for _, addr := range dev.IPAddrs {
+				if addr.Contains(gatewayAddr.IP) {
+					gatewayDev, err = FindGatewayDev(dev.Name)
+					if err != nil {
+						continue
 					}
-				}
-				if upDev != nil {
+					upDev = &Device{
+						Name:         dev.Name,
+						Alias:        dev.Alias,
+						IPAddrs:      append(make([]*net.IPNet, 0), addr),
+						HardwareAddr: dev.HardwareAddr,
+						IsLoop:       dev.IsLoop,
+					}
 					break
 				}
+			}
+			if upDev != nil {
+				break
 			}
 		}
 	}
