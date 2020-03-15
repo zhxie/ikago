@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"ikago/internal/config"
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
@@ -17,6 +18,7 @@ import (
 )
 
 var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
+var argConfig = flag.String("c", "", "Configuration file.")
 var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
 var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
 var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
@@ -29,9 +31,6 @@ var argServer = flag.String("s", "", "Server.")
 func init() {
 	// Parse arguments
 	flag.Parse()
-
-	// Log
-	log.SetVerbose(*argVerbose)
 }
 
 func main() {
@@ -45,6 +44,28 @@ func main() {
 		gatewayDev *pcap.Device
 		c          crypto.Crypto
 	)
+
+	// Configuration file
+	if *argConfig != "" {
+		cfg, err := config.LoadConfig(*argConfig)
+		if err != nil {
+			log.Fatalln(fmt.Errorf("parse: %w", err))
+		}
+
+		listenDevs := cfg.ListenDevsString()
+		argListenDevs = &listenDevs
+		argUpDev = &cfg.UpDev
+		argUpPort = &cfg.UpPort
+		argMethod = &cfg.Method
+		argPassword = &cfg.Password
+		argVerbose = &cfg.Verbose
+		filters := cfg.FiltersString()
+		argFilters = &filters
+		argServer = &cfg.Server
+	}
+
+	// Log
+	log.SetVerbose(*argVerbose)
 
 	// Exclusive commands
 	if *argListDevs {
@@ -68,7 +89,7 @@ func main() {
 	}
 	strFilters := strings.Split(*argFilters, ",")
 	for _, strFilter := range strFilters {
-		filter, err := pcap.ParseFilter(strFilter)
+		filter, err := pcap.ParseFilter(strings.Trim(strFilter, " "))
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse: %w", err))
 		}
