@@ -37,7 +37,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-list-devices`: (Optional, exclusively) List all valid pcap devices in current computer.
 
-`-c`: (Optional, exclusively) Configuration file. An example of configuration file is [here](https://github.com/zhxie/ikago/blob/master/config/config.json).
+`-c`: (Optional, exclusively) Configuration file. An example of configuration file is [here](https://github.com/zhxie/ikago/blob/master/configs/config.json).
 
 `-listen-devices devices`: (Optional) pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
