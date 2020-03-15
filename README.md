@@ -2,8 +2,6 @@
 
 **IkaGo** is a proxy which helps bypassing UDP blocking, UDP QoS and NAT firewall written in Go.
 
-_IkaGo is currently under development and may not suitable for production._
-
 <p align="center">
   <img src="/assets/squid.jpg">
 </p>
