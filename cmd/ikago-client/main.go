@@ -48,9 +48,9 @@ func main() {
 
 	// Configuration
 	if *argConfig != "" {
-		cfg, err = config.Parse(*argConfig)
+		cfg, err = config.ParseFile(*argConfig)
 		if err != nil {
-			log.Fatalln(fmt.Errorf("parse: %w", err))
+			log.Fatalln(fmt.Errorf("parse config file %s: %w", *argConfig, err))
 		}
 	} else {
 		cfg = &config.Config{
@@ -91,12 +91,12 @@ func main() {
 	for _, strFilter := range cfg.Filters {
 		filter, err := pcap.ParseFilter(strFilter)
 		if err != nil {
-			log.Fatalln(fmt.Errorf("parse: %w", err))
+			log.Fatalln(fmt.Errorf("parse filter %s: %w", strFilter, err))
 		}
 		filters = append(filters, filter)
 	}
 	if cfg.UpPort < 0 || cfg.UpPort >= 65536 {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("upstream port out of range")))
+		log.Fatalln(fmt.Errorf("parse upstream port %d: %w", cfg.UpPort, errors.New("out of range")))
 		os.Exit(1)
 	}
 	// Randomize upstream port
@@ -116,7 +116,7 @@ func main() {
 						exist = true
 					}
 				default:
-					log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("filter type %d not support", filter.FilterType())))
+					log.Fatalln(fmt.Errorf("parse filter %s: %w", filter, fmt.Errorf("type %d not support", filter.FilterType())))
 				}
 				if exist {
 					break
@@ -129,13 +129,13 @@ func main() {
 	}
 	serverIPPort, err := pcap.ParseIPPort(cfg.Server)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("server: %w", err)))
+		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
 	}
 	serverIP = serverIPPort.IP
 	serverPort = serverIPPort.Port
 	c, err = crypto.Parse(cfg.Method, cfg.Password)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("crypto: %w", err)))
+		log.Fatalln(fmt.Errorf("parse crypto: %w", err))
 	}
 	if len(filters) == 1 {
 		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverIPPort)
@@ -150,23 +150,23 @@ func main() {
 	// Find devices
 	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", err))
+		log.Fatalln(fmt.Errorf("find listen devices: %w", err))
 	}
 	if len(listenDevs) <= 0 {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
+		log.Fatalln(fmt.Errorf("find listen devices: %w", errors.New("cannot determine")))
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(cfg.UpDev)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", err))
+		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", err))
 	}
 	if upDev == nil && gatewayDev == nil {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine upstream device and gateway")))
+		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", errors.New("cannot determine")))
 	}
 	if upDev == nil {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine upstream device")))
+		log.Fatalln(fmt.Errorf("find upstream device: %w", errors.New("cannot determine")))
 	}
 	if gatewayDev == nil {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine gateway")))
+		log.Fatalln(fmt.Errorf("find gateway device: %w", errors.New("cannot determine")))
 	}
 
 	// Packet capture
@@ -192,7 +192,7 @@ func main() {
 
 	err = p.Open()
 	if err != nil {
-		log.Fatalln(fmt.Errorf("pcap: %w", err))
+		log.Fatalln(fmt.Errorf("open pcap: %w", err))
 	}
 }
 

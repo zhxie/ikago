@@ -3,7 +3,6 @@ package crypto
 import (
 	"crypto/md5"
 	"crypto/rand"
-	"fmt"
 	"io"
 )
 
@@ -29,7 +28,7 @@ func GenerateIV(size int) ([]byte, error) {
 	iv := make([]byte, size)
 
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return nil, fmt.Errorf("generate iv: %w", err)
+		return nil, err
 	}
 
 	return iv, nil
@@ -40,7 +39,7 @@ func GenerateNonce(size int) ([]byte, error) {
 	nonce := make([]byte, size)
 
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("generate nonce: %w", err)
+		return nil, err
 	}
 
 	return nonce, nil

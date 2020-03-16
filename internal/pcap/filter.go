@@ -2,6 +2,7 @@ package pcap
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -115,7 +116,7 @@ func ParseFilter(s string) (Filter, error) {
 	if s[0] == ':' {
 		port, err := strconv.ParseUint(s[1:], 10, 16)
 		if err != nil {
-			return nil, fmt.Errorf("parse filter: %w", err)
+			return nil, fmt.Errorf("parse port %s: %w", s[1:], err)
 		}
 		return &PortFilter{Port: uint16(port)}, nil
 	}
@@ -125,7 +126,7 @@ func ParseFilter(s string) (Filter, error) {
 		// IP
 		ip := net.ParseIP(s)
 		if ip == nil {
-			return nil, fmt.Errorf("parse filter: %w", fmt.Errorf("invalid ip %s", s))
+			return nil, fmt.Errorf("parse ip %s: %w", s, errors.New("invalid"))
 		}
 		return &IPFilter{IP: ip}, nil
 	}

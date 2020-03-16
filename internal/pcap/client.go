@@ -41,13 +41,13 @@ func (p *Client) Open() error {
 
 	// Verify
 	if len(p.ListenDevs) <= 0 {
-		return fmt.Errorf("open: %w", errors.New("missing listen device"))
+		return errors.New("missing listen device")
 	}
 	if p.UpDev == nil {
-		return fmt.Errorf("open: %w", errors.New("missing upstream device"))
+		return errors.New("missing upstream device")
 	}
 	if p.GatewayDev == nil {
-		return fmt.Errorf("open: %w", errors.New("missing gateway"))
+		return errors.New("missing gateway device")
 	}
 	if len(p.ListenDevs) == 1 {
 		log.Infof("Listen on %s\n", p.ListenDevs[0].AliasString())
@@ -75,13 +75,13 @@ func (p *Client) Open() error {
 	var err error
 	p.handshakeHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return fmt.Errorf("open: %w", err)
+		return fmt.Errorf("open handshake device %s: %w", p.UpDev.Name, err)
 	}
 	defer p.handshakeHandle.Close()
 	err = p.handshakeHandle.SetBPFFilter(fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
 		p.UpPort, p.ServerIP, p.ServerPort))
 	if err != nil {
-		return fmt.Errorf("open: %w", err)
+		return fmt.Errorf("set bpf filter: %w", err)
 	}
 
 	c := make(chan gopacket.Packet, 1)
@@ -102,31 +102,31 @@ func (p *Client) Open() error {
 	// Handshaking with server (SYN)
 	err = p.handshakeSYN()
 	if err != nil {
-		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", err))
+		return fmt.Errorf("handshake: %w", err)
 	}
 	log.Infof("Connect to server %s\n", IPPort{IP: p.ServerIP, Port: p.ServerPort})
 
 	packet := <-c
 
 	if packet == nil {
-		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", errors.New("timeout")))
+		return fmt.Errorf("handshake: %w", errors.New("timeout"))
 	}
 	transportLayer := packet.TransportLayer()
 	if transportLayer == nil {
-		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", errors.New("missing transport layer")))
+		return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", errors.New("missing transport layer")))
 	}
 	transportLayerType := transportLayer.LayerType()
 	switch transportLayerType {
 	case layers.LayerTypeTCP:
 		tcpLayer := transportLayer.(*layers.TCP)
 		if tcpLayer.RST {
-			return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", errors.New("connection reset")))
+			return fmt.Errorf("handshake: %w", errors.New("connection reset"))
 		}
 		if !tcpLayer.SYN {
-			return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", errors.New("missing synchronization flag")))
+			return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", errors.New("invalid")))
 		}
 	default:
-		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", fmt.Errorf("type %s not support", transportLayerType)))
+		return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", fmt.Errorf("transport layer type %s not support", transportLayerType)))
 	}
 
 	// Latency test
@@ -135,7 +135,7 @@ func (p *Client) Open() error {
 	// Handshaking with server (ACK)
 	err = p.handshakeACK(packet)
 	if err != nil {
-		return fmt.Errorf("open: %w", fmt.Errorf("handshake: %w", err))
+		return fmt.Errorf("handshake: %w", err)
 	}
 	log.Infof("Connected to server %s in %d ms\n", IPPort{IP: p.ServerIP, Port: p.ServerPort}, d.Milliseconds())
 
@@ -147,13 +147,13 @@ func (p *Client) Open() error {
 	for _, dev := range p.ListenDevs {
 		handle, err := pcap.OpenLive(dev.Name, 1600, true, pcap.BlockForever)
 		if err != nil {
-			return fmt.Errorf("open: %w", err)
+			return fmt.Errorf("open listen device %s: %w", dev.Name, err)
 		}
 		f := formatOrSrcFilters(p.Filters)
 		err = handle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && %s && not (src host %s && src port %d)) || (icmp && %s && not src host %s)",
 			f, p.ServerIP, p.ServerPort, f, p.ServerIP))
 		if err != nil {
-			return fmt.Errorf("open: %w", err)
+			return fmt.Errorf("set bpf fileter: %w", err)
 		}
 		p.listenHandles = append(p.listenHandles, handle)
 	}
@@ -161,12 +161,12 @@ func (p *Client) Open() error {
 	// Handle for routing upstream
 	p.upHandle, err = pcap.OpenLive(p.UpDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return fmt.Errorf("open: %w", err)
+		return fmt.Errorf("open upstream device %s: %w", p.UpDev.Name, err)
 	}
 	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d)) || (icmp && src host %s)",
 		p.UpPort, p.ServerIP, p.ServerPort, p.ServerIP))
 	if err != nil {
-		return fmt.Errorf("open: %w", err)
+		return fmt.Errorf("set bpf filter: %w", err)
 	}
 
 	// Start handling
@@ -183,12 +183,20 @@ func (p *Client) Open() error {
 	}
 	go func() {
 		for devPacket := range p.cListenPackets {
-			p.handleListen(devPacket.packet, devPacket.dev, devPacket.handle)
+			err := p.handleListen(devPacket.packet, devPacket.dev, devPacket.handle)
+			if err != nil {
+				log.Errorln(fmt.Errorf("handle listen in %s: %w", devPacket.dev.Alias, err))
+				log.Verboseln(devPacket.packet)
+			}
 		}
 	}()
 	packetSrc := gopacket.NewPacketSource(p.upHandle, p.upHandle.LinkType())
 	for packet := range packetSrc.Packets() {
-		p.handleUpstream(packet)
+		err := p.handleUpstream(packet)
+		if err != nil {
+			log.Errorln(fmt.Errorf("handle upstream: %w", err))
+			log.Verboseln(packet)
+		}
 	}
 
 	return nil
@@ -226,7 +234,7 @@ func (p *Client) handshakeSYN() error {
 		networkLayerType = layers.LayerTypeIPv6
 	}
 	if upDevIP == nil {
-		return fmt.Errorf("handshake: %w", errors.New("ip version transition not support"))
+		return errors.New("ip version transition not support")
 	}
 
 	// Create new network layer
@@ -237,10 +245,10 @@ func (p *Client) handshakeSYN() error {
 	case layers.LayerTypeIPv6:
 		networkLayer, err = createNetworkLayerIPv6(upDevIP, p.ServerIP, transportLayer)
 	default:
-		return fmt.Errorf("handshake: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", networkLayerType)))
+		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 	}
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("create network layer: %w", err)
 	}
 
 	// Decide Loopback or Ethernet
@@ -257,22 +265,22 @@ func (p *Client) handshakeSYN() error {
 	case layers.LayerTypeEthernet:
 		linkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr, p.GatewayDev.HardwareAddr, networkLayer)
 	default:
-		return fmt.Errorf("handshake: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", linkLayerType)))
+		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
 	}
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("create link layer: %w", err)
 	}
 
 	// Serialize layers
 	data, err := serialize(linkLayer.(gopacket.SerializableLayer), networkLayer.(gopacket.SerializableLayer), transportLayer)
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("serialize: %w", err)
 	}
 
 	// Write packet data
 	err = p.handshakeHandle.WritePacketData(data)
 	if err != nil {
-		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
+		return fmt.Errorf("write: %w", err)
 	}
 
 	// TCP Seq
@@ -300,11 +308,11 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	// Parse packet
 	indicator, err := parsePacket(packet)
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("parse packet: %w", err)
 	}
 
 	if indicator.transportLayerType != layers.LayerTypeTCP {
-		return fmt.Errorf("handshake: %w", fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
+		return fmt.Errorf("transport layer type %s not support", indicator.transportLayerType)
 	}
 
 	// TCP Ack
@@ -327,10 +335,10 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), newTransportLayer)
 	default:
-		return fmt.Errorf("handshake: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType)))
+		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("create network layer: %w", err)
 	}
 
 	// Decide Loopback or Ethernet
@@ -347,22 +355,22 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
 	default:
-		return fmt.Errorf("handshake: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType)))
+		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
 	}
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("create link layer: %w", err)
 	}
 
 	// Serialize layers
 	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer), newNetworkLayer.(gopacket.SerializableLayer), newTransportLayer)
 	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
+		return fmt.Errorf("serialize: %w", err)
 	}
 
 	// Write packet data
 	err = p.handshakeHandle.WritePacketData(data)
 	if err != nil {
-		return fmt.Errorf("handshake: %w", fmt.Errorf("write: %w", err))
+		return fmt.Errorf("write: %w", err)
 	}
 
 	// IPv4 Id
@@ -374,7 +382,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet) error {
 }
 
 // handleListen handles TCP and UDP packets from sources
-func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.Handle) {
+func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.Handle) error {
 	var (
 		indicator           *packetIndicator
 		newTransportLayer   *layers.TCP
@@ -388,8 +396,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	// Parse packet
 	indicator, err := parsePacket(packet)
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
-		return
+		return fmt.Errorf("parse packet: %w", err)
 	}
 
 	// Construct contents of new application layer
@@ -397,8 +404,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		indicator.transportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.payload()))
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create application layer: %w", err)))
-		return
+		return fmt.Errorf("create application layer: %w", err)
 	}
 
 	// Create new transport layer in TCP
@@ -414,8 +420,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		newNetworkLayerType = layers.LayerTypeIPv6
 	}
 	if upDevIP == nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", errors.New("ip version transition not support")))
-		return
+		return errors.New("ip version transition not support")
 	}
 
 	// Create new network layer
@@ -425,12 +430,11 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, p.ServerIP, newTransportLayer)
 	default:
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create network layer: %w", fmt.Errorf("type %s not support", newNetworkLayerType))))
-		return
+		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
-		return
+		return fmt.Errorf("create network layer: %w", err)
+
 	}
 
 	// Decide Loopback or Ethernet
@@ -447,19 +451,17 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(p.UpDev.HardwareAddr, p.GatewayDev.HardwareAddr, newNetworkLayer)
 	default:
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
-		return
+		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
 	}
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
-		return
+		return fmt.Errorf("create link layer: %w", err)
+
 	}
 
 	// Encrypt
 	contents, err = p.Crypto.Encrypt(contents)
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
-		return
+		return fmt.Errorf("encrypt: %w", err)
 	}
 
 	// Serialize layers
@@ -468,15 +470,14 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		newTransportLayer,
 		gopacket.Payload(contents))
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", err))
-		return
+		return fmt.Errorf("serialize: %w", err)
+
 	}
 
 	// Write packet data
 	err = p.upHandle.WritePacketData(data)
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle listen: %w", fmt.Errorf("write: %w", err)))
-		return
+		return fmt.Errorf("write: %w", err)
 	}
 
 	// Record the source device of the packet
@@ -494,10 +495,12 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
 		indicator.transportLayerType, indicator.src(), indicator.dst(), packet.Metadata().Length)
+
+	return nil
 }
 
 // handleUpstream handles TCP packets from the server
-func (p *Client) handleUpstream(packet gopacket.Packet) {
+func (p *Client) handleUpstream(packet gopacket.Packet) error {
 	var (
 		embIndicator     *packetIndicator
 		newLinkLayer     gopacket.Layer
@@ -511,8 +514,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 
 	// Empty payload
 	if applicationLayer == nil {
-		log.Verboseln(fmt.Errorf("handle upstream: %w", errors.New("empty payload")))
-		return
+		return errors.New("empty payload")
 	}
 
 	// TCP Ack
@@ -521,15 +523,13 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	// Decrypt
 	contents, err := p.Crypto.Decrypt(applicationLayer.LayerContents())
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle upstream: %w", err))
-		return
+		return fmt.Errorf("decrypt: %w", err)
 	}
 
 	// Parse embedded packet
 	embIndicator, err = parseEmbPacket(contents)
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle upstream: %w", err))
-		return
+		return fmt.Errorf("parse embedded packet: %w", err)
 	}
 
 	// Check map
@@ -537,7 +537,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	devIndicator, ok := p.devMap[embIndicator.natDst().String()]
 	p.devMapLock.RUnlock()
 	if !ok {
-		log.Verboseln(fmt.Errorf("handle upstream: %w", fmt.Errorf("missing nat to %s", embIndicator.natDst())))
+		log.Verboseln(fmt.Errorf("missing %s nat to %s", embIndicator.natProto(), embIndicator.natDst()))
 		dev = p.UpDev
 		handle = p.upHandle
 	} else {
@@ -559,12 +559,10 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(dev.HardwareAddr, p.GatewayDev.HardwareAddr, embIndicator.networkLayer)
 	default:
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", newLinkLayerType))))
-		return
+		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
 	}
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle upstream: %w", err))
-		return
+		return fmt.Errorf("create link layer: %w", err)
 	}
 
 	// Serialize layers
@@ -573,28 +571,28 @@ func (p *Client) handleUpstream(packet gopacket.Packet) {
 		embIndicator.transportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(embIndicator.payload()))
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle upstream: %w", err))
-		return
+		return fmt.Errorf("serialize: %w", err)
 	}
 
 	// Write packet data
 	err = handle.WritePacketData(data)
 	if err != nil {
-		log.Errorln(fmt.Errorf("handle upstream: %w", fmt.Errorf("write: %w", err)))
-		return
+		return fmt.Errorf("write: %w", err)
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
 		embIndicator.transportLayerType, embIndicator.dst(), embIndicator.src(), len(data))
+
+	return nil
 }
 
 func (p *Client) bypass(packet gopacket.Packet) error {
 	if len(packet.Layers()) < 0 {
-		return fmt.Errorf("bypass: %w", fmt.Errorf("missing link layer"))
+		return fmt.Errorf("missing link layer")
 	}
 	linkLayer := packet.Layers()[0]
 	if linkLayer == nil {
-		return fmt.Errorf("bypass: %w", fmt.Errorf("missing link layer"))
+		return fmt.Errorf("missing link layer")
 	}
 
 	// Create link layer
@@ -606,19 +604,19 @@ func (p *Client) bypass(packet gopacket.Packet) error {
 		ethernetLayer := linkLayer.(*layers.Ethernet)
 		ethernetLayer.DstMAC = p.GatewayDev.HardwareAddr
 	default:
-		return fmt.Errorf("bypass: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
+		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
 	}
 
 	// Serialize layers
 	data, err := serializeRaw(linkLayer.(gopacket.SerializableLayer), gopacket.Payload(linkLayer.LayerPayload()))
 	if err != nil {
-		return fmt.Errorf("bypass: %w", err)
+		return fmt.Errorf("serialize: %w", err)
 	}
 
 	// Write packet data
 	err = p.upHandle.WritePacketData(data)
 	if err != nil {
-		return fmt.Errorf("bypass: %w", fmt.Errorf("write: %w", err))
+		return fmt.Errorf("write: %w", err)
 	}
 
 	return nil

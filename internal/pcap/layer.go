@@ -72,8 +72,11 @@ func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
 }
 
 func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
-	if srcIP.To4() == nil || dstIP.To4() == nil {
-		return nil, fmt.Errorf("create network layer: %w", fmt.Errorf("invalid ipv4 address %s", srcIP))
+	if srcIP.To4() == nil {
+		return nil, fmt.Errorf("parse source ip %s: %w", srcIP, errors.New("invalid"))
+	}
+	if dstIP.To4() == nil {
+		return nil, fmt.Errorf("parse destination ip %s: %w", dstIP, errors.New("invalid"))
 	}
 
 	ipv4Layer := &layers.IPv4{
@@ -99,7 +102,7 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 		tcpLayer := transportLayer.(*layers.TCP)
 		err := tcpLayer.SetNetworkLayerForChecksum(ipv4Layer)
 		if err != nil {
-			return nil, fmt.Errorf("create network layer: %w", err)
+			return nil, fmt.Errorf("set network layer for checksum: %w", err)
 		}
 	case layers.LayerTypeUDP:
 		ipv4Layer.Protocol = layers.IPProtocolUDP
@@ -108,20 +111,24 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 		udpLayer := transportLayer.(*layers.UDP)
 		err := udpLayer.SetNetworkLayerForChecksum(ipv4Layer)
 		if err != nil {
-			return nil, fmt.Errorf("create network layer: %w", err)
+			return nil, fmt.Errorf("set network layer for checksum: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("create network layer: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
+		return nil, fmt.Errorf("transport layer type %s not support", transportLayerType)
 	}
 
 	return ipv4Layer, nil
 }
 
 func createNetworkLayerIPv6(srcIP, dstIP net.IP, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
-	if srcIP.To4() != nil || dstIP.To4() != nil {
-		return nil, fmt.Errorf("create network layer: %w", fmt.Errorf("invalid ipv6 address %s", srcIP))
+	if srcIP.To4() != nil {
+		return nil, fmt.Errorf("parse source ip %s: %w", srcIP, errors.New("invalid"))
 	}
-	return nil, fmt.Errorf("create network layer: %w", errors.New("ipv6 not support"))
+	if dstIP.To4() != nil {
+		return nil, fmt.Errorf("parse destination ip %s: %w", dstIP, errors.New("invalid"))
+	}
+
+	return nil, errors.New("not implemented")
 }
 
 func createLinkLayerLoopback() *layers.Loopback {
@@ -143,7 +150,7 @@ func createLinkLayerEthernet(srcMAC, dstMAC net.HardwareAddr, networkLayer gopac
 	case layers.LayerTypeIPv6:
 		ethernetLayer.EthernetType = layers.EthernetTypeIPv6
 	default:
-		return nil, fmt.Errorf("create link layer: %w", fmt.Errorf("type %s not support", networkLayerType))
+		return nil, fmt.Errorf("network layer type %s not support", networkLayerType)
 	}
 
 	return ethernetLayer, nil
@@ -156,7 +163,7 @@ func serialize(layers ...gopacket.SerializableLayer) ([]byte, error) {
 
 	err := gopacket.SerializeLayers(buffer, options, layers...)
 	if err != nil {
-		return nil, fmt.Errorf("serialize: %w", err)
+		return nil, err
 	}
 
 	return buffer.Bytes(), nil
@@ -169,7 +176,7 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 
 	err := gopacket.SerializeLayers(buffer, options, layers...)
 	if err != nil {
-		return nil, fmt.Errorf("serialize: %w", err)
+		return nil, err
 	}
 
 	return buffer.Bytes(), nil
@@ -210,26 +217,27 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 		// Parse IPv4 header and 8 bytes content
 		packet := gopacket.NewPacket(layer.Payload, layers.LayerTypeIPv4, gopacket.Default)
 		if len(packet.Layers()) <= 0 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("missing network layer"))
+			return nil, errors.New("missing network layer")
 		}
 		if len(packet.Layers()) <= 1 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("missing transport layer"))
+			return nil, errors.New("missing transport layer")
 		}
 
 		networkLayer := packet.Layers()[0]
-		if networkLayer.LayerType() != layers.LayerTypeIPv4 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", errors.New("network layer type not support"))
+		networkLayerType := networkLayer.LayerType()
+		if networkLayerType != layers.LayerTypeIPv4 {
+			return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("type %s not support", networkLayerType))
 		}
 
 		embIPv4Layer = networkLayer.(*layers.IPv4)
 		if embIPv4Layer.Version != 4 {
-			return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("ip version %d not support", embIPv4Layer.Version))
+			return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("ip version %d not support", embIPv4Layer.Version))
 		}
 
 		embTransportLayer = packet.Layers()[1]
 		embTransportLayerType = embTransportLayer.LayerType()
 	default:
-		return nil, fmt.Errorf("parse icmp v4 layer: %w", fmt.Errorf("type %d not support", t))
+		return nil, fmt.Errorf("icmpv4 type %d not support", t)
 	}
 
 	return &icmpv4Indicator{
@@ -269,7 +277,7 @@ func (indicator *icmpv4Indicator) isQuery() bool {
 		layers.ICMPv4TypeParameterProblem:
 		return false
 	default:
-		panic(fmt.Errorf("is query: %w", fmt.Errorf("type %d not support", t)))
+		panic(fmt.Errorf("icmpv4 type %d not support", t))
 	}
 }
 
@@ -314,7 +322,7 @@ func (indicator *icmpv4Indicator) embId() uint16 {
 	case layers.LayerTypeICMPv4:
 		return uint16(indicator.embICMPv4Layer().Id)
 	default:
-		panic(fmt.Errorf("emb id: %w", fmt.Errorf("type %s not support", indicator.embTransportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
 	}
 }
 
@@ -325,7 +333,7 @@ func (indicator *icmpv4Indicator) embSrcPort() uint16 {
 	case layers.LayerTypeUDP:
 		return uint16(indicator.embUDPLayer().SrcPort)
 	default:
-		panic(fmt.Errorf("emb src port: %w", fmt.Errorf("type %s not support", indicator.embTransportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
 	}
 }
 
@@ -336,7 +344,7 @@ func (indicator *icmpv4Indicator) embDstPort() uint16 {
 	case layers.LayerTypeUDP:
 		return uint16(indicator.embUDPLayer().DstPort)
 	default:
-		panic(fmt.Errorf("emb dst port: %w", fmt.Errorf("type %s not support", indicator.embTransportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
 	}
 }
 
@@ -361,13 +369,13 @@ func (indicator *icmpv4Indicator) isEmbQuery() bool {
 		layers.ICMPv4TypeParameterProblem:
 		return false
 	default:
-		panic(fmt.Errorf("is emb query: %w", fmt.Errorf("type %d not support", t)))
+		panic(fmt.Errorf("icmpv4 type %d not support", t))
 	}
 }
 
 func (indicator *icmpv4Indicator) natSrc() IPEndpoint {
 	if indicator.isQuery() {
-		panic(fmt.Errorf("src: %w", errors.New("icmpv4 query not support")))
+		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
 		switch indicator.embTransportLayerType {
@@ -388,14 +396,14 @@ func (indicator *icmpv4Indicator) natSrc() IPEndpoint {
 				}
 			}
 		default:
-			panic(fmt.Errorf("src: %w", fmt.Errorf("type %s not support", indicator.embTransportLayerType)))
+			panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
 		}
 	}
 }
 
 func (indicator *icmpv4Indicator) natDst() IPEndpoint {
 	if indicator.isQuery() {
-		panic(fmt.Errorf("dst: %w", errors.New("icmpv4 query not support")))
+		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
 		switch indicator.embTransportLayerType {
@@ -416,7 +424,7 @@ func (indicator *icmpv4Indicator) natDst() IPEndpoint {
 				}
 			}
 		default:
-			panic(fmt.Errorf("dst: %w", fmt.Errorf("type %s not support", indicator.embTransportLayerType)))
+			panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
 		}
 	}
 }

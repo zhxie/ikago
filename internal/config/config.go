@@ -46,25 +46,25 @@ func New() *Config {
 	}
 }
 
-// Parse returns the config parsed from file
-func Parse(path string) (*Config, error) {
+// ParseFile returns the config parsed from file
+func ParseFile(path string) (*Config, error) {
 	config := New()
 
 	// Open file
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+		return nil, fmt.Errorf("open: %w", err)
 	}
 
 	fi, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+		return nil, fmt.Errorf("stat: %w", err)
 	}
 
 	// Empty file
 	size := fi.Size()
 	if size == 0 {
-		return nil, fmt.Errorf("parse: %w", errors.New("empty file"))
+		return nil, errors.New("empty file")
 	}
 
 	// Read file
@@ -74,7 +74,7 @@ func Parse(path string) (*Config, error) {
 	// Trim comments
 	buffer, err = trimComments(buffer)
 	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+		return nil, fmt.Errorf("trim comments: %w", err)
 	}
 
 	// Expand environment variables
@@ -83,7 +83,7 @@ func Parse(path string) (*Config, error) {
 	// Unmarshal
 	err = json.Unmarshal(buffer, config)
 	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
 	return config, nil
@@ -99,7 +99,7 @@ func trimComments(data []byte) ([]byte, error) {
 	for _, line := range lines {
 		match, err := regexp.Match(`^\s*#`, line)
 		if err != nil {
-			return nil, fmt.Errorf("trim comments: %w", err)
+			return nil, fmt.Errorf("match: %w", err)
 		}
 
 		if !match {

@@ -3,10 +3,11 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"errors"
 	"fmt"
 )
 
-// AESCFBCrypto describes an AES-256-CFB crypto
+// AESCFBCrypto describes an AES-CFB crypto
 type AESCFBCrypto struct {
 	Key       []byte
 	IV        []byte
@@ -18,14 +19,10 @@ type AESCFBCrypto struct {
 func (c *AESCFBCrypto) Prepare() error {
 	var err error
 
-	if len(c.Key) != 32 {
-		return fmt.Errorf("create crypto: %w", fmt.Errorf("invalid key"))
-	}
-
 	// Cipher
 	c.block, err = aes.NewCipher(c.Key)
 	if err != nil {
-		return fmt.Errorf("create crypto: %w", fmt.Errorf("create cipher: %w", err))
+		return fmt.Errorf("new cipher: %w", err)
 	}
 
 	c.encrypter = cipher.NewCFBEncrypter(c.block, c.IV)
@@ -67,13 +64,13 @@ func (c *AESGCMCrypto) Prepare() error {
 	// Cipher
 	c.block, err = aes.NewCipher(c.Key)
 	if err != nil {
-		return fmt.Errorf("create crypto: %w", fmt.Errorf("create cipher: %w", err))
+		return fmt.Errorf("new cipher: %w", err)
 	}
 
 	// AEAD
 	c.aead, err = cipher.NewGCM(c.block)
 	if err != nil {
-		return fmt.Errorf("create crypto: %w", fmt.Errorf("create aead: %w", err))
+		return fmt.Errorf("new gcm: %w", err)
 	}
 
 	return nil
@@ -82,7 +79,7 @@ func (c *AESGCMCrypto) Prepare() error {
 func (c *AESGCMCrypto) Encrypt(data []byte) ([]byte, error) {
 	nonce, err := GenerateNonce(c.aead.NonceSize())
 	if err != nil {
-		return nil, fmt.Errorf("encrypt: %w", err)
+		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
 	result := c.aead.Seal(nil, nonce, data, nil)
@@ -94,13 +91,13 @@ func (c *AESGCMCrypto) Encrypt(data []byte) ([]byte, error) {
 func (c *AESGCMCrypto) Decrypt(data []byte) ([]byte, error) {
 	size := c.aead.NonceSize()
 	if len(data) < size {
-		return nil, fmt.Errorf("decrypt: %w", fmt.Errorf("missing nonce"))
+		return nil, errors.New("missing nonce")
 	}
 	nonce := data[:size]
 
 	result, err := c.aead.Open(nil, nonce, data[size:], nil)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt: %w", err)
+		return nil, fmt.Errorf("open: %w", err)
 	}
 
 	return result, nil

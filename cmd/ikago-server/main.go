@@ -40,9 +40,9 @@ func main() {
 
 	// Configuration file
 	if *argConfig != "" {
-		cfg, err = config.Parse(*argConfig)
+		cfg, err = config.ParseFile(*argConfig)
 		if err != nil {
-			log.Fatalln(fmt.Errorf("parse: %w", err))
+			log.Fatalln(fmt.Errorf("parse config file %s: %w", *argConfig, err))
 		}
 	} else {
 		cfg = &config.Config{
@@ -76,34 +76,34 @@ func main() {
 		log.Fatalln("Please provide listen port by -p [port].")
 	}
 	if cfg.ListenPort <= 0 || cfg.ListenPort >= 65536 {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("listen port out of range")))
+		log.Fatalln(fmt.Errorf("parse listen port %d: %w", cfg.ListenPort, errors.New("out of range")))
 	}
 	c, err = crypto.Parse(cfg.Method, cfg.Password)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", err))
+		log.Fatalln(fmt.Errorf("parse crypto: %w", err))
 	}
 	log.Infof("Proxy from :%d\n", cfg.ListenPort)
 
 	// Find devices
 	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", err))
+		log.Fatalln(fmt.Errorf("find listen devices: %w", err))
 	}
 	if len(listenDevs) <= 0 {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
+		log.Fatalln(fmt.Errorf("find listen devices: %w", errors.New("cannot determine")))
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(cfg.UpDev)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	if upDev == nil && gatewayDev == nil {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine upstream device and gateway")))
+		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", errors.New("cannot determine")))
 	}
 	if upDev == nil {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine upstream device")))
+		log.Fatalln(fmt.Errorf("find upstream device: %w", errors.New("cannot determine")))
 	}
 	if gatewayDev == nil {
-		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine gateway")))
+		log.Fatalln(fmt.Errorf("find gateway device: %w", errors.New("cannot determine")))
 	}
 
 	// Packet capture
@@ -126,7 +126,7 @@ func main() {
 
 	err = p.Open()
 	if err != nil {
-		log.Fatalln(fmt.Errorf("pcap: %w", err))
+		log.Fatalln(fmt.Errorf("open pcap: %w", err))
 	}
 }
 

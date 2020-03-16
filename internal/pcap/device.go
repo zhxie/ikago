@@ -139,7 +139,7 @@ func FindAllDevs() ([]*Device, error) {
 	// Enumerate system's network interfaces
 	inters, err := net.Interfaces()
 	if err != nil {
-		return nil, fmt.Errorf("find all devs: %w", err)
+		return nil, fmt.Errorf("find interfaces: %w", err)
 	}
 	for _, inter := range inters {
 		// Ignore not up and not loopback interfaces
@@ -152,14 +152,14 @@ func FindAllDevs() ([]*Device, error) {
 		}
 		addrs, err := inter.Addrs()
 		if err != nil {
-			log.Errorln(fmt.Errorf("find all devs: %w", err))
+			log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, err))
 			continue
 		}
 		as := make([]*net.IPNet, 0)
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
-				log.Errorln(fmt.Errorf("find all devs: %w", fmt.Errorf("invalid address in %s", inter.Name)))
+				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, fmt.Errorf("parse address %s: %w", addr, errors.New("invalid"))))
 				continue
 			}
 			as = append(as, ipnet)
@@ -170,7 +170,7 @@ func FindAllDevs() ([]*Device, error) {
 	// Enumerate pcap devices
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
-		return nil, fmt.Errorf("find all devs: %w", err)
+		return nil, fmt.Errorf("find pcap devices: %w", err)
 	}
 	for _, dev := range devs {
 		// Match pcap device with interface
@@ -180,7 +180,7 @@ func FindAllDevs() ([]*Device, error) {
 				continue
 			}
 			if d.Name != "" {
-				return nil, fmt.Errorf("find all devs: %w", errors.New("too many loopback devices"))
+				return nil, errors.New("too many loopback devices")
 			}
 			d.Name = dev.Name
 			result = append(result, d)
@@ -194,7 +194,7 @@ func FindAllDevs() ([]*Device, error) {
 					continue
 				}
 				if d.Name != "" {
-					return nil, fmt.Errorf("find all devs: %w", errors.New("multiple devices with same address"))
+					return nil, fmt.Errorf("parse pcap device %s: %w", dev.Name, fmt.Errorf("same address with %s", d.Name))
 				}
 				d.Name = dev.Name
 				result = append(result, d)
@@ -210,7 +210,7 @@ func FindAllDevs() ([]*Device, error) {
 func FindAllIPv4Devs() ([]*Device, error) {
 	devs, err := FindAllDevs()
 	if err != nil {
-		return nil, fmt.Errorf("find all ipv4 devs: %w", err)
+		return nil, fmt.Errorf("find all devices: %w", err)
 	}
 
 	result := make([]*Device, 0)
@@ -229,7 +229,7 @@ func FindAllIPv4Devs() ([]*Device, error) {
 func FindAllIPv6Devs() ([]*Device, error) {
 	devs, err := FindAllDevs()
 	if err != nil {
-		return nil, fmt.Errorf("find all ipv6 devs: %w", err)
+		return nil, fmt.Errorf("find all devices: %w", err)
 	}
 
 	result := make([]*Device, 0)
@@ -270,7 +270,7 @@ func FindDev(devs []*Device, ip net.IP) *Device {
 func FindGatewayAddr() (*net.IPNet, error) {
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
-		return nil, fmt.Errorf("find gateway addr: %w", err)
+		return nil, fmt.Errorf("discover gateway: %w", err)
 	}
 	return &net.IPNet{IP: ip}, nil
 }
@@ -280,17 +280,17 @@ func FindGatewayDev(dev string) (*Device, error) {
 	// Find gateway's IP
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
-		return nil, fmt.Errorf("find gateway dev: %w", err)
+		return nil, fmt.Errorf("discover gateway: %w", err)
 	}
 
 	// Create a packet capture for testing
 	handle, err := pcap.OpenLive(dev, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return nil, fmt.Errorf("find gateway dev: %w", err)
+		return nil, fmt.Errorf("open device %s: %w", dev, err)
 	}
 	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip.String()))
 	if err != nil {
-		return nil, fmt.Errorf("find gateway dev: %w", err)
+		return nil, fmt.Errorf("set bpf filter: %w", err)
 	}
 	localPacketSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 	c := make(chan gopacket.Packet, 1)
@@ -308,21 +308,21 @@ func FindGatewayDev(dev string) (*Device, error) {
 	// Attempt to send and capture a UDP packet
 	err = sendUDPPacket(ip.String()+":65535", []byte("0"))
 	if err != nil {
-		return nil, fmt.Errorf("find gateway dev: %w", err)
+		return nil, fmt.Errorf("send udp packet: %w", err)
 	}
 
 	// Analyze the packet and get gateway's hardware address
 	packet := <-c
 	if packet == nil {
-		return nil, fmt.Errorf("find gateway dev: %w", errors.New("timeout"))
+		return nil, errors.New("timeout")
 	}
 	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
 	if ethernetLayer == nil {
-		return nil, fmt.Errorf("find gateway dev: %w", errors.New("layer type out of range"))
+		return nil, fmt.Errorf("parse packet: %w", errors.New("missing ethernet layer"))
 	}
 	ethernetPacket, ok := ethernetLayer.(*layers.Ethernet)
 	if !ok {
-		return nil, fmt.Errorf("find gateway dev: %w", errors.New("invalid packet"))
+		return nil, fmt.Errorf("parse packet: %w", errors.New("invalid"))
 	}
 	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP: ip})
 	return &Device{Alias: "Gateway", IPAddrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil
@@ -334,7 +334,7 @@ func FindListenDevs(strDevs []string) ([]*Device, error) {
 
 	devs, err := FindAllDevs()
 	if err != nil {
-		return nil, fmt.Errorf("find listen devs: %w", err)
+		return nil, fmt.Errorf("find all devices: %w", err)
 	}
 
 	if len(strDevs) <= 0 {
@@ -348,7 +348,7 @@ func FindListenDevs(strDevs []string) ([]*Device, error) {
 		for _, strDev := range strDevs {
 			dev, ok := m[strDev]
 			if !ok {
-				return nil, fmt.Errorf("find listen devs: %w", fmt.Errorf("unknown device %s", strDev))
+				return nil, fmt.Errorf("find listen device %s: %w", strDev, errors.New("unknown"))
 			}
 			result = append(result, dev)
 		}
@@ -357,11 +357,11 @@ func FindListenDevs(strDevs []string) ([]*Device, error) {
 	return result, nil
 }
 
-// FindUpstreamDevAndGateway returns the pcap device for routing upstream and the gateway
-func FindUpstreamDevAndGateway(strDev string) (upDev, gatewayDev *Device, err error) {
+// FindUpstreamDevAndGatewayDev returns the pcap device for routing upstream and the gateway
+func FindUpstreamDevAndGatewayDev(strDev string) (upDev, gatewayDev *Device, err error) {
 	devs, err := FindAllDevs()
 	if err != nil {
-		return nil, nil, fmt.Errorf("find upstream devs and gateway: %w", err)
+		return nil, nil, fmt.Errorf("find all devices: %w", err)
 	}
 
 	if strDev != "" {
@@ -373,7 +373,7 @@ func FindUpstreamDevAndGateway(strDev string) (upDev, gatewayDev *Device, err er
 			}
 		}
 		if upDev == nil {
-			return nil, nil, fmt.Errorf("find upstream dev: %w", fmt.Errorf("unknown device %s", strDev))
+			return nil, nil, fmt.Errorf("find upstream device %s: %w", strDev, errors.New("unknown"))
 		}
 		// Find gateway
 		if upDev.IsLoop {
@@ -381,7 +381,7 @@ func FindUpstreamDevAndGateway(strDev string) (upDev, gatewayDev *Device, err er
 		} else {
 			gatewayDev, err = FindGatewayDev(upDev.Name)
 			if err != nil {
-				return nil, nil, fmt.Errorf("find gateway: %w", err)
+				return nil, nil, fmt.Errorf("find gateway device: %w", err)
 			}
 			// Test if device's IP is in the same domain of the gateway's
 			var newUpDev *Device
@@ -398,7 +398,7 @@ func FindUpstreamDevAndGateway(strDev string) (upDev, gatewayDev *Device, err er
 				}
 			}
 			if newUpDev == nil {
-				return nil, nil, fmt.Errorf("find gateway: %w", errors.New("different domain in upstream device and gateway"))
+				return nil, nil, fmt.Errorf("find gateway device: %w", fmt.Errorf("different domain in upstream device %s and gateway", upDev.Alias))
 			}
 			upDev = newUpDev
 		}
@@ -406,7 +406,7 @@ func FindUpstreamDevAndGateway(strDev string) (upDev, gatewayDev *Device, err er
 		// Find upstream device and gateway
 		gatewayAddr, err := FindGatewayAddr()
 		if err != nil {
-			return nil, nil, fmt.Errorf("find upstream dev: %w", fmt.Errorf("find gateway's address: %w", err))
+			return nil, nil, fmt.Errorf("find gateway address: %w", err)
 		}
 		for _, dev := range devs {
 			if dev.IsLoop {

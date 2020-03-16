@@ -87,7 +87,7 @@ func (indicator *packetIndicator) srcIP() net.IP {
 	case layers.LayerTypeIPv6:
 		return indicator.ipv6Layer().SrcIP
 	default:
-		panic(fmt.Errorf("src ip: %w", fmt.Errorf("type %s not support", indicator.networkLayerType)))
+		panic(fmt.Errorf("network layer type %s not support", indicator.networkLayerType))
 	}
 }
 
@@ -98,7 +98,7 @@ func (indicator *packetIndicator) dstIP() net.IP {
 	case layers.LayerTypeIPv6:
 		return indicator.ipv6Layer().DstIP
 	default:
-		panic(fmt.Errorf("dst ip: %w", fmt.Errorf("type %s not support", indicator.networkLayerType)))
+		panic(fmt.Errorf("network layer type %s not support", indicator.networkLayerType))
 	}
 }
 
@@ -109,7 +109,7 @@ func (indicator *packetIndicator) srcPort() uint16 {
 	case layers.LayerTypeUDP:
 		return uint16(indicator.udpLayer().SrcPort)
 	default:
-		panic(fmt.Errorf("src port: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -120,7 +120,7 @@ func (indicator *packetIndicator) dstPort() uint16 {
 	case layers.LayerTypeUDP:
 		return uint16(indicator.udpLayer().DstPort)
 	default:
-		panic(fmt.Errorf("dst port: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -141,7 +141,7 @@ func (indicator *packetIndicator) natSrc() IPEndpoint {
 			return indicator.icmpv4Indicator.natSrc()
 		}
 	default:
-		panic(fmt.Errorf("src: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -162,7 +162,7 @@ func (indicator *packetIndicator) natDst() IPEndpoint {
 			return indicator.icmpv4Indicator.natDst()
 		}
 	default:
-		panic(fmt.Errorf("dst: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -177,7 +177,7 @@ func (indicator *packetIndicator) natProto() gopacket.LayerType {
 			return indicator.icmpv4Indicator.embTransportLayerType
 		}
 	default:
-		panic(fmt.Errorf("proto: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -200,7 +200,7 @@ func (indicator *packetIndicator) src() IPEndpoint {
 			}
 		}
 	default:
-		panic(fmt.Errorf("src: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -223,7 +223,7 @@ func (indicator *packetIndicator) dst() IPEndpoint {
 			}
 		}
 	default:
-		panic(fmt.Errorf("dst: %w", fmt.Errorf("type %s not support", indicator.transportLayerType)))
+		panic(fmt.Errorf("transport layer type %s not support", indicator.transportLayerType))
 	}
 }
 
@@ -247,7 +247,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	// Parse packet
 	networkLayer = packet.NetworkLayer()
 	if networkLayer == nil {
-		return nil, fmt.Errorf("parse: %w", errors.New("missing network layer"))
+		return nil, errors.New("missing network layer")
 	}
 	networkLayerType = networkLayer.LayerType()
 	transportLayer = packet.TransportLayer()
@@ -255,7 +255,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		// Guess ICMPv4
 		transportLayer = packet.Layer(layers.LayerTypeICMPv4)
 		if transportLayer == nil {
-			return nil, fmt.Errorf("parse: %w", errors.New("missing transport layer"))
+			return nil, errors.New("missing transport layer")
 		}
 	}
 	transportLayerType = transportLayer.LayerType()
@@ -266,7 +266,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	case layers.LayerTypeIPv4, layers.LayerTypeIPv6:
 		break
 	default:
-		return nil, fmt.Errorf("parse: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
+		return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("type %s not support", networkLayerType))
 	}
 
 	// Parse transport layer
@@ -277,10 +277,10 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 		var err error
 		icmpv4Indicator, err = parseICMPv4Layer(transportLayer.(*layers.ICMPv4))
 		if err != nil {
-			return nil, fmt.Errorf("parse: %w", err)
+			return nil, fmt.Errorf("parse icmpv4 layer: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("parse: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
+		return nil, fmt.Errorf("parse transport layer: %w", fmt.Errorf("type %s not support", transportLayerType))
 	}
 
 	return &packetIndicator{
@@ -298,10 +298,10 @@ func parseEmbPacket(contents []byte) (*packetIndicator, error) {
 	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
 	networkLayer := packet.NetworkLayer()
 	if networkLayer == nil {
-		return nil, fmt.Errorf("parse emb: %w", errors.New("missing network layer"))
+		return nil, errors.New("missing network layer")
 	}
 	if networkLayer.LayerType() != layers.LayerTypeIPv4 {
-		return nil, fmt.Errorf("parse emb: %w", errors.New("network layer type not support"))
+		return nil, errors.New("network layer type not support")
 	}
 	ipVersion := networkLayer.(*layers.IPv4).Version
 	switch ipVersion {
@@ -312,19 +312,19 @@ func parseEmbPacket(contents []byte) (*packetIndicator, error) {
 		embPacket := gopacket.NewPacket(contents, layers.LayerTypeIPv6, gopacket.Default)
 		networkLayer = embPacket.NetworkLayer()
 		if networkLayer == nil {
-			return nil, fmt.Errorf("parse emb: %w", errors.New("missing network layer"))
+			return nil, errors.New("missing network layer")
 		}
 		if networkLayer.LayerType() != layers.LayerTypeIPv6 {
-			return nil, fmt.Errorf("parse emb: %w", errors.New("network layer type not support"))
+			return nil, fmt.Errorf("parse network layer: %w", errors.New("type not support"))
 		}
 	default:
-		return nil, fmt.Errorf("parse emb: %w", fmt.Errorf("ip version %d not support", ipVersion))
+		return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("ip version %d not support", ipVersion))
 	}
 
 	// Parse packet
 	indicator, err := parsePacket(packet)
 	if err != nil {
-		return nil, fmt.Errorf("parse emb: %w", err)
+		return nil, err
 	}
 	return indicator, nil
 }
@@ -333,7 +333,7 @@ func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
 	// Guess link layer type, and here we regard loopback layer as a link layer
 	packet := gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
 	if len(packet.Layers()) < 0 {
-		return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
+		return nil, errors.New("missing link layer")
 	}
 	// Raw packet must start from the link layer
 	linkLayer := packet.Layers()[0]
@@ -342,10 +342,10 @@ func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
 		packet = gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
 		linkLayer := packet.LinkLayer()
 		if linkLayer == nil {
-			return nil, fmt.Errorf("parse raw: %w", errors.New("missing link layer"))
+			return nil, errors.New("missing link layer")
 		}
 		if linkLayer.LayerType() != layers.LayerTypeEthernet {
-			return nil, fmt.Errorf("parse raw: %w", errors.New("link layer type not support"))
+			return nil, fmt.Errorf("parse link layer: %w", errors.New("type not support"))
 		}
 	}
 
@@ -356,14 +356,14 @@ func sendTCPPacket(addr string, data []byte) error {
 	// Create connection
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("send tcp packet: %w", err)
+		return fmt.Errorf("dial %s: %w", addr, err)
 	}
 	defer conn.Close()
 
 	// Write data
 	_, err = conn.Write(data)
 	if err != nil {
-		return fmt.Errorf("send tcp packet: %w", err)
+		return fmt.Errorf("write: %w", err)
 	}
 	return nil
 }
@@ -372,14 +372,14 @@ func sendUDPPacket(addr string, data []byte) error {
 	// Create connection
 	conn, err := net.Dial("udp", addr)
 	if err != nil {
-		return fmt.Errorf("send udp packet: %w", err)
+		return fmt.Errorf("dial %s: %w", addr, err)
 	}
 	defer conn.Close()
 
 	// Write data
 	_, err = conn.Write(data)
 	if err != nil {
-		return fmt.Errorf("send udp packet: %w", err)
+		return fmt.Errorf("write: %w", err)
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"crypto/cipher"
+	"errors"
 	"fmt"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -18,7 +19,7 @@ func (c *ChaCha20Poly1305Crypto) Prepare() error {
 	// AEAD
 	c.aead, err = chacha20poly1305.New(c.Key)
 	if err != nil {
-		return fmt.Errorf("create crypto: %w", fmt.Errorf("create aead: %w", err))
+		return fmt.Errorf("new aead: %w", err)
 	}
 
 	return nil
@@ -27,7 +28,7 @@ func (c *ChaCha20Poly1305Crypto) Prepare() error {
 func (c *ChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
 	nonce, err := GenerateNonce(c.aead.NonceSize())
 	if err != nil {
-		return nil, fmt.Errorf("encrypt: %w", err)
+		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
 	result := c.aead.Seal(nil, nonce, data, nil)
@@ -39,13 +40,13 @@ func (c *ChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
 func (c *ChaCha20Poly1305Crypto) Decrypt(data []byte) ([]byte, error) {
 	size := c.aead.NonceSize()
 	if len(data) < size {
-		return nil, fmt.Errorf("decrypt: %w", fmt.Errorf("missing nonce"))
+		return nil, errors.New("missing nonce")
 	}
 	nonce := data[:size]
 
 	result, err := c.aead.Open(nil, nonce, data[size:], nil)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt: %w", err)
+		return nil, fmt.Errorf("open: %w", err)
 	}
 
 	return result, nil
@@ -67,7 +68,7 @@ func (c *XChaCha20Poly1305Crypto) Prepare() error {
 	// AEAD
 	c.aead, err = chacha20poly1305.NewX(c.Key)
 	if err != nil {
-		return fmt.Errorf("create crypto: %w", fmt.Errorf("create aead: %w", err))
+		return fmt.Errorf("new aead: %w", err)
 	}
 
 	return nil
@@ -76,7 +77,7 @@ func (c *XChaCha20Poly1305Crypto) Prepare() error {
 func (c *XChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
 	nonce, err := GenerateNonce(c.aead.NonceSize())
 	if err != nil {
-		return nil, fmt.Errorf("encrypt: %w", err)
+		return nil, fmt.Errorf("generate nonce: %w", err)
 	}
 
 	result := c.aead.Seal(nil, nonce, data, nil)
@@ -88,13 +89,13 @@ func (c *XChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
 func (c *XChaCha20Poly1305Crypto) Decrypt(data []byte) ([]byte, error) {
 	size := c.aead.NonceSize()
 	if len(data) < size {
-		return nil, fmt.Errorf("decrypt: %w", fmt.Errorf("missing nonce"))
+		return nil, errors.New("missing nonce")
 	}
 	nonce := data[:size]
 
 	result, err := c.aead.Open(nil, nonce, data[size:], nil)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt: %w", err)
+		return nil, fmt.Errorf("open: %w", err)
 	}
 
 	return result, nil
