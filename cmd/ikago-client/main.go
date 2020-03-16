@@ -21,10 +21,10 @@ var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices 
 var argConfig = flag.String("c", "", "Configuration file.")
 var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
 var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
-var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
 var argPassword = flag.String("password", "", "Password of the encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
+var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
 var argFilters = flag.String("f", "", "Filters.")
 var argServer = flag.String("s", "", "Server.")
 
@@ -36,6 +36,7 @@ func init() {
 func main() {
 	var (
 		err        error
+		cfg        *config.Config
 		filters    = make([]pcap.Filter, 0)
 		serverIP   net.IP
 		serverPort uint16
@@ -45,27 +46,27 @@ func main() {
 		c          crypto.Crypto
 	)
 
-	// Configuration file
+	// Configuration
 	if *argConfig != "" {
-		cfg, err := config.LoadConfig(*argConfig)
+		cfg, err = config.Parse(*argConfig)
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse: %w", err))
 		}
-
-		listenDevs := cfg.ListenDevsString()
-		argListenDevs = &listenDevs
-		argUpDev = &cfg.UpDev
-		argUpPort = &cfg.UpPort
-		argMethod = &cfg.Method
-		argPassword = &cfg.Password
-		argVerbose = &cfg.Verbose
-		filters := cfg.FiltersString()
-		argFilters = &filters
-		argServer = &cfg.Server
+	} else {
+		cfg = &config.Config{
+			ListenDevs: splitArg(*argListenDevs),
+			UpDev:      *argUpDev,
+			Method:     *argMethod,
+			Password:   *argPassword,
+			Verbose:    *argVerbose,
+			UpPort:     *argUpPort,
+			Filters:    splitArg(*argFilters),
+			Server:     *argServer,
+		}
 	}
 
 	// Log
-	log.SetVerbose(*argVerbose)
+	log.SetVerbose(cfg.Verbose)
 
 	// Exclusive commands
 	if *argListDevs {
@@ -81,38 +82,37 @@ func main() {
 	}
 
 	// Verify parameters
-	if *argFilters == "" {
+	if len(cfg.Filters) <= 0 {
 		log.Fatalln("Please provide filters by -f [filters].")
 	}
-	if *argServer == "" {
+	if cfg.Server == "" {
 		log.Fatalln("Please provide server by -s [address:port].")
 	}
-	strFilters := strings.Split(*argFilters, ",")
-	for _, strFilter := range strFilters {
-		filter, err := pcap.ParseFilter(strings.Trim(strFilter, " "))
+	for _, strFilter := range cfg.Filters {
+		filter, err := pcap.ParseFilter(strFilter)
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse: %w", err))
 		}
 		filters = append(filters, filter)
 	}
-	if *argUpPort < 0 || *argUpPort >= 65536 {
+	if cfg.UpPort < 0 || cfg.UpPort >= 65536 {
 		log.Fatalln(fmt.Errorf("parse: %w", errors.New("upstream port out of range")))
 		os.Exit(1)
 	}
 	// Randomize upstream port
-	if *argUpPort == 0 {
+	if cfg.UpPort == 0 {
 		s := rand.NewSource(time.Now().UnixNano())
 		r := rand.New(s)
+		// Select an upstream port which is different from any port in filters
 		for {
-			randUpPort := 49152 + r.Intn(16384)
-			argUpPort = &randUpPort
+			cfg.UpPort = 49152 + r.Intn(16384)
 			var exist bool
 			for _, filter := range filters {
 				switch filter.FilterType() {
 				case pcap.FilterTypeIP, pcap.FilterTypeIPPort:
 					break
 				case pcap.FilterTypePort:
-					if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
+					if filter.(*pcap.PortFilter).Port == uint16(cfg.UpPort) {
 						exist = true
 					}
 				default:
@@ -127,74 +127,35 @@ func main() {
 			}
 		}
 	}
-	for _, filter := range filters {
-		switch filter.FilterType() {
-		case pcap.FilterTypeIP, pcap.FilterTypeIPPort:
-			break
-		case pcap.FilterTypePort:
-			if filter.(*pcap.PortFilter).Port == uint16(*argUpPort) {
-				log.Fatalln(fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
-			}
-		default:
-			break
-		}
-	}
-	serverIPPort, err := pcap.ParseIPPort(*argServer)
+	serverIPPort, err := pcap.ParseIPPort(cfg.Server)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("server: %w", err)))
 	}
 	serverIP = serverIPPort.IP
 	serverPort = serverIPPort.Port
-	c, err = crypto.ParseCrypto(*argMethod, *argPassword)
+	c, err = crypto.Parse(cfg.Method, cfg.Password)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", err))
+		log.Fatalln(fmt.Errorf("parse: %w", fmt.Errorf("crypto: %w", err)))
 	}
 	if len(filters) == 1 {
-		log.Infof("Proxy from %s through :%d to %s\n", filters[0], *argUpPort, serverIPPort)
+		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverIPPort)
 	} else {
 		log.Info("Proxy:")
 		for _, filter := range filters {
 			log.Infof("\n  %s", filter)
 		}
-		log.Infof(" through :%d to %s\n", *argUpPort, serverIPPort)
+		log.Infof(" through :%d to %s\n", cfg.UpPort, serverIPPort)
 	}
 
 	// Find devices
-	if *argListenDevs == "" {
-		listenDevs, err = pcap.FindListenDevs(nil)
-	} else {
-		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","))
-	}
+	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	if len(listenDevs) <= 0 {
 		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
 	}
-	// Check if listen devices including illegal filter
-	addrs := make(map[string]bool)
-	for _, dev := range listenDevs {
-		for _, addr := range dev.IPAddrs {
-			addrs[addr.IP.String()] = true
-		}
-	}
-	for _, filter := range filters {
-		switch filter.FilterType() {
-		case pcap.FilterTypeIPPort:
-			ipPortFilter := filter.(*pcap.IPPortFilter)
-			if ipPortFilter.Port == uint16(*argUpPort) {
-				_, ok := addrs[ipPortFilter.IP.String()]
-				if ok {
-					log.Fatalln(fmt.Errorf("parse: %w", errors.New("same port in filters and port for routing upstream")))
-				}
-			}
-		case pcap.FilterTypeIP, pcap.FilterTypePort:
-			break
-		default:
-			break
-		}
-	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(cfg.UpDev)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
@@ -211,7 +172,7 @@ func main() {
 	// Packet capture
 	p := pcap.Client{
 		Filters:    filters,
-		UpPort:     uint16(*argUpPort),
+		UpPort:     uint16(cfg.UpPort),
 		ServerIP:   serverIP,
 		ServerPort: serverPort,
 		ListenDevs: listenDevs,
@@ -232,5 +193,21 @@ func main() {
 	err = p.Open()
 	if err != nil {
 		log.Fatalln(fmt.Errorf("pcap: %w", err))
+	}
+}
+
+func splitArg(s string) []string {
+	if s == "" {
+		return nil
+	} else {
+		result := make([]string, 0)
+
+		strs := strings.Split(s, ",")
+
+		for _, str := range strs {
+			result = append(result, strings.Trim(str, " "))
+		}
+
+		return result
 	}
 }

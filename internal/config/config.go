@@ -14,10 +14,10 @@ import (
 type Config struct {
 	ListenDevs []string `json:"listen-devices"`
 	UpDev      string   `json:"upstream-device"`
-	UpPort     int      `json:"upstream-port"`
 	Method     string   `json:"method"`
 	Password   string   `json:"password"`
 	Verbose    bool     `json:"verbose"`
+	UpPort     int      `json:"upstream-port"`
 	Filters    []string `json:"filters"`
 	Server     string   `json:"server"`
 	ListenPort int      `json:"listen-port"`
@@ -39,27 +39,32 @@ func (config *Config) FiltersString() string {
 	return strings.Join(config.Filters, ",")
 }
 
-// LoadConfig returns the configuration parsed from file
-func LoadConfig(path string) (*Config, error) {
-	config := Config{
+// New returns a new config
+func New() *Config {
+	return &Config{
 		Method: "plain",
 	}
+}
+
+// Parse returns the config parsed from file
+func Parse(path string) (*Config, error) {
+	config := New()
 
 	// Open file
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 
 	fi, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 
 	// Empty file
 	size := fi.Size()
 	if size == 0 {
-		return nil, fmt.Errorf("load config: %w", errors.New("empty file"))
+		return nil, fmt.Errorf("parse: %w", errors.New("empty file"))
 	}
 
 	// Read file
@@ -69,19 +74,19 @@ func LoadConfig(path string) (*Config, error) {
 	// Trim comments
 	buffer, err = trimComments(buffer)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 
 	// Expand environment variables
 	buffer = []byte(os.ExpandEnv(string(buffer)))
 
 	// Unmarshal
-	err = json.Unmarshal(buffer, &config)
+	err = json.Unmarshal(buffer, config)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 
-	return &config, nil
+	return config, nil
 }
 
 func trimComments(data []byte) ([]byte, error) {

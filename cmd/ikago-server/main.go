@@ -31,6 +31,7 @@ func init() {
 func main() {
 	var (
 		err        error
+		cfg        *config.Config
 		listenDevs = make([]*pcap.Device, 0)
 		upDev      *pcap.Device
 		gatewayDev *pcap.Device
@@ -39,22 +40,23 @@ func main() {
 
 	// Configuration file
 	if *argConfig != "" {
-		cfg, err := config.LoadConfig(*argConfig)
+		cfg, err = config.Parse(*argConfig)
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse: %w", err))
 		}
-
-		listenDevs := cfg.ListenDevsString()
-		argListenDevs = &listenDevs
-		argUpDev = &cfg.UpDev
-		argMethod = &cfg.Method
-		argPassword = &cfg.Password
-		argVerbose = &cfg.Verbose
-		argListenPort = &cfg.ListenPort
+	} else {
+		cfg = &config.Config{
+			ListenDevs: splitArg(*argListenDevs),
+			UpDev:      *argUpDev,
+			Method:     *argMethod,
+			Password:   *argPassword,
+			Verbose:    *argVerbose,
+			ListenPort: *argListenPort,
+		}
 	}
 
 	// Log
-	log.SetVerbose(*argVerbose)
+	log.SetVerbose(cfg.Verbose)
 
 	// Exclusive commands
 	if *argListDevs {
@@ -70,31 +72,27 @@ func main() {
 	}
 
 	// Verify parameters
-	if *argListenPort == 0 {
+	if cfg.ListenPort == 0 {
 		log.Fatalln("Please provide listen port by -p [port].")
 	}
-	if *argListenPort <= 0 || *argListenPort >= 65536 {
+	if cfg.ListenPort <= 0 || cfg.ListenPort >= 65536 {
 		log.Fatalln(fmt.Errorf("parse: %w", errors.New("listen port out of range")))
 	}
-	c, err = crypto.ParseCrypto(*argMethod, *argPassword)
+	c, err = crypto.Parse(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
-	log.Infof("Proxy from :%d\n", *argListenPort)
+	log.Infof("Proxy from :%d\n", cfg.ListenPort)
 
 	// Find devices
-	if *argListenDevs == "" {
-		listenDevs, err = pcap.FindListenDevs(nil)
-	} else {
-		listenDevs, err = pcap.FindListenDevs(strings.Split(*argListenDevs, ","))
-	}
+	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	if len(listenDevs) <= 0 {
 		log.Fatalln(fmt.Errorf("parse: %w", errors.New("cannot determine listen device")))
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(*argUpDev)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGateway(cfg.UpDev)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
@@ -110,7 +108,7 @@ func main() {
 
 	// Packet capture
 	p := pcap.Server{
-		ListenPort: uint16(*argListenPort),
+		ListenPort: uint16(cfg.ListenPort),
 		ListenDevs: listenDevs,
 		UpDev:      upDev,
 		GatewayDev: gatewayDev,
@@ -129,5 +127,21 @@ func main() {
 	err = p.Open()
 	if err != nil {
 		log.Fatalln(fmt.Errorf("pcap: %w", err))
+	}
+}
+
+func splitArg(s string) []string {
+	if s == "" {
+		return nil
+	} else {
+		result := make([]string, 0)
+
+		strs := strings.Split(s, ",")
+
+		for _, str := range strs {
+			result = append(result, strings.Trim(str, " "))
+		}
+
+		return result
 	}
 }

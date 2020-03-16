@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"ikago/internal/log"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/google/gopacket"
@@ -347,10 +346,9 @@ func FindListenDevs(strDevs []string) ([]*Device, error) {
 		}
 
 		for _, strDev := range strDevs {
-			strTrimDev := strings.Trim(strDev, " ")
-			dev, ok := m[strTrimDev]
+			dev, ok := m[strDev]
 			if !ok {
-				return nil, fmt.Errorf("find listen devs: %w", fmt.Errorf("unknown device %s", strTrimDev))
+				return nil, fmt.Errorf("find listen devs: %w", fmt.Errorf("unknown device %s", strDev))
 			}
 			result = append(result, dev)
 		}

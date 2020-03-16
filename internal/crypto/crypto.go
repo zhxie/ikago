@@ -33,7 +33,7 @@ type Crypto interface {
 	Method() Method
 }
 
-func ParseCrypto(method, password string) (Crypto, error) {
+func Parse(method, password string) (Crypto, error) {
 	var c Crypto
 	switch strings.ToLower(method) {
 	case "plain":
@@ -49,13 +49,13 @@ func ParseCrypto(method, password string) (Crypto, error) {
 	case "xchacha20-poly1305":
 		c = &XChaCha20Poly1305Crypto{Key: DeriveKey(password, 32)}
 	default:
-		return nil, fmt.Errorf("parse crypto: %w", fmt.Errorf("method %s not support", method))
+		return nil, fmt.Errorf("parse: %w", fmt.Errorf("method %s not support", method))
 	}
 
 	// Prepare the crypto
 	err := c.Prepare()
 	if err != nil {
-		return nil, fmt.Errorf("parse crypto: %w", err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 
 	return c, nil
