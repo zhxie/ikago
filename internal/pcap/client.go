@@ -434,7 +434,6 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 	if err != nil {
 		return fmt.Errorf("create network layer: %w", err)
-
 	}
 
 	// Decide Loopback or Ethernet
@@ -455,7 +454,6 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 	if err != nil {
 		return fmt.Errorf("create link layer: %w", err)
-
 	}
 
 	// Encrypt
@@ -471,7 +469,6 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 		gopacket.Payload(contents))
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
-
 	}
 
 	// Write packet data

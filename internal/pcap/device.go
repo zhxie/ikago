@@ -131,10 +131,15 @@ func (dev Device) AliasString() string {
 
 const flagPcapLoopback = 1
 
+var blacklist map[string]bool
+
 // FindAllDevs returns all valid network devices in current computer
 func FindAllDevs() ([]*Device, error) {
 	t := make([]*Device, 0)
 	result := make([]*Device, 0)
+	if blacklist == nil {
+		blacklist = make(map[string]bool)
+	}
 
 	// Enumerate system's network interfaces
 	inters, err := net.Interfaces()
@@ -159,7 +164,7 @@ func FindAllDevs() ([]*Device, error) {
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
-				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, fmt.Errorf("parse address %s: %w", addr, errors.New("invalid"))))
+				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, fmt.Errorf("invalid address %s")))
 				continue
 			}
 			as = append(as, ipnet)
@@ -168,11 +173,18 @@ func FindAllDevs() ([]*Device, error) {
 	}
 
 	// Enumerate pcap devices
+	mid := make([]*Device, 0)
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
 		return nil, fmt.Errorf("find pcap devices: %w", err)
 	}
 	for _, dev := range devs {
+		// Check blacklist
+		_, ok := blacklist[dev.Name]
+		if ok {
+			continue
+		}
+
 		// Match pcap device with interface
 		if dev.Flags&flagPcapLoopback != 0 {
 			d := FindLoopDev(t)
@@ -183,7 +195,7 @@ func FindAllDevs() ([]*Device, error) {
 				return nil, errors.New("too many loopback devices")
 			}
 			d.Name = dev.Name
-			result = append(result, d)
+			mid = append(mid, d)
 		} else {
 			if len(dev.Addresses) <= 0 {
 				continue
@@ -194,12 +206,24 @@ func FindAllDevs() ([]*Device, error) {
 					continue
 				}
 				if d.Name != "" {
-					return nil, fmt.Errorf("parse pcap device %s: %w", dev.Name, fmt.Errorf("same address with %s", d.Name))
+					// return nil, fmt.Errorf("parse pcap device %s: %w", dev.Name, fmt.Errorf("same address with %s", d.Name))
+					blacklist[dev.Name] = true
+					blacklist[d.Name] = true
+					log.Infof("Device %s has the same address with %s, these devices will be banned", dev.Name, d.Name)
+					break
 				}
 				d.Name = dev.Name
-				result = append(result, d)
+				mid = append(mid, d)
 				break
 			}
+		}
+	}
+
+	// Check blacklist
+	for _, dev := range mid {
+		_, ok := blacklist[dev.Name]
+		if !ok {
+			result = append(result, dev)
 		}
 	}
 
