@@ -58,7 +58,7 @@ func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.T
 		PSH:        true,
 		ACK:        true,
 		Window:     65535,
-		// Checksum:   0,
+		// Checksum: 0,
 	}
 }
 
@@ -66,8 +66,8 @@ func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
 	return &layers.UDP{
 		SrcPort: layers.UDPPort(srcPort),
 		DstPort: layers.UDPPort(dstPort),
-		// Length:    0,
-		// Checksum:  0,
+		// Length:   0,
+		// Checksum: 0,
 	}
 }
 
@@ -82,12 +82,12 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 	ipv4Layer := &layers.IPv4{
 		Version: 4,
 		IHL:     5,
-		// Length:     0,
+		// Length: 0,
 		Id:    id,
 		Flags: layers.IPv4DontFragment,
 		TTL:   ttl,
-		// Protocol:   0,
-		// Checksum:   0,
+		// Protocol: 0,
+		// Checksum: 0,
 		SrcIP: srcIP,
 		DstIP: dstIP,
 	}
@@ -120,7 +120,7 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 	return ipv4Layer, nil
 }
 
-func createNetworkLayerIPv6(srcIP, dstIP net.IP, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
+func createNetworkLayerIPv6(srcIP, dstIP net.IP, hopLimit uint8, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
 	if srcIP.To4() != nil {
 		return nil, fmt.Errorf("parse source ip %s: %w", srcIP, errors.New("invalid"))
 	}
@@ -128,7 +128,28 @@ func createNetworkLayerIPv6(srcIP, dstIP net.IP, transportLayer gopacket.Transpo
 		return nil, fmt.Errorf("parse destination ip %s: %w", dstIP, errors.New("invalid"))
 	}
 
-	return nil, errors.New("not implemented")
+	ipv6Layer := &layers.IPv6{
+		Version: 6,
+		// Length: 0,
+		HopLimit: hopLimit,
+		SrcIP:    srcIP,
+		DstIP:    dstIP,
+	}
+
+	// Protocol
+	transportLayerType := transportLayer.LayerType()
+	switch transportLayerType {
+	case layers.LayerTypeTCP:
+		ipv6Layer.NextHeader = layers.IPProtocolTCP
+	case layers.LayerTypeUDP:
+		ipv6Layer.NextHeader = layers.IPProtocolUDP
+	case layers.LayerTypeICMPv4:
+		ipv6Layer.NextHeader = layers.IPProtocolICMPv4
+	default:
+		return nil, fmt.Errorf("transport layer type %s not support", transportLayerType)
+	}
+
+	return ipv6Layer, nil
 }
 
 func createLinkLayerLoopback() *layers.Loopback {

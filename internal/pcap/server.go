@@ -221,7 +221,7 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	case layers.LayerTypeIPv4:
 		newNetworkLayer, err = createNetworkLayerIPv4(indicator.dstIP(), indicator.srcIP(), p.id, 128, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), 64, newTransportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 
@@ -790,7 +790,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeIPv4:
 		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, ni.src.IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, ni.src.IP, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, ni.src.IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}
