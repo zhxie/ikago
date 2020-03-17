@@ -67,8 +67,9 @@ go run ./cmd/ikago-server -p [port]
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
    
    // macOS
-   // Here, SRC represents the IP address of this macOS computer, and DST represents the IP addresses of the IkaGo server 
-   // and the device to be proxied. If you don't know how to fill it, although it is not recommended, just fill in "any".
+   // Here, SRC represents the IP address of this macOS computer, and DST represents the IP addresses
+   // of the IkaGo server and the device to be proxied. If you don't know how to fill it, although it
+   // is not recommended, just fill in "any".
    echo "block drop proto tcp from SRC to DST flags R/R" >> /etc/pf.conf
    pfctl -f /etc/pf.conf
    pfctl -e
