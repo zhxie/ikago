@@ -11,9 +11,13 @@
 
 ## Features
 
+<p align="center">
+  <img src="/assets/diagram.png">
+</p>
+
 - **FakeTCP** All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
-- **Multiple clients** One server can serve multiple clients.
-- **Cross platform** Works well with Windows and Linux, and macOS in theory.
+- **Multiplexing** One client can handle multiple connections from different devices. And one server can serve multiple clients.
+- **Cross platform** Works well with Windows and Linux, and macOS and others in theory.
 - **NAT support** Performs a full cone NAT.
 - **Encryption** Traffic can be encrypted.
 
@@ -37,7 +41,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-c`: (Optional, exclusively) Configuration file. An example of configuration file is [here](/configs/config.json).
 
-`-listen-devices devices`: (Optional) pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
+`-listen-devices devices`: (Optional) pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
 `-upstream-device device`: (Optional) pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used.
 
@@ -67,7 +71,7 @@ go run ./cmd/ikago-server -p [port]
    // You can use stricter policies to maintain a stable network environment if you are using IkaGo-client.
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
    
-   // macOS
+   // macOS, FreeBSD
    // You can specify source and destination addresses instead of "any" to maintain a stable network environment
    // if you are using IkaGo-client.
    echo "block drop proto tcp from any to any flags R/R" >> /etc/pf.conf
