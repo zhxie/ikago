@@ -137,7 +137,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	log.Infof("Connected to server %s in %d ms\n", IPPort{IP: p.ServerIP, Port: p.ServerPort}, d.Milliseconds())
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", IPPort{IP: p.ServerIP, Port: p.ServerPort}, float64(d.Microseconds())/1000)
 
 	// Close in advance
 	p.handshakeHandle.Close()
@@ -163,8 +163,8 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("open upstream device %s: %w", p.UpDev.Name, err)
 	}
-	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d)) || (icmp && src host %s)",
-		p.UpPort, p.ServerIP, p.ServerPort, p.ServerIP))
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d))",
+		p.UpPort, p.ServerIP, p.ServerPort))
 	if err != nil {
 		return fmt.Errorf("set bpf filter: %w", err)
 	}
