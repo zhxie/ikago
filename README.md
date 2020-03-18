@@ -64,13 +64,13 @@ go run ./cmd/ikago-server -p [port]
 1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some Linux and macOS kernels may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` in Linux or `pfctl` in macOS with the rule below to solve the problem:
    ```
    // Linux
+   // You can use stricter policies to maintain a stable network environment if you are using IkaGo-client.
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
    
    // macOS
-   // Here, SRC represents the IP address of this macOS computer, and DST represents the IP addresses
-   // of the IkaGo server and the device to be proxied. If you don't know how to fill it, although it
-   // is not recommended, just fill in "any".
-   echo "block drop proto tcp from SRC to DST flags R/R" >> /etc/pf.conf
+   // You can specify source and destination addresses instead of "any" to maintain a stable network environment
+   // if you are using IkaGo-client.
+   echo "block drop proto tcp from any to any flags R/R" >> /etc/pf.conf
    pfctl -f /etc/pf.conf
    pfctl -e
    ```
