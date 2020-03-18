@@ -89,9 +89,23 @@ func main() {
 	if err != nil {
 		log.Fatalln(fmt.Errorf("find listen devices: %w", err))
 	}
+	if len(cfg.ListenDevs) <= 0 {
+		// Remove loopback devices by default
+		result := make([]*pcap.Device, 0)
+
+		for _, dev := range listenDevs {
+			if dev.IsLoop {
+				continue
+			}
+			result = append(result, dev)
+		}
+
+		listenDevs = result
+	}
 	if len(listenDevs) <= 0 {
 		log.Fatalln(fmt.Errorf("find listen devices: %w", errors.New("cannot determine")))
 	}
+
 	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))

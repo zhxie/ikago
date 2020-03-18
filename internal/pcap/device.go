@@ -147,28 +147,33 @@ func FindAllDevs() ([]*Device, error) {
 		return nil, fmt.Errorf("find interfaces: %w", err)
 	}
 	for _, inter := range inters {
-		// Ignore not up and not loopback interfaces
-		if inter.Flags&net.FlagUp == 0 && inter.Flags&net.FlagLoopback == 0 {
-			continue
-		}
+		// Loopback interface
 		var isLoop bool
 		if inter.Flags&net.FlagLoopback != 0 {
 			isLoop = true
 		}
+
+		// Ignore not up and not loopback interfaces
+		if inter.Flags&net.FlagUp == 0 && !isLoop {
+			continue
+		}
+
 		addrs, err := inter.Addrs()
 		if err != nil {
 			log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, err))
 			continue
 		}
+
 		as := make([]*net.IPNet, 0)
 		for _, addr := range addrs {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
-				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, fmt.Errorf("invalid address %s")))
+				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, errors.New("invalid address")))
 				continue
 			}
 			as = append(as, ipnet)
 		}
+
 		t = append(t, &Device{Alias: inter.Name, IPAddrs: as, HardwareAddr: inter.HardwareAddr, IsLoop: isLoop})
 	}
 
@@ -192,7 +197,10 @@ func FindAllDevs() ([]*Device, error) {
 				continue
 			}
 			if d.Name != "" {
-				return nil, errors.New("too many loopback devices")
+				// return nil, errors.New("too many loopback devices")
+				blacklist[dev.Name] = true
+				blacklist[d.Name] = true
+				log.Infof("Device %s is a loopback device but so is %s, these devices will not be used", dev.Name, d.Name)
 			}
 			d.Name = dev.Name
 			mid = append(mid, d)
@@ -209,7 +217,7 @@ func FindAllDevs() ([]*Device, error) {
 					// return nil, fmt.Errorf("parse pcap device %s: %w", dev.Name, fmt.Errorf("same address with %s", d.Name))
 					blacklist[dev.Name] = true
 					blacklist[d.Name] = true
-					log.Infof("Device %s has the same address with %s, these devices will be banned", dev.Name, d.Name)
+					log.Infof("Device %s has the same address with %s, these devices will not be used", dev.Name, d.Name)
 					break
 				}
 				d.Name = dev.Name
@@ -225,44 +233,6 @@ func FindAllDevs() ([]*Device, error) {
 		if !ok {
 			result = append(result, dev)
 		}
-	}
-
-	return result, nil
-}
-
-// FindAllIPv4Devs returns all valid IPv4 network devices in current computer
-func FindAllIPv4Devs() ([]*Device, error) {
-	devs, err := FindAllDevs()
-	if err != nil {
-		return nil, fmt.Errorf("find all devices: %w", err)
-	}
-
-	result := make([]*Device, 0)
-	for _, dev := range devs {
-		ipv4Dev := dev.To4()
-		if ipv4Dev == nil {
-			continue
-		}
-		result = append(result, ipv4Dev)
-	}
-
-	return result, nil
-}
-
-// FindAllIPv6Devs returns all valid IPv6 network devices in current computer
-func FindAllIPv6Devs() ([]*Device, error) {
-	devs, err := FindAllDevs()
-	if err != nil {
-		return nil, fmt.Errorf("find all devices: %w", err)
-	}
-
-	result := make([]*Device, 0)
-	for _, dev := range devs {
-		ipv6Dev := dev.To16Only()
-		if ipv6Dev == nil {
-			continue
-		}
-		result = append(result, ipv6Dev)
 	}
 
 	return result, nil
@@ -353,28 +323,28 @@ func FindGatewayDev(dev string) (*Device, error) {
 }
 
 // FindListenDevs returns all valid pcap devices for listening
-func FindListenDevs(strDevs []string) ([]*Device, error) {
+func FindListenDevs(devs []string) ([]*Device, error) {
 	result := make([]*Device, 0)
 
-	devs, err := FindAllDevs()
+	ds, err := FindAllDevs()
 	if err != nil {
 		return nil, fmt.Errorf("find all devices: %w", err)
 	}
 
-	if len(strDevs) <= 0 {
-		result = devs
+	if len(devs) <= 0 {
+		result = ds
 	} else {
 		m := make(map[string]*Device)
-		for _, dev := range devs {
-			m[dev.Name] = dev
+		for _, d := range ds {
+			m[d.Name] = d
 		}
 
-		for _, strDev := range strDevs {
-			dev, ok := m[strDev]
+		for _, dev := range devs {
+			d, ok := m[dev]
 			if !ok {
-				return nil, fmt.Errorf("find listen device %s: %w", strDev, errors.New("unknown"))
+				return nil, fmt.Errorf("find listen device %s: %w", dev, errors.New("unknown"))
 			}
-			result = append(result, dev)
+			result = append(result, d)
 		}
 	}
 
@@ -382,22 +352,22 @@ func FindListenDevs(strDevs []string) ([]*Device, error) {
 }
 
 // FindUpstreamDevAndGatewayDev returns the pcap device for routing upstream and the gateway
-func FindUpstreamDevAndGatewayDev(strDev string) (upDev, gatewayDev *Device, err error) {
+func FindUpstreamDevAndGatewayDev(dev string) (upDev, gatewayDev *Device, err error) {
 	devs, err := FindAllDevs()
 	if err != nil {
 		return nil, nil, fmt.Errorf("find all devices: %w", err)
 	}
 
-	if strDev != "" {
+	if dev != "" {
 		// Find upstream device
-		for _, dev := range devs {
-			if dev.Name == strDev {
-				upDev = dev
+		for _, d := range devs {
+			if d.Name == dev {
+				upDev = d
 				break
 			}
 		}
 		if upDev == nil {
-			return nil, nil, fmt.Errorf("find upstream device %s: %w", strDev, errors.New("unknown"))
+			return nil, nil, fmt.Errorf("find upstream device %s: %w", dev, errors.New("unknown"))
 		}
 		// Find gateway
 		if upDev.IsLoop {
@@ -432,23 +402,23 @@ func FindUpstreamDevAndGatewayDev(strDev string) (upDev, gatewayDev *Device, err
 		if err != nil {
 			return nil, nil, fmt.Errorf("find gateway address: %w", err)
 		}
-		for _, dev := range devs {
-			if dev.IsLoop {
+		for _, d := range devs {
+			if d.IsLoop {
 				continue
 			}
 			// Test if device's IP is in the same domain of the gateway's
-			for _, addr := range dev.IPAddrs {
+			for _, addr := range d.IPAddrs {
 				if addr.Contains(gatewayAddr.IP) {
-					gatewayDev, err = FindGatewayDev(dev.Name)
+					gatewayDev, err = FindGatewayDev(d.Name)
 					if err != nil {
 						continue
 					}
 					upDev = &Device{
-						Name:         dev.Name,
-						Alias:        dev.Alias,
+						Name:         d.Name,
+						Alias:        d.Alias,
 						IPAddrs:      append(make([]*net.IPNet, 0), addr),
-						HardwareAddr: dev.HardwareAddr,
-						IsLoop:       dev.IsLoop,
+						HardwareAddr: d.HardwareAddr,
+						IsLoop:       d.IsLoop,
 					}
 					break
 				}
