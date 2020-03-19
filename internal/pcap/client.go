@@ -6,16 +6,19 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"ikago/internal/addr"
 	"ikago/internal/crypto"
+	"ikago/internal/filter"
 	"ikago/internal/log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
 
 // Client describes the packet capture on the client side
 type Client struct {
-	Filters         []Filter
+	Filters         []filter.Filter
 	UpPort          uint16
 	ServerIP        net.IP
 	ServerPort      uint16
@@ -104,7 +107,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	log.Infof("Connect to server %s\n", IPPort{IP: p.ServerIP, Port: p.ServerPort})
+	log.Infof("Connect to server %s\n", addr.IPPort{MemberIP: p.ServerIP, Port: p.ServerPort})
 
 	packet := <-c
 
@@ -137,7 +140,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	log.Infof("Connected to server %s in %.3f ms (two-way)\n", IPPort{IP: p.ServerIP, Port: p.ServerPort}, float64(d.Microseconds())/1000)
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", addr.IPPort{MemberIP: p.ServerIP, Port: p.ServerPort}, float64(d.Microseconds())/1000)
 
 	// Close in advance
 	p.handshakeHandle.Close()
@@ -149,8 +152,12 @@ func (p *Client) Open() error {
 		if err != nil {
 			return fmt.Errorf("open listen device %s: %w", dev.Name, err)
 		}
-		f := formatOrSrcFilters(p.Filters)
-		err = handle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && %s && not (src host %s && src port %d)) || (icmp && %s && not src host %s)",
+		fs := make([]string, 0)
+		for _, filter := range p.Filters {
+			fs = append(fs, filter.SrcBPFFilter())
+		}
+		f := strings.Join(fs, " || ")
+		err = handle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",
 			f, p.ServerIP, p.ServerPort, f, p.ServerIP))
 		if err != nil {
 			return fmt.Errorf("set bpf fileter: %w", err)

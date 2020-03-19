@@ -3,6 +3,7 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"ikago/internal/addr"
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"net"
@@ -191,7 +192,7 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	}
 
 	// Initial TCP Seq
-	srcIPPort := IPPort{IP: indicator.srcIP(), Port: indicator.srcPort()}
+	srcIPPort := addr.IPPort{MemberIP: indicator.srcIP(), Port: indicator.srcPort()}
 	p.seqsLock.Lock()
 	p.seqs[srcIPPort.String()] = 0
 	p.seqsLock.Unlock()
@@ -320,7 +321,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Ack
-	srcIPPort := IPPort{IP: indicator.srcIP(), Port: indicator.srcPort()}
+	srcIPPort := addr.IPPort{MemberIP: indicator.srcIP(), Port: indicator.srcPort()}
 	p.acksLock.Lock()
 	p.acks[srcIPPort.String()] = p.acks[srcIPPort.String()] + uint32(len(indicator.payload()))
 	p.acksLock.Unlock()
@@ -527,9 +528,9 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	switch newTransportLayerType {
 	case layers.LayerTypeTCP, layers.LayerTypeUDP:
 		guide = natGuide{
-			src: IPPort{
-				IP:   upIP,
-				Port: upValue,
+			src: addr.IPPort{
+				MemberIP: upIP,
+				Port:     upValue,
 			}.String(),
 			proto: newTransportLayerType,
 		}
@@ -537,9 +538,9 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	case layers.LayerTypeICMPv4:
 		if embIndicator.icmpv4Indicator.isQuery() {
 			guide = natGuide{
-				src: IPId{
-					IP: upIP,
-					Id: upValue,
+				src: addr.IPId{
+					MemberIP: upIP,
+					Id:       upValue,
 				}.String(),
 				proto: newTransportLayerType,
 			}
@@ -550,7 +551,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 	if addNAT {
 		ni = &natIndicator{
-			src:    indicator.src().(*IPPort),
+			src:    indicator.src().(*addr.IPPort),
 			embSrc: embIndicator.natSrc(),
 			dev:    dev,
 			handle: handle,
@@ -636,7 +637,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 		newEmbTCPLayer := embTransportLayer.(*layers.TCP)
 
-		newEmbTCPLayer.DstPort = layers.TCPPort(ni.embSrc.(*IPPort).Port)
+		newEmbTCPLayer.DstPort = layers.TCPPort(ni.embSrc.(*addr.IPPort).Port)
 	case layers.LayerTypeUDP:
 		embUDPLayer := indicator.transportLayer.(*layers.UDP)
 		temp := *embUDPLayer
@@ -644,7 +645,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 		newEmbUDPLayer := embTransportLayer.(*layers.UDP)
 
-		newEmbUDPLayer.DstPort = layers.UDPPort(ni.embSrc.(*IPPort).Port)
+		newEmbUDPLayer.DstPort = layers.UDPPort(ni.embSrc.(*addr.IPPort).Port)
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
 			embICMPv4Layer := indicator.icmpv4Indicator.layer
@@ -653,7 +654,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 			newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
 
-			newEmbICMPv4Layer.Id = ni.embSrc.(*IPId).Id
+			newEmbICMPv4Layer.Id = ni.embSrc.(*addr.IPId).Id
 		} else {
 			embTransportLayer = indicator.icmpv4Indicator.newPureICMPv4Layer()
 
@@ -662,7 +663,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 			temp := *indicator.icmpv4Indicator.embIPv4Layer
 			newEmbEmbIPv4Layer := &temp
 
-			newEmbEmbIPv4Layer.SrcIP = ni.embSrc.ip()
+			newEmbEmbIPv4Layer.SrcIP = ni.embSrc.IP()
 
 			var newEmbEmbTransportLayer gopacket.Layer
 			switch indicator.icmpv4Indicator.embTransportLayerType {
@@ -672,7 +673,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 				newEmbEmbTCPLayer := newEmbEmbTransportLayer.(*layers.TCP)
 
-				newEmbEmbTCPLayer.SrcPort = layers.TCPPort(ni.embSrc.(*IPPort).Port)
+				newEmbEmbTCPLayer.SrcPort = layers.TCPPort(ni.embSrc.(*addr.IPPort).Port)
 
 				err := newEmbEmbTCPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
 				if err != nil {
@@ -684,7 +685,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 				newEmbEmbUDPLayer := newEmbEmbTransportLayer.(*layers.UDP)
 
-				newEmbEmbUDPLayer.SrcPort = layers.UDPPort(ni.embSrc.(*IPPort).Port)
+				newEmbEmbUDPLayer.SrcPort = layers.UDPPort(ni.embSrc.(*addr.IPPort).Port)
 
 				err := newEmbEmbUDPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
 				if err != nil {
@@ -697,7 +698,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 				if indicator.icmpv4Indicator.isEmbQuery() {
 					newEmbEmbICMPv4Layer := newEmbEmbTransportLayer.(*layers.ICMPv4)
 
-					newEmbEmbICMPv4Layer.Id = ni.embSrc.(*IPId).Id
+					newEmbEmbICMPv4Layer.Id = ni.embSrc.(*addr.IPId).Id
 				}
 			default:
 				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("transport layer type %s not support", indicator.icmpv4Indicator.embTransportLayerType)))
@@ -724,7 +725,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 		newEmbIPv4Layer := embNetworkLayer.(*layers.IPv4)
 
-		newEmbIPv4Layer.DstIP = ni.embSrc.ip()
+		newEmbIPv4Layer.DstIP = ni.embSrc.IP()
 	case layers.LayerTypeIPv6:
 		embIPv6Layer := indicator.networkLayer.(*layers.IPv6)
 		temp := *embIPv6Layer
@@ -732,7 +733,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 		newEmbIPv6Layer := embNetworkLayer.(*layers.IPv6)
 
-		newEmbIPv6Layer.DstIP = ni.embSrc.ip()
+		newEmbIPv6Layer.DstIP = ni.embSrc.IP()
 	default:
 		return fmt.Errorf("create embedded network layer: %w", fmt.Errorf("network layer type %s not support", embNetworkLayerType))
 	}
@@ -788,9 +789,9 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, ni.src.IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(upDevIP, ni.src.MemberIP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, ni.src.IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(upDevIP, ni.src.MemberIP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}

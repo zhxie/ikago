@@ -270,6 +270,7 @@ func FindGatewayAddr() (*net.IPNet, error) {
 }
 
 // FindGatewayDev returns the gateway device
+// TODO: Reuse gateway's IP
 func FindGatewayDev(dev string) (*Device, error) {
 	// Find gateway's IP
 	ip, err := gateway.DiscoverGateway()
@@ -352,6 +353,7 @@ func FindListenDevs(devs []string) ([]*Device, error) {
 }
 
 // FindUpstreamDevAndGatewayDev returns the pcap device for routing upstream and the gateway
+// TODO: Designate gateway's ip
 func FindUpstreamDevAndGatewayDev(dev string) (upDev, gatewayDev *Device, err error) {
 	devs, err := FindAllDevs()
 	if err != nil {

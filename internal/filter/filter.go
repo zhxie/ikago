@@ -1,29 +1,30 @@
-package pcap
+package filter
 
 import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"ikago/internal/addr"
 	"net"
 	"strconv"
 )
 
 // FilterType describes the type of filters
-type FilterType int
+type Type int
 
 const (
-	// FilterTypeIP describes the filter contains an IP only
-	FilterTypeIP FilterType = iota
-	// FilterTypeIPPort describes the filter contains an IP and a port
-	FilterTypeIPPort
-	// FilterTypePort describes the filter contains a port only
-	FilterTypePort
+	// IP describes the filter contains an IP only
+	IP Type = iota
+	// IPPort describes the filter contains an IP and a port
+	IPPort
+	// Port describes the filter contains a port only
+	Port
 )
 
 // Filter describes the BPF filter
 type Filter interface {
 	// FilterType returns the type of the filter
-	FilterType() FilterType
+	FilterType() Type
 	// SrcBPFFilter returns a string describes the BPF filter on the source side
 	SrcBPFFilter() string
 	// DstBPFFilter returns a string describes the BPF filter on the destination side
@@ -35,8 +36,8 @@ type IPFilter struct {
 	IP net.IP
 }
 
-func (filter IPFilter) FilterType() FilterType {
-	return FilterTypeIP
+func (filter IPFilter) FilterType() Type {
+	return IP
 }
 
 func (filter IPFilter) SrcBPFFilter() string {
@@ -57,8 +58,8 @@ type IPPortFilter struct {
 	Port uint16
 }
 
-func (filter IPPortFilter) FilterType() FilterType {
-	return FilterTypeIPPort
+func (filter IPPortFilter) FilterType() Type {
+	return IPPort
 }
 
 func (filter IPPortFilter) SrcBPFFilter() string {
@@ -70,7 +71,7 @@ func (filter IPPortFilter) DstBPFFilter() string {
 }
 
 func (filter IPPortFilter) String() string {
-	return IPPort{IP: filter.IP, Port: filter.Port}.String()
+	return addr.IPPort{MemberIP: filter.IP, Port: filter.Port}.String()
 }
 
 // PortFilter describes a filter of port
@@ -78,8 +79,8 @@ type PortFilter struct {
 	Port uint16
 }
 
-func (filter PortFilter) FilterType() FilterType {
-	return FilterTypePort
+func (filter PortFilter) FilterType() Type {
+	return Port
 }
 
 func (filter PortFilter) SrcBPFFilter() string {
@@ -92,6 +93,30 @@ func (filter PortFilter) DstBPFFilter() string {
 
 func (filter PortFilter) String() string {
 	return fmt.Sprintf(":%d", filter.Port)
+}
+
+// ParseFilter returns a Filter by the given string of filter
+func ParseFilter(s string) (Filter, error) {
+	// Guess port
+	if s[0] == ':' {
+		port, err := strconv.ParseUint(s[1:], 10, 16)
+		if err != nil {
+			return nil, fmt.Errorf("parse port %s: %w", s[1:], err)
+		}
+		return &PortFilter{Port: uint16(port)}, nil
+	}
+	// Guess IP and port
+	ipPort, err := addr.ParseIPPort(s)
+	if err != nil {
+		// IP
+		ip := net.ParseIP(s)
+		if ip == nil {
+			return nil, fmt.Errorf("parse ip %s: %w", s, errors.New("invalid"))
+		}
+		return &IPFilter{IP: ip}, nil
+	}
+	// IPPort
+	return &IPPortFilter{IP: ipPort.MemberIP, Port: ipPort.Port}, nil
 }
 
 func fullString(ip net.IP) string {
@@ -108,41 +133,4 @@ func fullString(ip net.IP) string {
 		string(dst[20:24]) + ":" +
 		string(dst[24:28]) + ":" +
 		string(dst[28:])
-}
-
-// ParseFilter returns a Filter by the given string of filter
-func ParseFilter(s string) (Filter, error) {
-	// Guess port
-	if s[0] == ':' {
-		port, err := strconv.ParseUint(s[1:], 10, 16)
-		if err != nil {
-			return nil, fmt.Errorf("parse port %s: %w", s[1:], err)
-		}
-		return &PortFilter{Port: uint16(port)}, nil
-	}
-	// Guess IP and port
-	ipPort, err := ParseIPPort(s)
-	if err != nil {
-		// IP
-		ip := net.ParseIP(s)
-		if ip == nil {
-			return nil, fmt.Errorf("parse ip %s: %w", s, errors.New("invalid"))
-		}
-		return &IPFilter{IP: ip}, nil
-	}
-	// IPPort
-	return &IPPortFilter{IP: ipPort.IP, Port: ipPort.Port}, nil
-}
-
-func formatOrSrcFilters(filters []Filter) string {
-	var result string
-
-	for i, filter := range filters {
-		if i != 0 {
-			result = result + " || "
-		}
-		result = result + filter.SrcBPFFilter()
-	}
-
-	return fmt.Sprintf("(%s)", result)
 }

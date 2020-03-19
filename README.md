@@ -65,7 +65,7 @@ go run ./cmd/ikago-server -p [port]
 
 ## Troubleshoot
 
-1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some Linux and macOS kernels may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` in Linux or `pfctl` in macOS with the rule below to solve the problem:
+1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` in Linux or `pfctl` in macOS and FreeBSD with the rule below to solve the problem:
    ```
    // Linux
    // You can use stricter policies to maintain a stable network environment if you are using IkaGo-client.

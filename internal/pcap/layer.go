@@ -3,6 +3,7 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"ikago/internal/addr"
 	"net"
 
 	"github.com/google/gopacket"
@@ -394,26 +395,26 @@ func (indicator *icmpv4Indicator) isEmbQuery() bool {
 	}
 }
 
-func (indicator *icmpv4Indicator) natSrc() IPEndpoint {
+func (indicator *icmpv4Indicator) natSrc() addr.IPEndpoint {
 	if indicator.isQuery() {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
 		switch indicator.embTransportLayerType {
 		case layers.LayerTypeTCP, layers.LayerTypeUDP:
-			return &IPPort{
-				IP:   indicator.embDstIP(),
-				Port: indicator.embDstPort(),
+			return &addr.IPPort{
+				MemberIP: indicator.embDstIP(),
+				Port:     indicator.embDstPort(),
 			}
 		case layers.LayerTypeICMPv4:
 			if indicator.isEmbQuery() {
-				return &IPId{
-					IP: indicator.embDstIP(),
-					Id: indicator.embId(),
+				return &addr.IPId{
+					MemberIP: indicator.embDstIP(),
+					Id:       indicator.embId(),
 				}
 			} else {
-				return &IP{
-					IP: indicator.embDstIP(),
+				return &addr.IP{
+					MemberIP: indicator.embDstIP(),
 				}
 			}
 		default:
@@ -422,26 +423,26 @@ func (indicator *icmpv4Indicator) natSrc() IPEndpoint {
 	}
 }
 
-func (indicator *icmpv4Indicator) natDst() IPEndpoint {
+func (indicator *icmpv4Indicator) natDst() addr.IPEndpoint {
 	if indicator.isQuery() {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
 		switch indicator.embTransportLayerType {
 		case layers.LayerTypeTCP, layers.LayerTypeUDP:
-			return &IPPort{
-				IP:   indicator.embSrcIP(),
-				Port: indicator.embSrcPort(),
+			return &addr.IPPort{
+				MemberIP: indicator.embSrcIP(),
+				Port:     indicator.embSrcPort(),
 			}
 		case layers.LayerTypeICMPv4:
 			if indicator.isEmbQuery() {
-				return &IPId{
-					IP: indicator.embSrcIP(),
-					Id: indicator.embId(),
+				return &addr.IPId{
+					MemberIP: indicator.embSrcIP(),
+					Id:       indicator.embId(),
 				}
 			} else {
-				return &IP{
-					IP: indicator.embSrcIP(),
+				return &addr.IP{
+					MemberIP: indicator.embSrcIP(),
 				}
 			}
 		default:

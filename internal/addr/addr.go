@@ -1,4 +1,4 @@
-package pcap
+package addr
 
 import (
 	"errors"
@@ -9,35 +9,36 @@ import (
 )
 
 type IPEndpoint interface {
-	ip() net.IP
+	// IP returns the IP of IP endpoint
+	IP() net.IP
 	String() string
 }
 
 // IP describes a network endpoint with an IP only
 type IP struct {
-	IP net.IP
+	MemberIP net.IP
 }
 
-func (i *IP) ip() net.IP {
-	return i.IP
+func (i *IP) IP() net.IP {
+	return i.MemberIP
 }
 
 func (i IP) String() string {
-	return formatIP(i.IP)
+	return formatIP(i.MemberIP)
 }
 
 // IPPort describes a network endpoint with an IP and a port
 type IPPort struct {
-	IP   net.IP
-	Port uint16
+	MemberIP net.IP
+	Port     uint16
 }
 
-func (i *IPPort) ip() net.IP {
-	return i.IP
+func (i *IPPort) IP() net.IP {
+	return i.MemberIP
 }
 
 func (i IPPort) String() string {
-	return fmt.Sprintf("%s:%d", formatIP(i.IP), i.Port)
+	return fmt.Sprintf("%s:%d", formatIP(i.MemberIP), i.Port)
 }
 
 // ParseIPPort returns an IPPort by the given string of address
@@ -57,8 +58,8 @@ func ParseIPPort(s string) (*IPPort, error) {
 			return nil, fmt.Errorf("parse port %s: %w", strs[1], errors.New("invalid"))
 		}
 		return &IPPort{
-			IP:   ip,
-			Port: uint16(port),
+			MemberIP: ip,
+			Port:     uint16(port),
 		}, nil
 	}
 	// IPv4
@@ -75,23 +76,23 @@ func ParseIPPort(s string) (*IPPort, error) {
 		return nil, fmt.Errorf("parse port %s: %w", strs[1], errors.New("invalid"))
 	}
 	return &IPPort{
-		IP:   ip,
-		Port: uint16(port),
+		MemberIP: ip,
+		Port:     uint16(port),
 	}, nil
 }
 
 // IPId describes a network endpoint with at an IP and an Id
 type IPId struct {
-	IP net.IP
-	Id uint16
+	MemberIP net.IP
+	Id       uint16
 }
 
-func (i *IPId) ip() net.IP {
-	return i.IP
+func (i *IPId) IP() net.IP {
+	return i.MemberIP
 }
 
 func (i IPId) String() string {
-	return fmt.Sprintf("%s@%d", formatIP(i.IP), i.Id)
+	return fmt.Sprintf("%s@%d", formatIP(i.MemberIP), i.Id)
 }
 
 func formatIP(ip net.IP) string {

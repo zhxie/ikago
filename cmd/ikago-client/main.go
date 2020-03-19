@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
+	"ikago/internal/filter"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"math/rand"
@@ -37,7 +39,7 @@ func main() {
 	var (
 		err        error
 		cfg        *config.Config
-		filters    = make([]pcap.Filter, 0)
+		filters    = make([]filter.Filter, 0)
 		serverIP   net.IP
 		serverPort uint16
 		listenDevs = make([]*pcap.Device, 0)
@@ -89,7 +91,7 @@ func main() {
 		log.Fatalln("Please provide server by -s [address:port].")
 	}
 	for _, strFilter := range cfg.Filters {
-		filter, err := pcap.ParseFilter(strFilter)
+		filter, err := filter.ParseFilter(strFilter)
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse filter %s: %w", strFilter, err))
 		}
@@ -107,16 +109,17 @@ func main() {
 		for {
 			cfg.UpPort = 49152 + r.Intn(16384)
 			var exist bool
-			for _, filter := range filters {
-				switch filter.FilterType() {
-				case pcap.FilterTypeIP, pcap.FilterTypeIPPort:
+			for _, f := range filters {
+				t := f.FilterType()
+				switch t {
+				case filter.IP, filter.IPPort:
 					break
-				case pcap.FilterTypePort:
-					if filter.(*pcap.PortFilter).Port == uint16(cfg.UpPort) {
+				case filter.Port:
+					if f.(*filter.PortFilter).Port == uint16(cfg.UpPort) {
 						exist = true
 					}
 				default:
-					log.Fatalln(fmt.Errorf("parse filter %s: %w", filter, fmt.Errorf("type %d not support", filter.FilterType())))
+					log.Fatalln(fmt.Errorf("parse filter %s: %w", f, fmt.Errorf("type %d not support", t)))
 				}
 				if exist {
 					break
@@ -127,11 +130,11 @@ func main() {
 			}
 		}
 	}
-	serverIPPort, err := pcap.ParseIPPort(cfg.Server)
+	serverIPPort, err := addr.ParseIPPort(cfg.Server)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
 	}
-	serverIP = serverIPPort.IP
+	serverIP = serverIPPort.MemberIP
 	serverPort = serverIPPort.Port
 	c, err = crypto.Parse(cfg.Method, cfg.Password)
 	if err != nil {
