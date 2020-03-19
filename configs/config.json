@@ -1,6 +1,7 @@
 {
   "listen-devices": [],
   "upstream-device": "",
+  "gateway": "",
   "method": "plain",
   "password": "",
   "verbose": false,

@@ -261,27 +261,21 @@ func FindDev(devs []*Device, ip net.IP) *Device {
 }
 
 // FindGatewayAddr returns the gateway's address
-func FindGatewayAddr() (*net.IPNet, error) {
+func FindGatewayAddr() (net.IP, error) {
 	ip, err := gateway.DiscoverGateway()
 	if err != nil {
 		return nil, fmt.Errorf("discover gateway: %w", err)
 	}
-	return &net.IPNet{IP: ip}, nil
+
+	return ip, nil
 }
 
 // FindGatewayDev returns the gateway device
-// TODO: Reuse gateway's IP
-func FindGatewayDev(dev string) (*Device, error) {
-	// Find gateway's IP
-	ip, err := gateway.DiscoverGateway()
-	if err != nil {
-		return nil, fmt.Errorf("discover gateway: %w", err)
-	}
-
+func FindGatewayDev(upDev string, ip net.IP) (*Device, error) {
 	// Create a packet capture for testing
-	handle, err := pcap.OpenLive(dev, 1600, true, pcap.BlockForever)
+	handle, err := pcap.OpenLive(upDev, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return nil, fmt.Errorf("open device %s: %w", dev, err)
+		return nil, fmt.Errorf("open device %s: %w", upDev, err)
 	}
 	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip.String()))
 	if err != nil {
@@ -353,8 +347,7 @@ func FindListenDevs(devs []string) ([]*Device, error) {
 }
 
 // FindUpstreamDevAndGatewayDev returns the pcap device for routing upstream and the gateway
-// TODO: Designate gateway's ip
-func FindUpstreamDevAndGatewayDev(dev string) (upDev, gatewayDev *Device, err error) {
+func FindUpstreamDevAndGatewayDev(dev string, gateway net.IP) (upDev, gatewayDev *Device, err error) {
 	devs, err := FindAllDevs()
 	if err != nil {
 		return nil, nil, fmt.Errorf("find all devices: %w", err)
@@ -371,14 +364,24 @@ func FindUpstreamDevAndGatewayDev(dev string) (upDev, gatewayDev *Device, err er
 		if upDev == nil {
 			return nil, nil, fmt.Errorf("find upstream device %s: %w", dev, errors.New("unknown"))
 		}
-		// Find gateway
+
+		// Find gateway device
 		if upDev.IsLoop {
 			gatewayDev = upDev
 		} else {
-			gatewayDev, err = FindGatewayDev(upDev.Name)
+			// Find gateway's address
+			if gateway == nil {
+				gateway, err = FindGatewayAddr()
+				if err != nil {
+					return nil, nil, fmt.Errorf("find gateway address: %w", err)
+				}
+			}
+
+			gatewayDev, err = FindGatewayDev(upDev.Name, gateway)
 			if err != nil {
 				return nil, nil, fmt.Errorf("find gateway device: %w", err)
 			}
+
 			// Test if device's IP is in the same domain of the gateway's
 			var newUpDev *Device
 			for _, addr := range upDev.IPAddrs {
@@ -396,22 +399,28 @@ func FindUpstreamDevAndGatewayDev(dev string) (upDev, gatewayDev *Device, err er
 			if newUpDev == nil {
 				return nil, nil, fmt.Errorf("find gateway device: %w", fmt.Errorf("different domain in upstream device %s and gateway", upDev.Alias))
 			}
+
 			upDev = newUpDev
 		}
 	} else {
-		// Find upstream device and gateway
-		gatewayAddr, err := FindGatewayAddr()
-		if err != nil {
-			return nil, nil, fmt.Errorf("find gateway address: %w", err)
+		// Find gateway's address
+		if gateway == nil {
+			gateway, err = FindGatewayAddr()
+			if err != nil {
+				return nil, nil, fmt.Errorf("find gateway address: %w", err)
+			}
 		}
+
+		// Find upstream device and gateway device
 		for _, d := range devs {
 			if d.IsLoop {
 				continue
 			}
+
 			// Test if device's IP is in the same domain of the gateway's
 			for _, addr := range d.IPAddrs {
-				if addr.Contains(gatewayAddr.IP) {
-					gatewayDev, err = FindGatewayDev(d.Name)
+				if addr.Contains(gateway) {
+					gatewayDev, err = FindGatewayDev(d.Name, gateway)
 					if err != nil {
 						continue
 					}
@@ -430,5 +439,6 @@ func FindUpstreamDevAndGatewayDev(dev string) (upDev, gatewayDev *Device, err er
 			}
 		}
 	}
+
 	return upDev, gatewayDev, nil
 }

@@ -8,6 +8,7 @@ import (
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,6 +19,7 @@ var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices 
 var argConfig = flag.String("c", "", "Configuration file.")
 var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
 var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
+var argGateway = flag.String("gateway", "", "Gateway address.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
 var argPassword = flag.String("password", "", "Password of the encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
@@ -32,6 +34,7 @@ func main() {
 	var (
 		err        error
 		cfg        *config.Config
+		gateway    net.IP
 		listenDevs = make([]*pcap.Device, 0)
 		upDev      *pcap.Device
 		gatewayDev *pcap.Device
@@ -48,6 +51,7 @@ func main() {
 		cfg = &config.Config{
 			ListenDevs: splitArg(*argListenDevs),
 			UpDev:      *argUpDev,
+			Gateway:    *argGateway,
 			Method:     *argMethod,
 			Password:   *argPassword,
 			Verbose:    *argVerbose,
@@ -74,6 +78,12 @@ func main() {
 	// Verify parameters
 	if cfg.ListenPort == 0 {
 		log.Fatalln("Please provide listen port by -p [port].")
+	}
+	if cfg.Gateway != "" {
+		gateway = net.ParseIP(cfg.Gateway)
+		if gateway == nil {
+			log.Fatalln(fmt.Errorf("parse gateway %s: %w", cfg.Gateway, errors.New("invalid")))
+		}
 	}
 	if cfg.ListenPort <= 0 || cfg.ListenPort >= 65536 {
 		log.Fatalln(fmt.Errorf("parse listen port %d: %w", cfg.ListenPort, errors.New("out of range")))
@@ -106,7 +116,7 @@ func main() {
 		log.Fatalln(fmt.Errorf("find listen devices: %w", errors.New("cannot determine")))
 	}
 
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev, gateway)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}

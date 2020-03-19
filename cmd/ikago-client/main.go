@@ -23,6 +23,7 @@ var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices 
 var argConfig = flag.String("c", "", "Configuration file.")
 var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
 var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
+var argGateway = flag.String("gateway", "", "Gateway address.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
 var argPassword = flag.String("password", "", "Password of the encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
@@ -39,6 +40,7 @@ func main() {
 	var (
 		err        error
 		cfg        *config.Config
+		gateway    net.IP
 		filters    = make([]filter.Filter, 0)
 		serverIP   net.IP
 		serverPort uint16
@@ -58,6 +60,7 @@ func main() {
 		cfg = &config.Config{
 			ListenDevs: splitArg(*argListenDevs),
 			UpDev:      *argUpDev,
+			Gateway:    *argGateway,
 			Method:     *argMethod,
 			Password:   *argPassword,
 			Verbose:    *argVerbose,
@@ -90,12 +93,18 @@ func main() {
 	if cfg.Server == "" {
 		log.Fatalln("Please provide server by -s [address:port].")
 	}
+	if cfg.Gateway != "" {
+		gateway = net.ParseIP(cfg.Gateway)
+		if gateway == nil {
+			log.Fatalln(fmt.Errorf("parse gateway %s: %w", cfg.Gateway, errors.New("invalid")))
+		}
+	}
 	for _, strFilter := range cfg.Filters {
-		filter, err := filter.ParseFilter(strFilter)
+		f, err := filter.ParseFilter(strFilter)
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse filter %s: %w", strFilter, err))
 		}
-		filters = append(filters, filter)
+		filters = append(filters, f)
 	}
 	if cfg.UpPort < 0 || cfg.UpPort >= 65536 {
 		log.Fatalln(fmt.Errorf("parse upstream port %d: %w", cfg.UpPort, errors.New("out of range")))
@@ -144,8 +153,8 @@ func main() {
 		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverIPPort)
 	} else {
 		log.Info("Proxy:")
-		for _, filter := range filters {
-			log.Infof("\n  %s", filter)
+		for _, f := range filters {
+			log.Infof("\n  %s", f)
 		}
 		log.Infof(" through :%d to %s\n", cfg.UpPort, serverIPPort)
 	}
@@ -171,7 +180,7 @@ func main() {
 	if len(listenDevs) <= 0 {
 		log.Fatalln(fmt.Errorf("find listen devices: %w", errors.New("cannot determine")))
 	}
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev)
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev, gateway)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", err))
 	}

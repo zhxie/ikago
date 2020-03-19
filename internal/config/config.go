@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strings"
 )
 
 // Config describes the configuration of IkaGo
 type Config struct {
 	ListenDevs []string `json:"listen-devices"`
 	UpDev      string   `json:"upstream-device"`
+	Gateway    string   `json:"gateway"`
 	Method     string   `json:"method"`
 	Password   string   `json:"password"`
 	Verbose    bool     `json:"verbose"`
@@ -21,22 +21,6 @@ type Config struct {
 	Filters    []string `json:"filters"`
 	Server     string   `json:"server"`
 	ListenPort int      `json:"listen-port"`
-}
-
-// ListenDevsString returns pcap devices for listening in config in string
-func (config *Config) ListenDevsString() string {
-	if len(config.ListenDevs) <= 0 {
-		return ""
-	}
-	return strings.Join(config.ListenDevs, ",")
-}
-
-// FiltersString returns filters in config in string
-func (config *Config) FiltersString() string {
-	if len(config.Filters) <= 0 {
-		return ""
-	}
-	return strings.Join(config.Filters, ",")
 }
 
 // New returns a new config

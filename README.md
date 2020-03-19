@@ -45,6 +45,8 @@ go run ./cmd/ikago-server -p [port]
 
 `-upstream-device device`: (Optional) pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used.
 
+`-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
+
 `-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`.
 
 `-password password`: (Optional) Password of the encryption, must be set only when method is not `plain`.
@@ -55,9 +57,9 @@ go run ./cmd/ikago-server -p [port]
 
 `-upstream-port port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
-`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP, an IP port endpoint, or a port starts with a colon. Any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
+`-f filters`: (Client only) Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. Any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
 
-`-s address:port`: (Client only) Server. Any IPv6 address should be encapsulated by a pair of brackets.
+`-s ip:port`: (Client only) Server. Any IPv6 address should be encapsulated by a pair of brackets.
 
 ### Server options
 
