@@ -3,7 +3,7 @@
 **IkaGo** is a proxy which helps bypassing UDP blocking, UDP QoS and NAT firewall written in Go.
 
 <p align="center">
-  <img src="/assets/squid.jpg">
+  <img src="/assets/squid.jpg" alt="an Inkling going through a grate">
 </p>
 <p align="center">
   Pass the firewall like a squid : )
@@ -12,7 +12,7 @@
 ## Features
 
 <p align="center">
-  <img src="/assets/diagram.png">
+  <img src="/assets/diagram.png" alt="diagram">
 </p>
 
 - **FakeTCP** All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
