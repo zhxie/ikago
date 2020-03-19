@@ -71,3 +71,7 @@ func (t *TAP) Open() error {
 func (t *TAP) Close() {
 	t.inter.Close()
 }
+
+func (t *TAP) Name() string {
+	return t.inter.Name()
+}

@@ -53,25 +53,17 @@ func (p *Client) Open() error {
 		return errors.New("missing gateway device")
 	}
 	if len(p.ListenDevs) == 1 {
-		log.Infof("Listen on %s\n", p.ListenDevs[0].AliasString())
+		log.Infof("Listen on %s\n", p.ListenDevs[0])
 	} else {
 		log.Infoln("Listen on:")
 		for _, dev := range p.ListenDevs {
-			log.Infof("  %s\n", dev.AliasString())
-		}
-	}
-	strUpIPs := ""
-	for i, addr := range p.UpDev.IPAddrs {
-		if i != 0 {
-			strUpIPs = strUpIPs + fmt.Sprintf(", %s", addr.IP)
-		} else {
-			strUpIPs = strUpIPs + addr.IP.String()
+			log.Infof("  %s\n", dev)
 		}
 	}
 	if !p.GatewayDev.IsLoop {
-		log.Infof("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.Alias, p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
+		log.Infof("Route upstream from %s to %s\n", p.UpDev, p.GatewayDev)
 	} else {
-		log.Infof("Route upstream to loopback %s\n", p.UpDev.Alias)
+		log.Infof("Route upstream in %s\n", p.UpDev)
 	}
 
 	// Handle for handshaking
@@ -153,8 +145,8 @@ func (p *Client) Open() error {
 			return fmt.Errorf("open listen device %s: %w", dev.Name, err)
 		}
 		fs := make([]string, 0)
-		for _, filter := range p.Filters {
-			fs = append(fs, filter.SrcBPFFilter())
+		for _, f := range p.Filters {
+			fs = append(fs, f.SrcBPFFilter())
 		}
 		f := strings.Join(fs, " || ")
 		err = handle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",

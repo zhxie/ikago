@@ -19,13 +19,13 @@ import (
 	"time"
 )
 
-var argListDevs = flag.Bool("list-devices", false, "List all valid pcap devices in current computer.")
+var argListDevs = flag.Bool("list-devices", false, "List all valid devices in current computer.")
 var argConfig = flag.String("c", "", "Configuration file.")
-var argListenDevs = flag.String("listen-devices", "", "pcap devices for listening.")
-var argUpDev = flag.String("upstream-device", "", "pcap device for routing upstream to.")
+var argListenDevs = flag.String("listen-devices", "", "Devices for listening.")
+var argUpDev = flag.String("upstream-device", "", "Device for routing upstream to.")
 var argGateway = flag.String("gateway", "", "Gateway address.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
-var argPassword = flag.String("password", "", "Password of the encryption.")
+var argPassword = flag.String("password", "", "Password of encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
 var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
 var argFilters = flag.String("f", "", "Filters.")

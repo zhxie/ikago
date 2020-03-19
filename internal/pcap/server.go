@@ -66,50 +66,17 @@ func (p *Server) Open() error {
 		return errors.New("missing gateway")
 	}
 	if len(p.ListenDevs) == 1 {
-		dev := p.ListenDevs[0]
-		strIPs := ""
-		for i, addr := range dev.IPAddrs {
-			if i != 0 {
-				strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
-			} else {
-				strIPs = strIPs + addr.IP.String()
-			}
-		}
-		if dev.IsLoop {
-			log.Infof("Listen on %s: %s\n", dev.Alias, strIPs)
-		} else {
-			log.Infof("Listen on %s [%s]: %s\n", dev.Alias, dev.HardwareAddr, strIPs)
-		}
+		log.Infof("Listen on %s\n", p.ListenDevs[0])
 	} else {
 		log.Infoln("Listen on:")
 		for _, dev := range p.ListenDevs {
-			strIPs := ""
-			for j, addr := range dev.IPAddrs {
-				if j != 0 {
-					strIPs = strIPs + fmt.Sprintf(", %s", addr.IP)
-				} else {
-					strIPs = strIPs + addr.IP.String()
-				}
-			}
-			if dev.IsLoop {
-				log.Infof("  %s: %s\n", dev.Alias, strIPs)
-			} else {
-				log.Infof("  %s [%s]: %s\n", dev.Alias, dev.HardwareAddr, strIPs)
-			}
-		}
-	}
-	strUpIPs := ""
-	for i, addr := range p.UpDev.IPAddrs {
-		if i != 0 {
-			strUpIPs = strUpIPs + fmt.Sprintf(", %s", addr.IP)
-		} else {
-			strUpIPs = strUpIPs + addr.IP.String()
+			log.Infof("  %s\n", dev)
 		}
 	}
 	if !p.GatewayDev.IsLoop {
-		log.Infof("Route upstream from %s [%s]: %s to gateway [%s]: %s\n", p.UpDev.Alias, p.UpDev.HardwareAddr, strUpIPs, p.GatewayDev.HardwareAddr, p.GatewayDev.IPAddr().IP)
+		log.Infof("Route upstream from %s to %s\n", p.UpDev, p.GatewayDev)
 	} else {
-		log.Infof("Route upstream to loopback %s\n", p.UpDev.Alias)
+		log.Infof("Route upstream in %s\n", p.UpDev)
 	}
 
 	// Handles for listening
@@ -766,10 +733,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Create new transport layer
-	addr := ni.src.String()
+	src := ni.src.String()
 	p.seqsLock.RLock()
 	p.acksLock.RLock()
-	newTransportLayer = createTransportLayerTCP(p.ListenPort, ni.src.Port, p.seqs[addr], p.acks[addr])
+	newTransportLayer = createTransportLayerTCP(p.ListenPort, ni.src.Port, p.seqs[src], p.acks[src])
 	p.seqsLock.RUnlock()
 	p.acksLock.RUnlock()
 
@@ -842,7 +809,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 	// TCP Seq
 	p.seqsLock.Lock()
-	p.seqs[addr] = p.seqs[addr] + uint32(len(contents))
+	p.seqs[src] = p.seqs[src] + uint32(len(contents))
 	p.seqsLock.Unlock()
 
 	// IPv4 Id

@@ -37,19 +37,19 @@ go run ./cmd/ikago-server -p [port]
 
 ### Common options
 
-`-list-devices`: (Optional, exclusively) List all valid pcap devices in current computer.
+`-list-devices`: (Optional, exclusively) List all valid devices in current computer.
 
 `-c`: (Optional, exclusively) Configuration file. An example of configuration file is [here](/configs/config.json).
 
-`-listen-devices devices`: (Optional) pcap devices for listening, use comma to separate multiple devices. If this value is not set, all valid pcap devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
+`-listen-devices devices`: (Optional) Devices for listening, use comma to separate multiple devices. If this value is not set, all valid devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
-`-upstream-device device`: (Optional) pcap device for routing upstream to. If this value is not set, the first valid pcap device with the same domain of gateway will be used.
+`-upstream-device device`: (Optional) Device for routing upstream to. If this value is not set, the first valid device with the same domain of gateway will be used.
 
 `-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
 
 `-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`.
 
-`-password password`: (Optional) Password of the encryption, must be set only when method is not `plain`.
+`-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
 
 `-v`: (Optional) Print verbose messages.
 
