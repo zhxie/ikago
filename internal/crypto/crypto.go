@@ -21,34 +21,34 @@ const (
 	MethodXChaCha20Poly1305
 )
 
-// Crypto describes crypto of encryption
-type Crypto interface {
+// Crypt describes crypt of encryption
+type Crypt interface {
 	// Encrypt returns the encrypted data
 	Encrypt([]byte) ([]byte, error)
 	// Decrypt returns the decrypted data
 	Decrypt([]byte) ([]byte, error)
-	// Method returns the method of crypto
+	// Method returns the method of crypt
 	Method() Method
 }
 
-// ParseCrypto returns a crypto by given method and password
-func ParseCrypto(method, password string) (Crypto, error) {
+// ParseCrypt returns a crypt by given method and password
+func ParseCrypt(method, password string) (Crypt, error) {
 	var err error
-	var c Crypto
+	var c Crypt
 
 	switch strings.ToLower(method) {
 	case "plain":
-		c = CreatePlainCrypto()
+		c = CreatePlainCrypt()
 	case "aes-128-gcm":
-		c, err = CreateAESGCMCrypto(DeriveKey(password, 16))
+		c, err = CreateAESGCMCrypt(DeriveKey(password, 16))
 	case "aes-192-gcm":
-		c, err = CreateAESGCMCrypto(DeriveKey(password, 24))
+		c, err = CreateAESGCMCrypt(DeriveKey(password, 24))
 	case "aes-256-gcm":
-		c, err = CreateAESGCMCrypto(DeriveKey(password, 32))
+		c, err = CreateAESGCMCrypt(DeriveKey(password, 32))
 	case "chacha20-poly1305":
-		c, err = CreateChaCha20Poly1305Crypto(DeriveKey(password, 32))
+		c, err = CreateChaCha20Poly1305Crypt(DeriveKey(password, 32))
 	case "xchacha20-poly1305":
-		c, err = CreateXChaCha20Poly1305Crypto(DeriveKey(password, 32))
+		c, err = CreateXChaCha20Poly1305Crypt(DeriveKey(password, 32))
 	default:
 		return nil, fmt.Errorf("method %s not support", method)
 	}

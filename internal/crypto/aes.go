@@ -7,15 +7,15 @@ import (
 	"fmt"
 )
 
-// AESCFBCrypto describes an AES-CFB crypto
-type AESCFBCrypto struct {
+// AESCFBCrypt describes an AES-CFB crypt
+type AESCFBCrypt struct {
 	block     cipher.Block
 	encrypter cipher.Stream
 	decrypter cipher.Stream
 }
 
-// CreateAESCFBCrypto returns an AES-CFB crypto by given key and IV
-func CreateAESCFBCrypto(key, iv []byte) (*AESCFBCrypto, error) {
+// CreateAESCFBCrypt returns an AES-CFB crypt by given key and IV
+func CreateAESCFBCrypt(key, iv []byte) (*AESCFBCrypt, error) {
 	// Cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -25,14 +25,14 @@ func CreateAESCFBCrypto(key, iv []byte) (*AESCFBCrypto, error) {
 	encrypter := cipher.NewCFBEncrypter(block, iv)
 	decrypter := cipher.NewCFBDecrypter(block, iv)
 
-	return &AESCFBCrypto{
+	return &AESCFBCrypt{
 		block:     block,
 		encrypter: encrypter,
 		decrypter: decrypter,
 	}, nil
 }
 
-func (c *AESCFBCrypto) Encrypt(data []byte) ([]byte, error) {
+func (c *AESCFBCrypt) Encrypt(data []byte) ([]byte, error) {
 	result := make([]byte, len(data))
 
 	c.encrypter.XORKeyStream(data, result)
@@ -40,7 +40,7 @@ func (c *AESCFBCrypto) Encrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *AESCFBCrypto) Decrypt(data []byte) ([]byte, error) {
+func (c *AESCFBCrypt) Decrypt(data []byte) ([]byte, error) {
 	result := make([]byte, len(data))
 
 	c.decrypter.XORKeyStream(data, result)
@@ -48,18 +48,18 @@ func (c *AESCFBCrypto) Decrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *AESCFBCrypto) Method() Method {
+func (c *AESCFBCrypt) Method() Method {
 	return MethodAESCFB
 }
 
-// AESGCMCrypto describes an AES-GCM crypto
-type AESGCMCrypto struct {
+// AESGCMCrypt describes an AES-GCM crypt
+type AESGCMCrypt struct {
 	block cipher.Block
 	aead  cipher.AEAD
 }
 
-// CreateAESGCMCrypto returns an AES-GCM crypto by given key
-func CreateAESGCMCrypto(key []byte) (*AESGCMCrypto, error) {
+// CreateAESGCMCrypt returns an AES-GCM crypt by given key
+func CreateAESGCMCrypt(key []byte) (*AESGCMCrypt, error) {
 	// Cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -72,13 +72,13 @@ func CreateAESGCMCrypto(key []byte) (*AESGCMCrypto, error) {
 		return nil, fmt.Errorf("new cipher: %w", err)
 	}
 
-	return &AESGCMCrypto{
+	return &AESGCMCrypt{
 		block: block,
 		aead:  aead,
 	}, nil
 }
 
-func (c *AESGCMCrypto) Encrypt(data []byte) ([]byte, error) {
+func (c *AESGCMCrypt) Encrypt(data []byte) ([]byte, error) {
 	nonce, err := GenerateNonce(c.aead.NonceSize())
 	if err != nil {
 		return nil, fmt.Errorf("generate nonce: %w", err)
@@ -90,7 +90,7 @@ func (c *AESGCMCrypto) Encrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *AESGCMCrypto) Decrypt(data []byte) ([]byte, error) {
+func (c *AESGCMCrypt) Decrypt(data []byte) ([]byte, error) {
 	size := c.aead.NonceSize()
 	if len(data) < size {
 		return nil, errors.New("missing nonce")
@@ -105,6 +105,6 @@ func (c *AESGCMCrypto) Decrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *AESGCMCrypto) Method() Method {
+func (c *AESGCMCrypt) Method() Method {
 	return MethodAESGCM
 }

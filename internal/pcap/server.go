@@ -21,7 +21,7 @@ type Server struct {
 	ListenDevs     []*Device
 	UpDev          *Device
 	GatewayDev     *Device
-	Crypto         crypto.Crypto
+	Crypt          crypto.Crypt
 	listenHandles  []*pcap.Handle
 	upHandle       *pcap.Handle
 	cListenPackets chan devPacket
@@ -303,7 +303,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	p.acksLock.Unlock()
 
 	// Decrypt
-	contents, err := p.Crypto.Decrypt(indicator.payload())
+	contents, err := p.Crypt.Decrypt(indicator.payload())
 	if err != nil {
 		return fmt.Errorf("decrypt: %w", err)
 	}
@@ -796,7 +796,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Encrypt
-	contents, err = p.Crypto.Encrypt(contents)
+	contents, err = p.Crypt.Encrypt(contents)
 	if err != nil {
 		return fmt.Errorf("encrypt: %w", err)
 	}

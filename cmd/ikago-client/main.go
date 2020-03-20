@@ -47,7 +47,7 @@ func main() {
 		listenDevs = make([]*pcap.Device, 0)
 		upDev      *pcap.Device
 		gatewayDev *pcap.Device
-		c          crypto.Crypto
+		crypt      crypto.Crypt
 	)
 
 	// Configuration
@@ -145,9 +145,9 @@ func main() {
 	}
 	serverIP = serverIPPort.MemberIP
 	serverPort = serverIPPort.Port
-	c, err = crypto.ParseCrypto(cfg.Method, cfg.Password)
+	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse crypto: %w", err))
+		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
 	}
 	if len(filters) == 1 {
 		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverIPPort)
@@ -203,7 +203,7 @@ func main() {
 	p.ListenDevs = listenDevs
 	p.UpDev = upDev
 	p.GatewayDev = gatewayDev
-	p.Crypto = c
+	p.Crypt = crypt
 
 	// Wait signals
 	sig := make(chan os.Signal)

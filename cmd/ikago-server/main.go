@@ -38,7 +38,7 @@ func main() {
 		listenDevs = make([]*pcap.Device, 0)
 		upDev      *pcap.Device
 		gatewayDev *pcap.Device
-		c          crypto.Crypto
+		crypt      crypto.Crypt
 	)
 
 	// Configuration file
@@ -88,9 +88,9 @@ func main() {
 	if cfg.ListenPort <= 0 || cfg.ListenPort > 65535 {
 		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.ListenPort))
 	}
-	c, err = crypto.ParseCrypto(cfg.Method, cfg.Password)
+	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse crypto: %w", err))
+		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
 	}
 	log.Infof("Proxy from :%d\n", cfg.ListenPort)
 
@@ -136,7 +136,7 @@ func main() {
 	p.ListenDevs = listenDevs
 	p.UpDev = upDev
 	p.GatewayDev = gatewayDev
-	p.Crypto = c
+	p.Crypt = crypt
 
 	// Wait signals
 	sig := make(chan os.Signal)

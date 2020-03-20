@@ -7,23 +7,23 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// ChaCha20Poly1305Crypto describes an ChaCha20-Poly1305 crypto
-type ChaCha20Poly1305Crypto struct {
+// ChaCha20Poly1305Crypt describes an ChaCha20-Poly1305 crypt
+type ChaCha20Poly1305Crypt struct {
 	aead cipher.AEAD
 }
 
-// CreateChaCha20Poly1305Crypto returns an ChaCha20-Poly1305 crypto by given key
-func CreateChaCha20Poly1305Crypto(key []byte) (*ChaCha20Poly1305Crypto, error) {
+// CreateChaCha20Poly1305Crypt returns an ChaCha20-Poly1305 crypt by given key
+func CreateChaCha20Poly1305Crypt(key []byte) (*ChaCha20Poly1305Crypt, error) {
 	// AEAD
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		return nil, fmt.Errorf("new aead: %w", err)
 	}
 
-	return &ChaCha20Poly1305Crypto{aead: aead}, nil
+	return &ChaCha20Poly1305Crypt{aead: aead}, nil
 }
 
-func (c *ChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
+func (c *ChaCha20Poly1305Crypt) Encrypt(data []byte) ([]byte, error) {
 	nonce, err := GenerateNonce(c.aead.NonceSize())
 	if err != nil {
 		return nil, fmt.Errorf("generate nonce: %w", err)
@@ -35,7 +35,7 @@ func (c *ChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *ChaCha20Poly1305Crypto) Decrypt(data []byte) ([]byte, error) {
+func (c *ChaCha20Poly1305Crypt) Decrypt(data []byte) ([]byte, error) {
 	size := c.aead.NonceSize()
 	if len(data) < size {
 		return nil, errors.New("missing nonce")
@@ -50,27 +50,27 @@ func (c *ChaCha20Poly1305Crypto) Decrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *ChaCha20Poly1305Crypto) Method() Method {
+func (c *ChaCha20Poly1305Crypt) Method() Method {
 	return MethodChaCha20Poly1305
 }
 
-// XChaCha20Poly1305Crypto describes an XChaCha20-Poly1305 crypto
-type XChaCha20Poly1305Crypto struct {
+// XChaCha20Poly1305Crypt describes an XChaCha20-Poly1305 crypt
+type XChaCha20Poly1305Crypt struct {
 	aead cipher.AEAD
 }
 
-// CreateXChaCha20Poly1305Crypto returns an XChaCha20-Poly1305 crypto by given key
-func CreateXChaCha20Poly1305Crypto(key []byte) (*XChaCha20Poly1305Crypto, error) {
+// CreateXChaCha20Poly1305Crypt returns an XChaCha20-Poly1305 crypt by given key
+func CreateXChaCha20Poly1305Crypt(key []byte) (*XChaCha20Poly1305Crypt, error) {
 	// AEAD
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		fmt.Errorf("new aead: %w", err)
 	}
 
-	return &XChaCha20Poly1305Crypto{aead: aead}, nil
+	return &XChaCha20Poly1305Crypt{aead: aead}, nil
 }
 
-func (c *XChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
+func (c *XChaCha20Poly1305Crypt) Encrypt(data []byte) ([]byte, error) {
 	nonce, err := GenerateNonce(c.aead.NonceSize())
 	if err != nil {
 		return nil, fmt.Errorf("generate nonce: %w", err)
@@ -82,7 +82,7 @@ func (c *XChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *XChaCha20Poly1305Crypto) Decrypt(data []byte) ([]byte, error) {
+func (c *XChaCha20Poly1305Crypt) Decrypt(data []byte) ([]byte, error) {
 	size := c.aead.NonceSize()
 	if len(data) < size {
 		return nil, errors.New("missing nonce")
@@ -97,6 +97,6 @@ func (c *XChaCha20Poly1305Crypto) Decrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
-func (c *XChaCha20Poly1305Crypto) Method() Method {
+func (c *XChaCha20Poly1305Crypt) Method() Method {
 	return MethodXChaCha20Poly1305
 }

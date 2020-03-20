@@ -1,26 +1,26 @@
 package crypto
 
-// PlainCrypto describes a plain crypto which will not encrypt the data
-type PlainCrypto struct {
+// PlainCrypt describes a plain crypt which will not encrypt the data
+type PlainCrypt struct {
 }
 
-func (c *PlainCrypto) Prepare() error {
+func (c *PlainCrypt) Prepare() error {
 	return nil
 }
 
-// CreatePlainCrypto returns an plain crypto
-func CreatePlainCrypto() *PlainCrypto {
-	return &PlainCrypto{}
+// CreatePlainCrypt returns an plain crypt
+func CreatePlainCrypt() *PlainCrypt {
+	return &PlainCrypt{}
 }
 
-func (c *PlainCrypto) Encrypt(data []byte) ([]byte, error) {
+func (c *PlainCrypt) Encrypt(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (c *PlainCrypto) Decrypt(data []byte) ([]byte, error) {
+func (c *PlainCrypt) Decrypt(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (c *PlainCrypto) Method() Method {
+func (c *PlainCrypt) Method() Method {
 	return MethodPlain
 }

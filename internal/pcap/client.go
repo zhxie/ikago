@@ -25,7 +25,7 @@ type Client struct {
 	ListenDevs      []*Device
 	UpDev           *Device
 	GatewayDev      *Device
-	Crypto          crypto.Crypto
+	Crypt           crypto.Crypt
 	listenHandles   []*pcap.Handle
 	upHandle        *pcap.Handle
 	handshakeHandle *pcap.Handle
@@ -477,7 +477,7 @@ func (p *Client) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	}
 
 	// Encrypt
-	contents, err = p.Crypto.Encrypt(contents)
+	contents, err = p.Crypt.Encrypt(contents)
 	if err != nil {
 		return fmt.Errorf("encrypt: %w", err)
 	}
@@ -538,7 +538,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) error {
 	p.ack = p.ack + uint32(len(applicationLayer.LayerContents()))
 
 	// Decrypt
-	contents, err := p.Crypto.Decrypt(applicationLayer.LayerContents())
+	contents, err := p.Crypt.Decrypt(applicationLayer.LayerContents())
 	if err != nil {
 		return fmt.Errorf("decrypt: %w", err)
 	}
