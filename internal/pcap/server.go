@@ -17,7 +17,7 @@ import (
 
 // Server describes the packet capture on the server side
 type Server struct {
-	ListenPort     uint16
+	Port           uint16
 	ListenDevs     []*Device
 	UpDev          *Device
 	GatewayDev     *Device
@@ -43,19 +43,27 @@ type Server struct {
 
 const keepAlive float64 = 30 // seconds
 
+// NewServer returns a new pcap server
+func NewServer() *Server {
+	return &Server{
+		cListenPackets: make(chan devPacket, 1000),
+		seqs:           make(map[string]uint32),
+		acks:           make(map[string]uint32),
+		id:             0,
+		tcpPortPool:    make([]time.Time, 16384),
+		udpPortPool:    make([]time.Time, 16384),
+		icmpv4IdPool:   make([]time.Time, 65536),
+		valueMap:       make(map[quintuple]uint16),
+		nat:            make(map[natGuide]*natIndicator),
+	}
+}
+
 // Open implements a method opens the pcap
 func (p *Server) Open() error {
-	p.cListenPackets = make(chan devPacket, 1000)
-	p.seqs = make(map[string]uint32)
-	p.acks = make(map[string]uint32)
-	p.id = 0
-	p.tcpPortPool = make([]time.Time, 16384)
-	p.udpPortPool = make([]time.Time, 16384)
-	p.icmpv4IdPool = make([]time.Time, 65536)
-	p.valueMap = make(map[quintuple]uint16)
-	p.nat = make(map[natGuide]*natIndicator)
-
 	// Verify
+	if p.Port <= 0 || p.Port > 65535 {
+		return fmt.Errorf("port %d out of range", p.Port)
+	}
 	if len(p.ListenDevs) <= 0 {
 		return errors.New("missing listen device")
 	}
@@ -65,6 +73,7 @@ func (p *Server) Open() error {
 	if p.GatewayDev == nil {
 		return errors.New("missing gateway")
 	}
+
 	if len(p.ListenDevs) == 1 {
 		log.Infof("Listen on %s\n", p.ListenDevs[0])
 	} else {
@@ -86,7 +95,7 @@ func (p *Server) Open() error {
 		if err != nil {
 			return fmt.Errorf("open listen device %s: %w", dev.Name, err)
 		}
-		err = handle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d", p.ListenPort))
+		err = handle.SetBPFFilter(fmt.Sprintf("tcp && dst port %d", p.Port))
 		if err != nil {
 			return fmt.Errorf("set bpf filter: %w", err)
 		}
@@ -98,7 +107,7 @@ func (p *Server) Open() error {
 	if err != nil {
 		return fmt.Errorf("open upstream device %s: %w", p.UpDev.Name, err)
 	}
-	err = p.upHandle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", p.ListenPort))
+	err = p.upHandle.SetBPFFilter(fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", p.Port))
 	if err != nil {
 		return fmt.Errorf("set bpf filter: %w", err)
 	}
@@ -172,7 +181,7 @@ func (p *Server) handshake(indicator *packetIndicator) error {
 	// Create transport layer
 	p.seqsLock.RLock()
 	p.acksLock.RLock()
-	newTransportLayer = createTCPLayerSYNACK(p.ListenPort, indicator.srcPort(), p.seqs[srcIPPort.String()], p.acks[srcIPPort.String()])
+	newTransportLayer = createTCPLayerSYNACK(p.Port, indicator.srcPort(), p.seqs[srcIPPort.String()], p.acks[srcIPPort.String()])
 	p.seqsLock.RUnlock()
 	p.acksLock.RUnlock()
 
@@ -315,7 +324,7 @@ func (p *Server) handleListen(packet gopacket.Packet, dev *Device, handle *pcap.
 	if !ok {
 		// if ICMPv4 error is not in NAT, drop it
 		if embIndicator.transportLayerType == layers.LayerTypeICMPv4 && !embIndicator.icmpv4Indicator.isQuery() {
-			return fmt.Errorf("missing nat")
+			return errors.New("missing nat")
 		}
 		upValue, err = p.dist(embIndicator.transportLayerType)
 		if err != nil {
@@ -736,7 +745,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	src := ni.src.String()
 	p.seqsLock.RLock()
 	p.acksLock.RLock()
-	newTransportLayer = createTransportLayerTCP(p.ListenPort, ni.src.Port, p.seqs[src], p.acks[src])
+	newTransportLayer = createTransportLayerTCP(p.Port, ni.src.Port, p.seqs[src], p.acks[src])
 	p.seqsLock.RUnlock()
 	p.acksLock.RUnlock()
 

@@ -47,15 +47,15 @@ func ParseIPPort(s string) (*IPPort, error) {
 		// IPv6
 		strs := strings.Split(s[1:], "]:")
 		if len(strs) != 2 {
-			return nil, fmt.Errorf("parse address: %w", errors.New("invalid"))
+			return nil, errors.New("invalid address")
 		}
 		ip := net.ParseIP(strs[0])
 		if ip == nil {
-			return nil, fmt.Errorf("parse ip %s: %w", strs[0], errors.New("invalid"))
+			return nil, fmt.Errorf("invalid ip %s", strs[0])
 		}
 		port, err := strconv.ParseUint(strs[1], 10, 16)
 		if err != nil {
-			return nil, fmt.Errorf("parse port %s: %w", strs[1], errors.New("invalid"))
+			return nil, fmt.Errorf("invalid port %s", strs[1])
 		}
 		return &IPPort{
 			MemberIP: ip,
@@ -65,15 +65,15 @@ func ParseIPPort(s string) (*IPPort, error) {
 	// IPv4
 	strs := strings.Split(s, ":")
 	if len(strs) != 2 {
-		return nil, fmt.Errorf("parse address: %w", errors.New("invalid"))
+		return nil, errors.New("invalid address")
 	}
 	ip := net.ParseIP(strs[0])
 	if ip == nil {
-		return nil, fmt.Errorf("parse ip %s: %w", strs[0], errors.New("invalid"))
+		return nil, fmt.Errorf("invalid ip %s", strs[0])
 	}
 	port, err := strconv.ParseUint(strs[1], 10, 16)
 	if err != nil {
-		return nil, fmt.Errorf("parse port %s: %w", strs[1], errors.New("invalid"))
+		return nil, fmt.Errorf("invalid port %s", strs[1])
 	}
 	return &IPPort{
 		MemberIP: ip,

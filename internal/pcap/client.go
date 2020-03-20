@@ -37,12 +37,32 @@ type Client struct {
 	devMap          map[string]*devIndicator
 }
 
+// NewClient returns a new pcap client
+func NewClient() *Client {
+	return &Client{
+		cListenPackets:  make(chan devPacket, 1000),
+		seq:             0,
+		ack:             0,
+		id:              0,
+		devMap:          make(map[string]*devIndicator),
+	}
+}
+
 // Open implements a method opens the pcap
 func (p *Client) Open() error {
-	p.cListenPackets = make(chan devPacket, 1000)
-	p.devMap = make(map[string]*devIndicator)
-
 	// Verify
+	if len(p.Filters) <= 0 {
+		return errors.New("missing filter")
+	}
+	if p.UpPort <= 0 || p.UpPort > 65535 {
+		return fmt.Errorf("upstream port %d out of range", p.UpPort)
+	}
+	if p.ServerIP == nil {
+		return errors.New("missing server ip")
+	}
+	if p.ServerPort <= 0 || p.ServerPort > 65535 {
+		return fmt.Errorf("server port %d out of range", p.ServerPort)
+	}
 	if len(p.ListenDevs) <= 0 {
 		return errors.New("missing listen device")
 	}
@@ -52,6 +72,7 @@ func (p *Client) Open() error {
 	if p.GatewayDev == nil {
 		return errors.New("missing gateway device")
 	}
+
 	if len(p.ListenDevs) == 1 {
 		log.Infof("Listen on %s\n", p.ListenDevs[0])
 	} else {
@@ -118,7 +139,7 @@ func (p *Client) Open() error {
 			return fmt.Errorf("handshake: %w", errors.New("connection reset"))
 		}
 		if !tcpLayer.SYN {
-			return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", errors.New("invalid")))
+			return fmt.Errorf("handshake: %w", errors.New("invalid packet"))
 		}
 	default:
 		return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", fmt.Errorf("transport layer type %s not support", transportLayerType)))

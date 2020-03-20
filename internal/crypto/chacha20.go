@@ -9,20 +9,18 @@ import (
 
 // ChaCha20Poly1305Crypto describes an ChaCha20-Poly1305 crypto
 type ChaCha20Poly1305Crypto struct {
-	Key  []byte
 	aead cipher.AEAD
 }
 
-func (c *ChaCha20Poly1305Crypto) Prepare() error {
-	var err error
-
+// CreateChaCha20Poly1305Crypto returns an ChaCha20-Poly1305 crypto by given key
+func CreateChaCha20Poly1305Crypto(key []byte) (*ChaCha20Poly1305Crypto, error) {
 	// AEAD
-	c.aead, err = chacha20poly1305.New(c.Key)
+	aead, err := chacha20poly1305.New(key)
 	if err != nil {
-		return fmt.Errorf("new aead: %w", err)
+		return nil, fmt.Errorf("new aead: %w", err)
 	}
 
-	return nil
+	return &ChaCha20Poly1305Crypto{aead: aead}, nil
 }
 
 func (c *ChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {
@@ -58,20 +56,18 @@ func (c *ChaCha20Poly1305Crypto) Method() Method {
 
 // XChaCha20Poly1305Crypto describes an XChaCha20-Poly1305 crypto
 type XChaCha20Poly1305Crypto struct {
-	Key  []byte
 	aead cipher.AEAD
 }
 
-func (c *XChaCha20Poly1305Crypto) Prepare() error {
-	var err error
-
+// CreateXChaCha20Poly1305Crypto returns an XChaCha20-Poly1305 crypto by given key
+func CreateXChaCha20Poly1305Crypto(key []byte) (*XChaCha20Poly1305Crypto, error) {
 	// AEAD
-	c.aead, err = chacha20poly1305.NewX(c.Key)
+	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
-		return fmt.Errorf("new aead: %w", err)
+		fmt.Errorf("new aead: %w", err)
 	}
 
-	return nil
+	return &XChaCha20Poly1305Crypto{aead: aead}, nil
 }
 
 func (c *XChaCha20Poly1305Crypto) Encrypt(data []byte) ([]byte, error) {

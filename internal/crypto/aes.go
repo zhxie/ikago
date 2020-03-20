@@ -9,26 +9,27 @@ import (
 
 // AESCFBCrypto describes an AES-CFB crypto
 type AESCFBCrypto struct {
-	Key       []byte
-	IV        []byte
 	block     cipher.Block
 	encrypter cipher.Stream
 	decrypter cipher.Stream
 }
 
-func (c *AESCFBCrypto) Prepare() error {
-	var err error
-
+// CreateAESCFBCrypto returns an AES-CFB crypto by given key and IV
+func CreateAESCFBCrypto(key, iv []byte) (*AESCFBCrypto, error) {
 	// Cipher
-	c.block, err = aes.NewCipher(c.Key)
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return fmt.Errorf("new cipher: %w", err)
+		return nil, fmt.Errorf("new cipher: %w", err)
 	}
 
-	c.encrypter = cipher.NewCFBEncrypter(c.block, c.IV)
-	c.decrypter = cipher.NewCFBDecrypter(c.block, c.IV)
+	encrypter := cipher.NewCFBEncrypter(block, iv)
+	decrypter := cipher.NewCFBDecrypter(block, iv)
 
-	return nil
+	return &AESCFBCrypto{
+		block:     block,
+		encrypter: encrypter,
+		decrypter: decrypter,
+	}, nil
 }
 
 func (c *AESCFBCrypto) Encrypt(data []byte) ([]byte, error) {
@@ -53,27 +54,28 @@ func (c *AESCFBCrypto) Method() Method {
 
 // AESGCMCrypto describes an AES-GCM crypto
 type AESGCMCrypto struct {
-	Key   []byte
 	block cipher.Block
 	aead  cipher.AEAD
 }
 
-func (c *AESGCMCrypto) Prepare() error {
-	var err error
-
+// CreateAESGCMCrypto returns an AES-GCM crypto by given key
+func CreateAESGCMCrypto(key []byte) (*AESGCMCrypto, error) {
 	// Cipher
-	c.block, err = aes.NewCipher(c.Key)
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return fmt.Errorf("new cipher: %w", err)
+		return nil, fmt.Errorf("new cipher: %w", err)
 	}
 
 	// AEAD
-	c.aead, err = cipher.NewGCM(c.block)
+	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return fmt.Errorf("new gcm: %w", err)
+		return nil, fmt.Errorf("new cipher: %w", err)
 	}
 
-	return nil
+	return &AESGCMCrypto{
+		block: block,
+		aead:  aead,
+	}, nil
 }
 
 func (c *AESGCMCrypto) Encrypt(data []byte) ([]byte, error) {

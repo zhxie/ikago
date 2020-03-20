@@ -2,7 +2,6 @@ package filter
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"ikago/internal/addr"
 	"net"
@@ -111,7 +110,7 @@ func ParseFilter(s string) (Filter, error) {
 		// IP
 		ip := net.ParseIP(s)
 		if ip == nil {
-			return nil, fmt.Errorf("parse ip %s: %w", s, errors.New("invalid"))
+			return nil, fmt.Errorf("invalid ip %s", s)
 		}
 		return &IPFilter{IP: ip}, nil
 	}

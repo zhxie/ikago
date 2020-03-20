@@ -377,7 +377,7 @@ func FindUpstreamDevAndGatewayDev(name string, gateway net.IP) (upDev, gatewayDe
 				}
 			}
 			if newUpDev == nil {
-				return nil, nil, fmt.Errorf("find gateway device: %w", fmt.Errorf("different domain in upstream device %s and gateway", upDev.Alias))
+				return nil, nil, fmt.Errorf("different domain in upstream device %s and gateway", upDev.Alias)
 			}
 
 			upDev = newUpDev

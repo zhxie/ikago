@@ -8,6 +8,11 @@ func (c *PlainCrypto) Prepare() error {
 	return nil
 }
 
+// CreatePlainCrypto returns an plain crypto
+func CreatePlainCrypto() *PlainCrypto {
+	return &PlainCrypto{}
+}
+
 func (c *PlainCrypto) Encrypt(data []byte) ([]byte, error) {
 	return data, nil
 }

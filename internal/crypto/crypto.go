@@ -1,7 +1,6 @@
 package crypto
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -24,8 +23,6 @@ const (
 
 // Crypto describes crypto of encryption
 type Crypto interface {
-	// Prepare implements a method prepares the crypto
-	Prepare() error
 	// Encrypt returns the encrypted data
 	Encrypt([]byte) ([]byte, error)
 	// Decrypt returns the decrypted data
@@ -34,29 +31,29 @@ type Crypto interface {
 	Method() Method
 }
 
-func Parse(method, password string) (Crypto, error) {
+// ParseCrypto returns a crypto by given method and password
+func ParseCrypto(method, password string) (Crypto, error) {
+	var err error
 	var c Crypto
+
 	switch strings.ToLower(method) {
 	case "plain":
-		c = &PlainCrypto{}
+		c = CreatePlainCrypto()
 	case "aes-128-gcm":
-		c = &AESGCMCrypto{Key: DeriveKey(password, 16)}
+		c, err = CreateAESGCMCrypto(DeriveKey(password, 16))
 	case "aes-192-gcm":
-		c = &AESGCMCrypto{Key: DeriveKey(password, 24)}
+		c, err = CreateAESGCMCrypto(DeriveKey(password, 24))
 	case "aes-256-gcm":
-		c = &AESGCMCrypto{Key: DeriveKey(password, 32)}
+		c, err = CreateAESGCMCrypto(DeriveKey(password, 32))
 	case "chacha20-poly1305":
-		c = &ChaCha20Poly1305Crypto{Key: DeriveKey(password, 32)}
+		c, err = CreateChaCha20Poly1305Crypto(DeriveKey(password, 32))
 	case "xchacha20-poly1305":
-		c = &XChaCha20Poly1305Crypto{Key: DeriveKey(password, 32)}
+		c, err = CreateXChaCha20Poly1305Crypto(DeriveKey(password, 32))
 	default:
-		return nil, fmt.Errorf("parse method %s: %w", method, errors.New("not support"))
+		return nil, fmt.Errorf("method %s not support", method)
 	}
-
-	// Prepare the crypto
-	err := c.Prepare()
 	if err != nil {
-		return nil, fmt.Errorf("prepare: %w", err)
+		return nil, err
 	}
 
 	return c, nil

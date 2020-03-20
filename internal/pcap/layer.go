@@ -74,10 +74,10 @@ func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
 
 func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
 	if srcIP.To4() == nil {
-		return nil, fmt.Errorf("parse source ip %s: %w", srcIP, errors.New("invalid"))
+		return nil, fmt.Errorf("invalid source ip %s", srcIP)
 	}
 	if dstIP.To4() == nil {
-		return nil, fmt.Errorf("parse destination ip %s: %w", dstIP, errors.New("invalid"))
+		return nil, fmt.Errorf("invalid destination ip %s", dstIP)
 	}
 
 	ipv4Layer := &layers.IPv4{
@@ -123,10 +123,10 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 
 func createNetworkLayerIPv6(srcIP, dstIP net.IP, hopLimit uint8, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
 	if srcIP.To4() != nil {
-		return nil, fmt.Errorf("parse source ip %s: %w", srcIP, errors.New("invalid"))
+		return nil, fmt.Errorf("invalid source ip %s", srcIP)
 	}
 	if dstIP.To4() != nil {
-		return nil, fmt.Errorf("parse destination ip %s: %w", dstIP, errors.New("invalid"))
+		return nil, fmt.Errorf("invalid destination ip %s", dstIP)
 	}
 
 	ipv6Layer := &layers.IPv6{

@@ -82,13 +82,13 @@ func main() {
 	if cfg.Gateway != "" {
 		gateway = net.ParseIP(cfg.Gateway)
 		if gateway == nil {
-			log.Fatalln(fmt.Errorf("parse gateway %s: %w", cfg.Gateway, errors.New("invalid")))
+			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
-	if cfg.ListenPort <= 0 || cfg.ListenPort >= 65536 {
-		log.Fatalln(fmt.Errorf("parse listen port %d: %w", cfg.ListenPort, errors.New("out of range")))
+	if cfg.ListenPort <= 0 || cfg.ListenPort > 65535 {
+		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.ListenPort))
 	}
-	c, err = crypto.Parse(cfg.Method, cfg.Password)
+	c, err = crypto.ParseCrypto(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypto: %w", err))
 	}
@@ -113,7 +113,7 @@ func main() {
 		listenDevs = result
 	}
 	if len(listenDevs) <= 0 {
-		log.Fatalln(fmt.Errorf("find listen devices: %w", errors.New("cannot determine")))
+		log.Fatalln(errors.New("cannot determine listen device"))
 	}
 
 	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev, gateway)
@@ -121,23 +121,22 @@ func main() {
 		log.Fatalln(fmt.Errorf("parse: %w", err))
 	}
 	if upDev == nil && gatewayDev == nil {
-		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", errors.New("cannot determine")))
+		log.Fatalln(errors.New("cannot determine upstream device and gateway device"))
 	}
 	if upDev == nil {
-		log.Fatalln(fmt.Errorf("find upstream device: %w", errors.New("cannot determine")))
+		log.Fatalln(errors.New("cannot determine upstream device"))
 	}
 	if gatewayDev == nil {
-		log.Fatalln(fmt.Errorf("find gateway device: %w", errors.New("cannot determine")))
+		log.Fatalln(errors.New("cannot determine gateway device"))
 	}
 
 	// Packet capture
-	p := pcap.Server{
-		ListenPort: uint16(cfg.ListenPort),
-		ListenDevs: listenDevs,
-		UpDev:      upDev,
-		GatewayDev: gatewayDev,
-		Crypto:     c,
-	}
+	p := pcap.NewServer()
+	p.Port = uint16(cfg.ListenPort)
+	p.ListenDevs = listenDevs
+	p.UpDev = upDev
+	p.GatewayDev = gatewayDev
+	p.Crypto = c
 
 	// Wait signals
 	sig := make(chan os.Signal)
