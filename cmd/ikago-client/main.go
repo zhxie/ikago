@@ -139,12 +139,12 @@ func main() {
 			}
 		}
 	}
-	serverIPPort, err := addr.ParseIPPort(cfg.Server)
+	serverIPPort, err := addr.ParseTCPAddr(cfg.Server)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
 	}
-	serverIP = serverIPPort.MemberIP
-	serverPort = serverIPPort.Port
+	serverIP = serverIPPort.IP
+	serverPort = uint16(serverIPPort.Port)
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))

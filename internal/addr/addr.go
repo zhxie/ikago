@@ -1,101 +1,50 @@
 package addr
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 )
 
-type IPEndpoint interface {
-	// IP returns the IP of IP endpoint
-	IP() net.IP
-	String() string
+// ICMPQueryAddr represents the address of a ICMP query end point.
+type ICMPQueryAddr struct {
+	IP net.IP
+	Id uint16
 }
 
-// IP describes a network endpoint with an IP only
-type IP struct {
-	MemberIP net.IP
+func (i ICMPQueryAddr) String() string {
+	return fmt.Sprintf("%s@%d", formatIP(i.IP), i.Id)
 }
 
-func (i *IP) IP() net.IP {
-	return i.MemberIP
+func (i ICMPQueryAddr) Network() string {
+	return "icmp query"
 }
 
-func (i IP) String() string {
-	return formatIP(i.MemberIP)
-}
-
-// IPPort describes a network endpoint with an IP and a port
-type IPPort struct {
-	MemberIP net.IP
-	Port     uint16
-}
-
-func (i *IPPort) IP() net.IP {
-	return i.MemberIP
-}
-
-func (i IPPort) String() string {
-	return fmt.Sprintf("%s:%d", formatIP(i.MemberIP), i.Port)
-}
-
-// ParseIPPort returns an IPPort by the given string of address
-func ParseIPPort(s string) (*IPPort, error) {
-	if s[0] == '[' {
-		// IPv6
-		strs := strings.Split(s[1:], "]:")
-		if len(strs) != 2 {
-			return nil, errors.New("invalid address")
-		}
-		ip := net.ParseIP(strs[0])
-		if ip == nil {
-			return nil, fmt.Errorf("invalid ip %s", strs[0])
-		}
-		port, err := strconv.ParseUint(strs[1], 10, 16)
-		if err != nil {
-			return nil, fmt.Errorf("invalid port %s", strs[1])
-		}
-		return &IPPort{
-			MemberIP: ip,
-			Port:     uint16(port),
-		}, nil
-	}
-	// IPv4
-	strs := strings.Split(s, ":")
-	if len(strs) != 2 {
-		return nil, errors.New("invalid address")
-	}
-	ip := net.ParseIP(strs[0])
-	if ip == nil {
-		return nil, fmt.Errorf("invalid ip %s", strs[0])
-	}
-	port, err := strconv.ParseUint(strs[1], 10, 16)
+// ParseTCPAddr returns an TCPAddr by the given string of address
+func ParseTCPAddr(s string) (*net.TCPAddr, error) {
+	ipStr, portStr, err := net.SplitHostPort(s)
 	if err != nil {
-		return nil, fmt.Errorf("invalid port %s", strs[1])
+		return nil, fmt.Errorf("split host port: %w", err)
 	}
-	return &IPPort{
-		MemberIP: ip,
-		Port:     uint16(port),
-	}, nil
-}
 
-// IPId describes a network endpoint with at an IP and an Id
-type IPId struct {
-	MemberIP net.IP
-	Id       uint16
-}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return nil, fmt.Errorf("invalid ip %s", ipStr)
+	}
 
-func (i *IPId) IP() net.IP {
-	return i.MemberIP
-}
+	port, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("parse port %s: %w", portStr, err)
+	}
 
-func (i IPId) String() string {
-	return fmt.Sprintf("%s@%d", formatIP(i.MemberIP), i.Id)
+	return &net.TCPAddr{IP: ip, Port: int(port)}, nil
 }
 
 func formatIP(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+
 	if ip.To4() != nil {
 		return ip.String()
 	} else {

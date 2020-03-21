@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"ikago/internal/addr"
 	"ikago/internal/crypto"
 	"ikago/internal/filter"
 	"ikago/internal/log"
@@ -102,7 +101,9 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	log.Infof("Connect to server %s\n", addr.IPPort{MemberIP: p.ServerIP, Port: p.ServerPort})
+	addr := net.TCPAddr{IP: p.ServerIP, Port: int(p.ServerPort)}
+	addrStr := addr.String()
+	log.Infof("Connect to server %s\n", addrStr)
 
 	// Latency test
 	t := time.Now()
@@ -143,7 +144,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	log.Infof("Connected to server %s in %.3f ms (two-way)\n", addr.IPPort{MemberIP: p.ServerIP, Port: p.ServerPort}, float64(d.Microseconds())/1000)
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", addrStr, float64(d.Microseconds())/1000)
 
 	// Close in advance
 	p.handshakeConn.Close()

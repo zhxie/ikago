@@ -395,26 +395,31 @@ func (indicator *icmpv4Indicator) isEmbQuery() bool {
 	}
 }
 
-func (indicator *icmpv4Indicator) natSrc() addr.IPEndpoint {
+func (indicator *icmpv4Indicator) natSrc() net.Addr {
 	if indicator.isQuery() {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
 		switch indicator.embTransportLayerType {
-		case layers.LayerTypeTCP, layers.LayerTypeUDP:
-			return &addr.IPPort{
-				MemberIP: indicator.embDstIP(),
-				Port:     indicator.embDstPort(),
+		case layers.LayerTypeTCP:
+			return &net.TCPAddr{
+				IP:   indicator.embDstIP(),
+				Port: int(indicator.embDstPort()),
+			}
+		case layers.LayerTypeUDP:
+			return &net.UDPAddr{
+				IP:   indicator.embDstIP(),
+				Port: int(indicator.embDstPort()),
 			}
 		case layers.LayerTypeICMPv4:
 			if indicator.isEmbQuery() {
-				return &addr.IPId{
-					MemberIP: indicator.embDstIP(),
-					Id:       indicator.embId(),
+				return &addr.ICMPQueryAddr{
+					IP: indicator.embDstIP(),
+					Id: indicator.embId(),
 				}
 			} else {
-				return &addr.IP{
-					MemberIP: indicator.embDstIP(),
+				return &net.IPAddr{
+					IP: indicator.embDstIP(),
 				}
 			}
 		default:
@@ -423,26 +428,31 @@ func (indicator *icmpv4Indicator) natSrc() addr.IPEndpoint {
 	}
 }
 
-func (indicator *icmpv4Indicator) natDst() addr.IPEndpoint {
+func (indicator *icmpv4Indicator) natDst() net.Addr {
 	if indicator.isQuery() {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
 		switch indicator.embTransportLayerType {
-		case layers.LayerTypeTCP, layers.LayerTypeUDP:
-			return &addr.IPPort{
-				MemberIP: indicator.embSrcIP(),
-				Port:     indicator.embSrcPort(),
+		case layers.LayerTypeTCP:
+			return &net.TCPAddr{
+				IP:   indicator.embSrcIP(),
+				Port: int(indicator.embSrcPort()),
+			}
+		case layers.LayerTypeUDP:
+			return &net.UDPAddr{
+				IP:   indicator.embSrcIP(),
+				Port: int(indicator.embSrcPort()),
 			}
 		case layers.LayerTypeICMPv4:
 			if indicator.isEmbQuery() {
-				return &addr.IPId{
-					MemberIP: indicator.embSrcIP(),
-					Id:       indicator.embId(),
+				return &addr.ICMPQueryAddr{
+					IP: indicator.embSrcIP(),
+					Id: indicator.embId(),
 				}
 			} else {
-				return &addr.IP{
-					MemberIP: indicator.embSrcIP(),
+				return &net.IPAddr{
+					IP: indicator.embSrcIP(),
 				}
 			}
 		default:

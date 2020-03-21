@@ -27,10 +27,25 @@ type natGuide struct {
 }
 
 type natIndicator struct {
-	src    *addr.IPPort
-	dst    *addr.IPPort
-	embSrc addr.IPEndpoint
+	src    net.Addr
+	dst    net.Addr
+	embSrc net.Addr
 	conn   *Conn
+}
+
+func (indicator *natIndicator) EmbSrcIP() net.IP {
+	switch t := indicator.embSrc.(type) {
+	case *net.IPAddr:
+		return indicator.embSrc.(*net.IPAddr).IP
+	case *net.TCPAddr:
+		return indicator.embSrc.(*net.TCPAddr).IP
+	case *net.UDPAddr:
+		return indicator.embSrc.(*net.UDPAddr).IP
+	case *addr.ICMPQueryAddr:
+		return indicator.embSrc.(*addr.ICMPQueryAddr).IP
+	default:
+		panic(fmt.Errorf("type %T not support", t))
+	}
 }
 
 type packetIndicator struct {
@@ -118,18 +133,23 @@ func (indicator *packetIndicator) dstPort() uint16 {
 	}
 }
 
-func (indicator *packetIndicator) natSrc() addr.IPEndpoint {
+func (indicator *packetIndicator) natSrc() net.Addr {
 	switch indicator.transportLayerType {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return &addr.IPPort{
-			MemberIP: indicator.srcIP(),
-			Port:     indicator.srcPort(),
+	case layers.LayerTypeTCP:
+		return &net.TCPAddr{
+			IP:   indicator.srcIP(),
+			Port: int(indicator.srcPort()),
+		}
+	case layers.LayerTypeUDP:
+		return &net.UDPAddr{
+			IP:   indicator.srcIP(),
+			Port: int(indicator.srcPort()),
 		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return &addr.IPId{
-				MemberIP: indicator.srcIP(),
-				Id:       indicator.icmpv4Indicator.id(),
+			return &addr.ICMPQueryAddr{
+				IP: indicator.srcIP(),
+				Id: indicator.icmpv4Indicator.id(),
 			}
 		} else {
 			return indicator.icmpv4Indicator.natSrc()
@@ -139,18 +159,23 @@ func (indicator *packetIndicator) natSrc() addr.IPEndpoint {
 	}
 }
 
-func (indicator *packetIndicator) natDst() addr.IPEndpoint {
+func (indicator *packetIndicator) natDst() net.Addr {
 	switch indicator.transportLayerType {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return &addr.IPPort{
-			MemberIP: indicator.dstIP(),
-			Port:     indicator.dstPort(),
+	case layers.LayerTypeTCP:
+		return &net.TCPAddr{
+			IP:   indicator.dstIP(),
+			Port: int(indicator.dstPort()),
+		}
+	case layers.LayerTypeUDP:
+		return &net.UDPAddr{
+			IP:   indicator.dstIP(),
+			Port: int(indicator.dstPort()),
 		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return &addr.IPId{
-				MemberIP: indicator.dstIP(),
-				Id:       indicator.icmpv4Indicator.id(),
+			return &addr.ICMPQueryAddr{
+				IP: indicator.dstIP(),
+				Id: indicator.icmpv4Indicator.id(),
 			}
 		} else {
 			return indicator.icmpv4Indicator.natDst()
@@ -175,22 +200,27 @@ func (indicator *packetIndicator) natProto() gopacket.LayerType {
 	}
 }
 
-func (indicator *packetIndicator) src() addr.IPEndpoint {
+func (indicator *packetIndicator) src() net.Addr {
 	switch indicator.transportLayerType {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return &addr.IPPort{
-			MemberIP: indicator.srcIP(),
-			Port:     indicator.srcPort(),
+	case layers.LayerTypeTCP:
+		return &net.TCPAddr{
+			IP:   indicator.srcIP(),
+			Port: int(indicator.srcPort()),
+		}
+	case layers.LayerTypeUDP:
+		return &net.UDPAddr{
+			IP:   indicator.srcIP(),
+			Port: int(indicator.srcPort()),
 		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return &addr.IPId{
-				MemberIP: indicator.srcIP(),
-				Id:       indicator.icmpv4Indicator.id(),
+			return &addr.ICMPQueryAddr{
+				IP: indicator.srcIP(),
+				Id: indicator.icmpv4Indicator.id(),
 			}
 		} else {
-			return &addr.IP{
-				MemberIP: indicator.srcIP(),
+			return &net.IPAddr{
+				IP: indicator.srcIP(),
 			}
 		}
 	default:
@@ -198,22 +228,27 @@ func (indicator *packetIndicator) src() addr.IPEndpoint {
 	}
 }
 
-func (indicator *packetIndicator) dst() addr.IPEndpoint {
+func (indicator *packetIndicator) dst() net.Addr {
 	switch indicator.transportLayerType {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP:
-		return &addr.IPPort{
-			MemberIP: indicator.dstIP(),
-			Port:     indicator.dstPort(),
+	case layers.LayerTypeTCP:
+		return &net.TCPAddr{
+			IP:   indicator.dstIP(),
+			Port: int(indicator.dstPort()),
+		}
+	case layers.LayerTypeUDP:
+		return &net.UDPAddr{
+			IP:   indicator.dstIP(),
+			Port: int(indicator.dstPort()),
 		}
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.isQuery() {
-			return &addr.IPId{
-				MemberIP: indicator.dstIP(),
-				Id:       indicator.icmpv4Indicator.id(),
+			return &addr.ICMPQueryAddr{
+				IP: indicator.dstIP(),
+				Id: indicator.icmpv4Indicator.id(),
 			}
 		} else {
-			return &addr.IP{
-				MemberIP: indicator.dstIP(),
+			return &net.IPAddr{
+				IP: indicator.dstIP(),
 			}
 		}
 	default:

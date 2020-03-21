@@ -70,7 +70,8 @@ func (filter IPPortFilter) DstBPFFilter() string {
 }
 
 func (filter IPPortFilter) String() string {
-	return addr.IPPort{MemberIP: filter.IP, Port: filter.Port}.String()
+	addr := net.TCPAddr{IP: filter.IP, Port: int(filter.Port)}
+	return addr.String()
 }
 
 // PortFilter describes a filter of port
@@ -105,7 +106,7 @@ func ParseFilter(s string) (Filter, error) {
 		return &PortFilter{Port: uint16(port)}, nil
 	}
 	// Guess IP and port
-	ipPort, err := addr.ParseIPPort(s)
+	addr, err := addr.ParseTCPAddr(s)
 	if err != nil {
 		// IP
 		ip := net.ParseIP(s)
@@ -115,7 +116,7 @@ func ParseFilter(s string) (Filter, error) {
 		return &IPFilter{IP: ip}, nil
 	}
 	// IPPort
-	return &IPPortFilter{IP: ipPort.MemberIP, Port: ipPort.Port}, nil
+	return &IPPortFilter{IP: addr.IP, Port: uint16(addr.Port)}, nil
 }
 
 func fullString(ip net.IP) string {
