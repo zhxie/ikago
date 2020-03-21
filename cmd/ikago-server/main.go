@@ -23,7 +23,7 @@ var argGateway = flag.String("gateway", "", "Gateway address.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
 var argPassword = flag.String("password", "", "Password of encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
-var argListenPort = flag.Int("p", 0, "Port for listening.")
+var argPort = flag.Int("p", 0, "Port for listening.")
 
 func init() {
 	// Parse arguments
@@ -55,7 +55,7 @@ func main() {
 			Method:     *argMethod,
 			Password:   *argPassword,
 			Verbose:    *argVerbose,
-			ListenPort: *argListenPort,
+			Port:       *argPort,
 		}
 	}
 
@@ -76,7 +76,7 @@ func main() {
 	}
 
 	// Verify parameters
-	if cfg.ListenPort == 0 {
+	if cfg.Port == 0 {
 		log.Fatalln("Please provide listen port by -p [port].")
 	}
 	if cfg.Gateway != "" {
@@ -85,14 +85,14 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
-	if cfg.ListenPort <= 0 || cfg.ListenPort > 65535 {
-		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.ListenPort))
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.Port))
 	}
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
 	}
-	log.Infof("Proxy from :%d\n", cfg.ListenPort)
+	log.Infof("Proxy from :%d\n", cfg.Port)
 
 	// Find devices
 	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
@@ -132,7 +132,7 @@ func main() {
 
 	// Packet capture
 	p := pcap.NewServer()
-	p.Port = uint16(cfg.ListenPort)
+	p.Port = uint16(cfg.Port)
 	p.ListenDevs = listenDevs
 	p.UpDev = upDev
 	p.GatewayDev = gatewayDev

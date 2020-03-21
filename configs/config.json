@@ -14,5 +14,5 @@
   ],
   "server": "server:18081",
 
-  "listen-port": 18081
+  "port": 18081
 }

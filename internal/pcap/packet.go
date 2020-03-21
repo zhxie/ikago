@@ -8,24 +8,17 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 )
 
-type devPacket struct {
+type connPacket struct {
 	packet gopacket.Packet
-	dev    *Device
-	handle *pcap.Handle
+	conn   *Conn
 }
 
 type quintuple struct {
 	src   string
 	dst   string
 	proto gopacket.LayerType
-}
-
-type devIndicator struct {
-	dev    *Device
-	handle *pcap.Handle
 }
 
 type natGuide struct {
@@ -35,9 +28,9 @@ type natGuide struct {
 
 type natIndicator struct {
 	src    *addr.IPPort
+	dst    *addr.IPPort
 	embSrc addr.IPEndpoint
-	dev    *Device
-	handle *pcap.Handle
+	conn   *Conn
 }
 
 type packetIndicator struct {

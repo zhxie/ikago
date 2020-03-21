@@ -7,18 +7,19 @@ import (
 	"time"
 )
 
-type TimeoutError struct {
+type timeoutError struct {
 	Err string
 }
 
-func (err *TimeoutError) Error() string {
+func (err *timeoutError) Error() string {
 	return err.Err
 }
 
-func (err *TimeoutError) Timeout() bool {
+func (err *timeoutError) Timeout() bool {
 	return true
 }
 
+// Conn describes a pcap connection
 type Conn struct {
 	SrcDev        *Device
 	DstDev        *Device
@@ -27,6 +28,7 @@ type Conn struct {
 	writeDeadline time.Time
 }
 
+// Dial acts like Dial for pcap networks
 func Dial(srcDev *Device, dstDev *Device, filter string) (*Conn, error) {
 	handle, err := pcap.OpenLive(srcDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
@@ -91,14 +93,14 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 				Net:    "pcap",
 				Source: c.LocalAddr(),
 				Addr:   c.RemoteAddr(),
-				Err:    &TimeoutError{Err: "timeout"},
+				Err:    &timeoutError{Err: "timeout"},
 			}}
 		}()
 	}
 
 	t := <-ch
 	if t.err != nil {
-		return 0, err
+		return 0, t.err
 	}
 
 	copy(b, t.data)
@@ -106,7 +108,7 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 	return len(b), nil
 }
 
-// ReadPacket reads packet from the connection.
+// ReadPacket reads packet from the connection
 func (c *Conn) ReadPacket() (packet gopacket.Packet, err error) {
 	b := make([]byte, 1600)
 
@@ -149,7 +151,7 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 				Net:    "pcap",
 				Source: c.LocalAddr(),
 				Addr:   c.RemoteAddr(),
-				Err:    &TimeoutError{Err: "timeout"},
+				Err:    &timeoutError{Err: "timeout"},
 			}
 		}()
 	}
@@ -169,11 +171,34 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) LocalAddr() net.Addr {
-	return c.SrcDev.IPAddr()
+	return &net.IPAddr{IP: c.LocalIP()}
+}
+
+// LocalIP returns the local IP address
+func (c *Conn) LocalIP() net.IP {
+	if c.IsIPv4() {
+		return c.SrcDev.IPv4Addr().IP
+	}
+	return c.SrcDev.IPv6Addr().IP
 }
 
 func (c *Conn) RemoteAddr() net.Addr {
-	return c.DstDev.IPAddr()
+	return &net.IPAddr{IP: c.RemoteIP()}
+}
+
+// RemoteIP returns the remote IP address
+func (c *Conn) RemoteIP() net.IP {
+	return c.DstDev.IPAddr().IP
+}
+
+// IsLoop returns if the connection is to a loopback device
+func (c *Conn) IsLoop() bool {
+	return c.DstDev.IsLoop
+}
+
+// IsIPv4 returns if the connection is in IPv4
+func (c *Conn) IsIPv4() bool {
+	return c.RemoteIP().To4() != nil
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {

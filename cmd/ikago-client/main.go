@@ -27,7 +27,7 @@ var argGateway = flag.String("gateway", "", "Gateway address.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
 var argPassword = flag.String("password", "", "Password of encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
-var argUpPort = flag.Int("upstream-port", 0, "Port for routing upstream.")
+var argUpPort = flag.Int("p", 0, "Port for routing upstream.")
 var argFilters = flag.String("f", "", "Filters.")
 var argServer = flag.String("s", "", "Server.")
 

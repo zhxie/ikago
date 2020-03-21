@@ -20,7 +20,7 @@ type Config struct {
 	UpPort     int      `json:"upstream-port"`
 	Filters    []string `json:"filters"`
 	Server     string   `json:"server"`
-	ListenPort int      `json:"listen-port"`
+	Port       int      `json:"port"`
 }
 
 // New returns a new config
