@@ -77,7 +77,7 @@ func main() {
 
 	// Verify parameters
 	if cfg.Port == 0 {
-		log.Fatalln("Please provide listen port by -p [port].")
+		log.Fatalln("Please provide listen port by -p port.")
 	}
 	if cfg.Gateway != "" {
 		gateway = net.ParseIP(cfg.Gateway)

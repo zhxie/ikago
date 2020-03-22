@@ -3,30 +3,25 @@ package tap
 import (
 	"fmt"
 	"github.com/songgao/water"
-	"os/exec"
+	"net"
 	"runtime"
-	"syscall"
 )
 
 type TAP struct {
 	inter *water.Interface
 }
 
-// New returns a new TAP
-func New() (*TAP, error) {
+// Create returns a TAP with given name
+func Create(name string, ip net.IP) (*TAP, error) {
 	var err error
 
 	// Config
-	config := water.Config{
-		DeviceType: water.TAP,
-	}
+	var config water.Config
 
 	// Decide OS
 	switch runtime.GOOS {
-	case "linux":
-		config.InterfaceName = "ikgtap"
-	case "windows":
-		break
+	case "linux", "windows":
+		config = createConfig(name)
 	default:
 		return nil, fmt.Errorf("os %s not support", runtime.GOOS)
 	}
@@ -40,27 +35,11 @@ func New() (*TAP, error) {
 
 	// Bring TAP up
 	switch runtime.GOOS {
-	case "linux":
-		cmd := exec.Command("ip", "addr", "add", "10.1.0.10/24", "dev", "ikgtap")
-		cmd2 := exec.Command("ip", "link", "set", "dev", "ikgtap", "up")
-		_, err := cmd.CombinedOutput()
+	case "linux", "windows":
+		err := bringUp(tap.Name(), ip)
 		if err != nil {
 			tap.Close()
-			return nil, fmt.Errorf("bring tap up: %w", err)
-		}
-		_, err = cmd2.CombinedOutput()
-		if err != nil {
-			tap.Close()
-			return nil, fmt.Errorf("bring tap up: %w", err)
-		}
-	case "windows":
-		cmd := exec.Command("netsh",
-			"interface", "ip", "set", "address", fmt.Sprintf("name=\"%s\"", tap.Name()), "source=static", "addr=10.1.0.10", "mask=255.255.255.0", "gateway=none")
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		_, err := cmd.CombinedOutput()
-		if err != nil {
-			tap.Close()
-			return nil, fmt.Errorf("bring tap up: %w", err)
+			return nil, fmt.Errorf("bring up: %w", err)
 		}
 	default:
 		tap.Close()
