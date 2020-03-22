@@ -137,24 +137,24 @@ func main() {
 			}
 		}
 	}
-	serverIPPort, err := addr.ParseTCPAddr(cfg.Server)
+	serverAddr, err := addr.ParseTCPAddr(cfg.Server)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
 	}
-	serverIP = serverIPPort.IP
-	serverPort = uint16(serverIPPort.Port)
+	serverIP = serverAddr.IP
+	serverPort = uint16(serverAddr.Port)
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
 	}
 	if len(filters) == 1 {
-		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverIPPort)
+		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverAddr)
 	} else {
 		log.Info("Proxy:")
 		for _, f := range filters {
 			log.Infof("\n  %s", f)
 		}
-		log.Infof(" through :%d to %s\n", cfg.UpPort, serverIPPort)
+		log.Infof(" through :%d to %s\n", cfg.UpPort, serverAddr)
 	}
 
 	// Find devices

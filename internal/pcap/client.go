@@ -24,6 +24,7 @@ type Client struct {
 	UpDev          *Device
 	GatewayDev     *Device
 	Crypt          crypto.Crypt
+	isClosed       bool
 	listenConns    []*Conn
 	upConn         *Conn
 	handshakeConn  *Conn
@@ -33,7 +34,6 @@ type Client struct {
 	id             uint16
 	connMapLock    sync.RWMutex
 	connMap        map[natGuide]*Conn
-	isClose        bool
 }
 
 // NewClient returns a new pcap client
@@ -194,7 +194,7 @@ func (p *Client) Open() error {
 			for {
 				packet, err := conn.ReadPacket()
 				if err != nil {
-					if p.isClose {
+					if p.isClosed {
 						return
 					}
 					log.Errorln(fmt.Errorf("read listen in %s: %w", conn.SrcDev.Alias, err))
@@ -219,7 +219,7 @@ func (p *Client) Open() error {
 	for {
 		packet, err := p.upConn.ReadPacket()
 		if err != nil {
-			if p.isClose {
+			if p.isClosed {
 				return nil
 			}
 			log.Errorln(fmt.Errorf("read upstream: %w", err))
@@ -237,7 +237,7 @@ func (p *Client) Open() error {
 
 // Close implements a method closes the pcap
 func (p *Client) Close() {
-	p.isClose = true
+	p.isClosed = true
 	if p.handshakeConn != nil {
 		p.handshakeConn.Close()
 	}

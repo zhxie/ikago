@@ -14,6 +14,12 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+type clientIndicator struct {
+	crypt crypto.Crypt
+	seq   uint32
+	ack   uint32
+}
+
 // Server describes the packet capture on the server side
 type Server struct {
 	Port           uint16
@@ -21,13 +27,12 @@ type Server struct {
 	UpDev          *Device
 	GatewayDev     *Device
 	Crypt          crypto.Crypt
+	isClosed       bool
 	listenConns    []*Conn
 	upConn         *Conn
 	cListenPackets chan connPacket
-	seqsLock       sync.RWMutex
-	seqs           map[string]uint32
-	acksLock       sync.RWMutex
-	acks           map[string]uint32
+	clientLock     sync.RWMutex
+	clients        map[string]*clientIndicator
 	id             uint16
 	nextTCPPort    uint16
 	tcpPortPool    []time.Time
@@ -38,7 +43,6 @@ type Server struct {
 	valueMap       map[quintuple]uint16
 	natLock        sync.RWMutex
 	nat            map[natGuide]*natIndicator
-	isClose        bool
 }
 
 const keepAlive float64 = 30 // seconds
@@ -48,8 +52,7 @@ func NewServer() *Server {
 	return &Server{
 		listenConns:    make([]*Conn, 0),
 		cListenPackets: make(chan connPacket, 1000),
-		seqs:           make(map[string]uint32),
-		acks:           make(map[string]uint32),
+		clients:        make(map[string]*clientIndicator),
 		id:             0,
 		tcpPortPool:    make([]time.Time, 16384),
 		udpPortPool:    make([]time.Time, 16384),
@@ -122,7 +125,7 @@ func (p *Server) Open() error {
 			for {
 				packet, err := conn.ReadPacket()
 				if err != nil {
-					if p.isClose {
+					if p.isClosed {
 						return
 					}
 					log.Errorln(fmt.Errorf("read listen in %s: %w", conn.SrcDev.Alias, err))
@@ -147,7 +150,7 @@ func (p *Server) Open() error {
 	for {
 		packet, err := p.upConn.ReadPacket()
 		if err != nil {
-			if p.isClose {
+			if p.isClosed {
 				return nil
 			}
 			log.Errorln(fmt.Errorf("read upstream: %w", err))
@@ -165,7 +168,7 @@ func (p *Server) Open() error {
 
 // Close implements a method closes the pcap
 func (p *Server) Close() {
-	p.isClose = true
+	p.isClosed = true
 	for _, handle := range p.listenConns {
 		if handle != nil {
 			handle.Close()
@@ -191,22 +194,15 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	}
 
 	// Initial TCP Seq
-	srcIPPort := net.TCPAddr{IP: indicator.srcIP(), Port: int(indicator.srcPort())}
-	p.seqsLock.Lock()
-	p.seqs[srcIPPort.String()] = 0
-	p.seqsLock.Unlock()
-
-	// TCK Ack
-	p.acksLock.Lock()
-	p.acks[srcIPPort.String()] = indicator.tcpLayer().Seq + 1
-	p.acksLock.Unlock()
+	src := indicator.src()
+	client := &clientIndicator{
+		crypt: p.Crypt,
+		seq:   0,
+		ack:   indicator.tcpLayer().Seq + 1,
+	}
 
 	// Create transport layer
-	p.seqsLock.RLock()
-	p.acksLock.RLock()
-	newTransportLayer = createTCPLayerSYNACK(indicator.dstPort(), indicator.srcPort(), p.seqs[srcIPPort.String()], p.acks[srcIPPort.String()])
-	p.seqsLock.RUnlock()
-	p.acksLock.RUnlock()
+	newTransportLayer = createTCPLayerSYNACK(indicator.dstPort(), indicator.srcPort(), client.seq, client.ack)
 
 	// Decide IPv4 or IPv6
 	if indicator.dstIP().To4() != nil {
@@ -263,9 +259,12 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	}
 
 	// TCP Seq
-	p.seqsLock.Lock()
-	p.seqs[srcIPPort.String()]++
-	p.seqsLock.Unlock()
+	client.seq++
+
+	// Map client
+	p.clientLock.Lock()
+	p.clients[src.String()] = client
+	p.clientLock.Unlock()
 
 	// IPv4 Id
 	if newNetworkLayerType == layers.LayerTypeIPv4 {
@@ -301,6 +300,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	if indicator.transportLayerType != layers.LayerTypeTCP {
 		return fmt.Errorf("transport layer type %s not support", indicator.transportLayerType)
 	}
+	src := indicator.src()
 
 	// Handshaking with client (SYN+ACK)
 	if indicator.tcpLayer().SYN {
@@ -309,7 +309,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 			return fmt.Errorf("handshake: %w", err)
 		}
 
-		log.Infof("Connect from client %s\n", indicator.natSrc())
+		log.Infof("Connect from client %s\n", src.String())
 
 		return nil
 	}
@@ -319,14 +319,19 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 		return errors.New("empty payload")
 	}
 
+	// Client
+	p.clientLock.RLock()
+	client, ok := p.clients[src.String()]
+	p.clientLock.RUnlock()
+	if !ok {
+		return fmt.Errorf("client %s unauthorized", src.String())
+	}
+
 	// Ack
-	srcIPPort := net.TCPAddr{IP: indicator.srcIP(), Port: int(indicator.srcPort())}
-	p.acksLock.Lock()
-	p.acks[srcIPPort.String()] = p.acks[srcIPPort.String()] + uint32(len(indicator.payload()))
-	p.acksLock.Unlock()
+	client.ack = client.ack + uint32(len(indicator.payload()))
 
 	// Decrypt
-	contents, err := p.Crypt.Decrypt(indicator.payload())
+	contents, err := client.crypt.Decrypt(indicator.payload())
 	if err != nil {
 		return fmt.Errorf("decrypt: %w", err)
 	}
@@ -343,7 +348,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 		dst:   indicator.natSrc().String(),
 		proto: embIndicator.natProto(),
 	}
-	upValue, ok := p.valueMap[q]
+	upValue, ok = p.valueMap[q]
 	if !ok {
 		// if ICMPv4 error is not in NAT, drop it
 		if embIndicator.transportLayerType == layers.LayerTypeICMPv4 && !embIndicator.icmpv4Indicator.isQuery() {
@@ -561,7 +566,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 	if addNAT {
 		ni = &natIndicator{
-			src:    indicator.src(),
+			src:    src,
 			dst:    indicator.dst(),
 			embSrc: embIndicator.natSrc(),
 			conn:   conn,
@@ -622,6 +627,12 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	if !ok {
 		return nil
 	}
+
+	// Client
+	src := ni.src
+	p.clientLock.RLock()
+	client, ok := p.clients[src.String()]
+	p.clientLock.RUnlock()
 
 	// Keep alive
 	proto := indicator.natProto()
@@ -775,15 +786,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Create new transport layer
-	src := ni.src.String()
-	p.seqsLock.RLock()
-	p.acksLock.RLock()
-	newTransportLayer = createTransportLayerTCP(uint16(ni.dst.(*net.TCPAddr).Port), uint16(ni.src.(*net.TCPAddr).Port), p.seqs[src], p.acks[src])
-	p.seqsLock.RUnlock()
-	p.acksLock.RUnlock()
+	newTransportLayer = createTransportLayerTCP(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack)
 
 	// Decide IPv4 or IPv6
-	if ni.src.(*net.TCPAddr).IP.To4() != nil {
+	if src.(*net.TCPAddr).IP.To4() != nil {
 		newNetworkLayerType = layers.LayerTypeIPv4
 	} else {
 		newNetworkLayerType = layers.LayerTypeIPv6
@@ -792,9 +798,9 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), ni.src.(*net.TCPAddr).IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), src.(*net.TCPAddr).IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), ni.src.(*net.TCPAddr).IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), src.(*net.TCPAddr).IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}
@@ -823,7 +829,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Encrypt
-	contents, err = p.Crypt.Encrypt(contents)
+	contents, err = client.crypt.Encrypt(contents)
 	if err != nil {
 		return fmt.Errorf("encrypt: %w", err)
 	}
@@ -844,9 +850,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// TCP Seq
-	p.seqsLock.Lock()
-	p.seqs[src] = p.seqs[src] + uint32(len(contents))
-	p.seqsLock.Unlock()
+	client.seq = client.seq + uint32(len(contents))
 
 	// IPv4 Id
 	if newNetworkLayerType == layers.LayerTypeIPv4 {
