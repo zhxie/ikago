@@ -3,6 +3,7 @@ package pcap
 import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
+	"ikago/internal/addr"
 	"net"
 	"time"
 )
@@ -124,7 +125,7 @@ func (c *Conn) ReadPacket() (packet gopacket.Packet, err error) {
 
 func (c *Conn) Write(b []byte) (n int, err error) {
 	ch := make(chan error, 1)
-	
+
 	go func() {
 		err = c.handle.WritePacketData(b)
 		if err != nil {
@@ -171,34 +172,28 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) LocalAddr() net.Addr {
-	return &net.IPAddr{IP: c.LocalIP()}
-}
+	ips := make([]net.IP, 0)
 
-// LocalIP returns the local IP address
-func (c *Conn) LocalIP() net.IP {
-	if c.IsIPv4() {
-		return c.SrcDev.IPv4Addr().IP
+	for _, ip := range c.SrcDev.IPAddrs {
+		ips = append(ips, ip.IP)
 	}
-	return c.SrcDev.IPv6Addr().IP
+
+	return &addr.MultiIPAddr{IPs: ips}
 }
 
 func (c *Conn) RemoteAddr() net.Addr {
-	return &net.IPAddr{IP: c.RemoteIP()}
-}
+	ips := make([]net.IP, 0)
 
-// RemoteIP returns the remote IP address
-func (c *Conn) RemoteIP() net.IP {
-	return c.DstDev.IPAddr().IP
+	for _, ip := range c.DstDev.IPAddrs {
+		ips = append(ips, ip.IP)
+	}
+
+	return &addr.MultiIPAddr{IPs: ips}
 }
 
 // IsLoop returns if the connection is to a loopback device
 func (c *Conn) IsLoop() bool {
 	return c.DstDev.IsLoop
-}
-
-// IsIPv4 returns if the connection is in IPv4
-func (c *Conn) IsIPv4() bool {
-	return c.RemoteIP().To4() != nil
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {

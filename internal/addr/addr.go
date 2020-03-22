@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 )
 
 // ICMPQueryAddr represents the address of a ICMP query end point.
@@ -13,12 +14,51 @@ type ICMPQueryAddr struct {
 	Id uint16
 }
 
-func (i ICMPQueryAddr) String() string {
-	return fmt.Sprintf("%s@%d", formatIP(i.IP), i.Id)
+func (addr ICMPQueryAddr) String() string {
+	return fmt.Sprintf("%s@%d", formatIP(addr.IP), addr.Id)
 }
 
-func (i ICMPQueryAddr) Network() string {
+func (addr ICMPQueryAddr) Network() string {
 	return "icmp query"
+}
+
+type MultiIPAddr struct {
+	IPs []net.IP
+}
+
+func (addr MultiIPAddr) String() string {
+	s := make([]string, 0)
+
+	for _, ip := range addr.IPs {
+		a := net.IPAddr{IP: ip}
+		s = append(s, a.String())
+	}
+
+	return strings.Join(s, ", ")
+}
+
+func (addr MultiIPAddr) Network() string {
+	return "ip"
+}
+
+func (addr *MultiIPAddr) IPv4() net.IP {
+	for _, ip := range addr.IPs {
+		if ip.To4() != nil {
+			return ip
+		}
+	}
+
+	return nil
+}
+
+func (addr *MultiIPAddr) IPv6() net.IP {
+	for _, ip := range addr.IPs {
+		if ip.To4() == nil {
+			return ip
+		}
+	}
+
+	return nil
 }
 
 // ParseTCPAddr returns an TCPAddr by the given address

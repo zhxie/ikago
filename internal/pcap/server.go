@@ -115,7 +115,7 @@ func (p *Server) Open() error {
 	}
 
 	// Start handling
-	for i:=0; i<len(p.listenConns); i++ {
+	for i := 0; i < len(p.listenConns); i++ {
 		conn := p.listenConns[i]
 
 		go func() {
@@ -391,7 +391,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 			temp := *embIndicator.icmpv4Indicator.embIPv4Layer
 			newEmbIPv4Layer := &temp
 
-			newEmbIPv4Layer.DstIP = conn.LocalIP()
+			newEmbIPv4Layer.DstIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv4()
 
 			var newEmbTransportLayer gopacket.Layer
 			switch embIndicator.icmpv4Indicator.embTransportLayerType {
@@ -453,7 +453,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 		newIPv4Layer := newNetworkLayer.(*layers.IPv4)
 
-		newIPv4Layer.SrcIP = conn.LocalIP()
+		newIPv4Layer.SrcIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv4()
 		upIP = newIPv4Layer.SrcIP
 	case layers.LayerTypeIPv6:
 		ipv6Layer := embIndicator.networkLayer.(*layers.IPv6)
@@ -462,7 +462,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 		newIPv6Layer := newNetworkLayer.(*layers.IPv6)
 
-		newIPv6Layer.SrcIP = conn.LocalIP()
+		newIPv6Layer.SrcIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv6()
 		upIP = newIPv6Layer.SrcIP
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
@@ -526,22 +526,22 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	var addNAT bool
 	switch newTransportLayerType {
 	case layers.LayerTypeTCP:
-		addr := net.TCPAddr{
+		a := net.TCPAddr{
 			IP:   upIP,
 			Port: int(upValue),
 		}
 		guide = natGuide{
-			src: addr.String(),
+			src:   a.String(),
 			proto: newTransportLayerType,
 		}
 		addNAT = true
 	case layers.LayerTypeUDP:
-		addr := net.UDPAddr{
+		a := net.UDPAddr{
 			IP:   upIP,
 			Port: int(upValue),
 		}
 		guide = natGuide{
-			src: addr.String(),
+			src:   a.String(),
 			proto: newTransportLayerType,
 		}
 		addNAT = true
@@ -783,7 +783,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	p.acksLock.RUnlock()
 
 	// Decide IPv4 or IPv6
-	if ni.conn.IsIPv4() {
+	if ni.src.(*net.TCPAddr).IP.To4() != nil {
 		newNetworkLayerType = layers.LayerTypeIPv4
 	} else {
 		newNetworkLayerType = layers.LayerTypeIPv6
@@ -792,9 +792,9 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(ni.conn.LocalIP(), ni.src.(*net.TCPAddr).IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), ni.src.(*net.TCPAddr).IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(ni.conn.LocalIP(), ni.src.(*net.TCPAddr).IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), ni.src.(*net.TCPAddr).IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}

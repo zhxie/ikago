@@ -265,7 +265,7 @@ func (p *Client) handshakeSYN(conn *Conn) error {
 	transportLayer = createTCPLayerSYN(p.UpPort, p.ServerPort, p.seq)
 
 	// Decide IPv4 or IPv6
-	if conn.IsIPv4() {
+	if p.ServerIP.To4() != nil {
 		networkLayerType = layers.LayerTypeIPv4
 	} else {
 		networkLayerType = layers.LayerTypeIPv6
@@ -275,9 +275,9 @@ func (p *Client) handshakeSYN(conn *Conn) error {
 	var err error
 	switch networkLayerType {
 	case layers.LayerTypeIPv4:
-		networkLayer, err = createNetworkLayerIPv4(conn.LocalIP(), p.ServerIP, p.id, 128, transportLayer)
+		networkLayer, err = createNetworkLayerIPv4(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), p.ServerIP, p.id, 128, transportLayer)
 	case layers.LayerTypeIPv6:
-		networkLayer, err = createNetworkLayerIPv6(conn.LocalIP(), p.ServerIP, 128, transportLayer)
+		networkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), p.ServerIP, 128, transportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
 	}
@@ -444,7 +444,7 @@ func (p *Client) handleListen(packet gopacket.Packet, conn *Conn) error {
 	newTransportLayer = createTransportLayerTCP(p.UpPort, p.ServerPort, p.seq, p.ack)
 
 	// Decide IPv4 or IPv6
-	if conn.IsIPv4() {
+	if p.ServerIP.To4() != nil {
 		newNetworkLayerType = layers.LayerTypeIPv4
 	} else {
 		newNetworkLayerType = layers.LayerTypeIPv6
@@ -453,9 +453,9 @@ func (p *Client) handleListen(packet gopacket.Packet, conn *Conn) error {
 	// Create new network layer
 	switch newNetworkLayerType {
 	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(conn.LocalIP(), p.ServerIP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv4(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), p.ServerIP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
 	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(conn.LocalIP(), p.ServerIP, 128, newTransportLayer)
+		newNetworkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), p.ServerIP, 128, newTransportLayer)
 	default:
 		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
 	}
