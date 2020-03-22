@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"ikago/internal/addr"
 	"ikago/internal/crypto"
-	"ikago/internal/filter"
 	"ikago/internal/log"
 	"net"
 	"strings"
@@ -16,7 +16,7 @@ import (
 
 // Client describes the packet capture on the client side
 type Client struct {
-	Filters        []filter.Filter
+	Filters        []net.Addr
 	UpPort         uint16
 	ServerIP       net.IP
 	ServerPort     uint16
@@ -101,9 +101,9 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	addr := net.TCPAddr{IP: p.ServerIP, Port: int(p.ServerPort)}
-	addrStr := addr.String()
-	log.Infof("Connect to server %s\n", addrStr)
+	serverAddr := net.TCPAddr{IP: p.ServerIP, Port: int(p.ServerPort)}
+	serverAddrStr := serverAddr.String()
+	log.Infof("Connect to server %s\n", serverAddrStr)
 
 	// Latency test
 	t := time.Now()
@@ -144,7 +144,7 @@ func (p *Client) Open() error {
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	log.Infof("Connected to server %s in %.3f ms (two-way)\n", addrStr, float64(d.Microseconds())/1000)
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", serverAddrStr, float64(d.Microseconds())/1000)
 
 	// Close in advance
 	p.handshakeConn.Close()
@@ -152,7 +152,12 @@ func (p *Client) Open() error {
 	// Filters for listening
 	fs := make([]string, 0)
 	for _, f := range p.Filters {
-		fs = append(fs, f.SrcBPFFilter())
+		s, err := addr.SrcBPFFilter(f)
+		if err != nil {
+			return fmt.Errorf("parse filter %s: %w", f, err)
+		}
+
+		fs = append(fs, s)
 	}
 	f := strings.Join(fs, " || ")
 
@@ -182,7 +187,7 @@ func (p *Client) Open() error {
 	}
 
 	// Start handling
-	for i:=0; i<len(p.listenConns); i++ {
+	for i := 0; i < len(p.listenConns); i++ {
 		conn := p.listenConns[i]
 
 		go func() {
