@@ -120,7 +120,7 @@ func (p *Client) Open() error {
 
 	transportLayer := packet.TransportLayer()
 	if transportLayer == nil {
-		return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", errors.New("missing transport layer")))
+		return fmt.Errorf("handshake: %w", errors.New("missing transport layer"))
 	}
 	transportLayerType := transportLayer.LayerType()
 	switch transportLayerType {
@@ -133,7 +133,7 @@ func (p *Client) Open() error {
 			return fmt.Errorf("handshake: %w", errors.New("invalid packet"))
 		}
 	default:
-		return fmt.Errorf("handshake: %w", fmt.Errorf("parse packet: %w", fmt.Errorf("transport layer type %s not support", transportLayerType)))
+		return fmt.Errorf("handshake: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
 	}
 
 	// Latency test
@@ -279,7 +279,7 @@ func (p *Client) handshakeSYN(conn *Conn) error {
 	case layers.LayerTypeIPv6:
 		networkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), p.ServerIP, 128, transportLayer)
 	default:
-		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
+		return fmt.Errorf("network layer type %s not support", networkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create network layer: %w", err)
@@ -299,7 +299,7 @@ func (p *Client) handshakeSYN(conn *Conn) error {
 	case layers.LayerTypeEthernet:
 		linkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer)
 	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
+		return fmt.Errorf("link layer type %s not support", linkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create link layer: %w", err)
@@ -369,7 +369,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet, conn *Conn) error {
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), 128, newTransportLayer)
 	default:
-		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
+		return fmt.Errorf("network layer type %s not support", newNetworkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create network layer: %w", err)
@@ -389,7 +389,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet, conn *Conn) error {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
 	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
+		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create link layer: %w", err)
@@ -435,7 +435,7 @@ func (p *Client) handleListen(packet gopacket.Packet, conn *Conn) error {
 		indicator.transportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.payload()))
 	if err != nil {
-		return fmt.Errorf("create application layer: %w", err)
+		return fmt.Errorf("serialize embedded: %w", err)
 	}
 
 	// Wrap
@@ -533,7 +533,7 @@ func (p *Client) handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, embIndicator.networkLayer)
 	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
+		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create link layer: %w", err)
@@ -578,7 +578,7 @@ func (p *Client) bypass(packet gopacket.Packet) error {
 		ethernetLayer := linkLayer.(*layers.Ethernet)
 		ethernetLayer.DstMAC = p.GatewayDev.HardwareAddr
 	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
+		return fmt.Errorf("link layer type %s not support", linkLayerType)
 	}
 
 	// Serialize layers

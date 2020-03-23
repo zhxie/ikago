@@ -150,7 +150,7 @@ func bpfFilter(prefix string, addr net.Addr) (string, error) {
 			return fmt.Sprintf("(%s host %s && %s port %d)", prefix, fullString(tcpAddr.IP), prefix, tcpAddr.Port), nil
 		}
 	default:
-		return "", fmt.Errorf("type %T not support", t)
+		panic(fmt.Errorf("type %T not support", t))
 	}
 }
 

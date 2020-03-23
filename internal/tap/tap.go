@@ -43,7 +43,7 @@ func Create(name string, ip net.IP) (*TAP, error) {
 		}
 	default:
 		tap.Close()
-		return nil, fmt.Errorf("bring tap up: %w", fmt.Errorf("os %s not support", runtime.GOOS))
+		return nil, fmt.Errorf("os %s not support", runtime.GOOS)
 	}
 
 	return tap, nil

@@ -169,7 +169,7 @@ func main() {
 						exist = true
 					}
 				default:
-					log.Fatalln(fmt.Errorf("parse filter %s: %w", f, fmt.Errorf("type %T not support", t)))
+					panic(fmt.Errorf("type %T not support", t))
 				}
 				if exist {
 					break

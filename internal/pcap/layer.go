@@ -3,11 +3,10 @@ package pcap
 import (
 	"errors"
 	"fmt"
-	"ikago/internal/addr"
-	"net"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"ikago/internal/addr"
+	"net"
 )
 
 func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {
@@ -227,7 +226,7 @@ func wrap(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id
 	case layers.LayerTypeIPv6:
 		networkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), dstIP, ttl-1, transportLayer.(gopacket.TransportLayer))
 	default:
-		return nil, nil, nil, fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
+		return nil, nil, nil, fmt.Errorf("network layer type %s not support", networkLayerType)
 	}
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("create network layer: %w", err)
@@ -247,7 +246,7 @@ func wrap(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id
 	case layers.LayerTypeEthernet:
 		linkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer.(gopacket.NetworkLayer))
 	default:
-		return nil, nil, nil, fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
+		return nil, nil, nil, fmt.Errorf("link layer type %s not support", linkLayerType)
 	}
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("create link layer: %w", err)
@@ -300,12 +299,12 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 		networkLayer := packet.Layers()[0]
 		networkLayerType := networkLayer.LayerType()
 		if networkLayerType != layers.LayerTypeIPv4 {
-			return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("type %s not support", networkLayerType))
+			return nil, fmt.Errorf("network layer type %s not support", networkLayerType)
 		}
 
 		embIPv4Layer = networkLayer.(*layers.IPv4)
 		if embIPv4Layer.Version != 4 {
-			return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("ip version %d not support", embIPv4Layer.Version))
+			return nil, fmt.Errorf("ip version %d not support", embIPv4Layer.Version)
 		}
 
 		embTransportLayer = packet.Layers()[1]

@@ -3,11 +3,10 @@ package pcap
 import (
 	"errors"
 	"fmt"
-	"ikago/internal/addr"
-	"net"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"ikago/internal/addr"
+	"net"
 )
 
 type connPacket struct {
@@ -306,7 +305,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 	case layers.LayerTypeIPv4, layers.LayerTypeIPv6:
 		break
 	default:
-		return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("type %s not support", networkLayerType))
+		return nil, fmt.Errorf("network layer type %s not support", networkLayerType)
 	}
 
 	// Parse transport layer
@@ -320,7 +319,7 @@ func parsePacket(packet gopacket.Packet) (*packetIndicator, error) {
 			return nil, fmt.Errorf("parse icmpv4 layer: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("parse transport layer: %w", fmt.Errorf("type %s not support", transportLayerType))
+		return nil, fmt.Errorf("transport layer type %s not support", transportLayerType)
 	}
 
 	return &packetIndicator{
@@ -355,10 +354,10 @@ func parseEmbPacket(contents []byte) (*packetIndicator, error) {
 			return nil, errors.New("missing network layer")
 		}
 		if networkLayer.LayerType() != layers.LayerTypeIPv6 {
-			return nil, fmt.Errorf("parse network layer: %w", errors.New("type not support"))
+			return nil, errors.New("network layer type not support")
 		}
 	default:
-		return nil, fmt.Errorf("parse network layer: %w", fmt.Errorf("ip version %d not support", ipVersion))
+		return nil, fmt.Errorf("ip version %d not support", ipVersion)
 	}
 
 	// Parse packet
@@ -385,7 +384,7 @@ func parseRawPacket(contents []byte) (*gopacket.Packet, error) {
 			return nil, errors.New("missing link layer")
 		}
 		if linkLayer.LayerType() != layers.LayerTypeEthernet {
-			return nil, fmt.Errorf("parse link layer: %w", errors.New("type not support"))
+			return nil, errors.New("link layer type not support")
 		}
 	}
 

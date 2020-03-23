@@ -3,15 +3,14 @@ package pcap
 import (
 	"errors"
 	"fmt"
-	"ikago/internal/log"
-	"net"
-	"strings"
-	"time"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/jackpal/gateway"
+	"ikago/internal/log"
+	"net"
+	"strings"
+	"time"
 )
 
 // Device describes an network device
@@ -287,11 +286,11 @@ func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
 	}
 	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
 	if ethernetLayer == nil {
-		return nil, fmt.Errorf("parse packet: %w", errors.New("missing ethernet layer"))
+		return nil, errors.New("missing ethernet layer")
 	}
 	ethernetPacket, ok := ethernetLayer.(*layers.Ethernet)
 	if !ok {
-		return nil, fmt.Errorf("parse packet: %w", errors.New("invalid"))
+		return nil, errors.New("invalid packet")
 	}
 	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP: ip})
 	return &Device{Alias: "Gateway", IPAddrs: addrs, HardwareAddr: ethernetPacket.DstMAC}, nil

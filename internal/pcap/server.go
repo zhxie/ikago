@@ -3,15 +3,14 @@ package pcap
 import (
 	"errors"
 	"fmt"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"ikago/internal/addr"
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"net"
 	"sync"
 	"time"
-
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 )
 
 type clientIndicator struct {
@@ -219,7 +218,7 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	case layers.LayerTypeIPv6:
 		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), 64, newTransportLayer)
 	default:
-		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
+		return fmt.Errorf("network layer type %s not support", newNetworkLayerType)
 
 	}
 	if err != nil {
@@ -240,7 +239,7 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
 	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
+		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create link layer: %w", err)
@@ -398,6 +397,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 			newEmbIPv4Layer.DstIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv4()
 
+			var err error
 			var newEmbTransportLayer gopacket.Layer
 			switch embIndicator.icmpv4Indicator.embTransportLayerType {
 			case layers.LayerTypeTCP:
@@ -408,10 +408,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 				newEmbTCPLayer.DstPort = layers.TCPPort(upValue)
 
-				err := newEmbTCPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
-				if err != nil {
-					return fmt.Errorf("create transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("set network layer for checksum: %w", err)))
-				}
+				err = newEmbTCPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
 			case layers.LayerTypeUDP:
 				temp := *embIndicator.icmpv4Indicator.embTransportLayer.(*layers.UDP)
 				newEmbTransportLayer = &temp
@@ -420,10 +417,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 				newEmbUDPLayer.DstPort = layers.UDPPort(upValue)
 
-				err := newEmbUDPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
-				if err != nil {
-					return fmt.Errorf("create transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("set network layer for checksum: %w", err)))
-				}
+				err = newEmbUDPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
 			case layers.LayerTypeICMPv4:
 				temp := *embIndicator.icmpv4Indicator.embTransportLayer.(*layers.ICMPv4)
 				newEmbTransportLayer = &temp
@@ -434,18 +428,21 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 					newEmbICMPv4Layer.Id = upValue
 				}
 			default:
-				return fmt.Errorf("create transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("transport layer type %s not support", embIndicator.icmpv4Indicator.embTransportLayerType)))
+				return fmt.Errorf("create transport layer: %w", fmt.Errorf("transport layer type %s not support", embIndicator.icmpv4Indicator.embTransportLayerType))
+			}
+			if err != nil {
+				return fmt.Errorf("create transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
 			}
 
 			payload, err := serialize(newEmbIPv4Layer, newEmbTransportLayer.(gopacket.SerializableLayer))
 			if err != nil {
-				return fmt.Errorf("create transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("serialize: %w", err)))
+				return fmt.Errorf("create transport layer: %w", fmt.Errorf("serialize: %w", err))
 			}
 
 			newICMPv4Layer.Payload = payload
 		}
 	default:
-		return fmt.Errorf("create transport layer: %w", fmt.Errorf("transport layer type %s not support", newTransportLayerType))
+		return fmt.Errorf("transport layer type %s not support", newTransportLayerType)
 	}
 
 	// Create new network layer
@@ -470,7 +467,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 		newIPv6Layer.SrcIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv6()
 		upIP = newIPv6Layer.SrcIP
 	default:
-		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
+		return fmt.Errorf("network layer type %s not support", newNetworkLayerType)
 	}
 
 	// Set network layer for transport layer
@@ -486,7 +483,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	case layers.LayerTypeICMPv4:
 		break
 	default:
-		return fmt.Errorf("create network layer: %w", fmt.Errorf("transport layer type %s not support", newTransportLayerType))
+		return fmt.Errorf("transport layer type %s not support", newTransportLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("set network layer for checksum: %w", err)
@@ -506,7 +503,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
 	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
+		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
 	if err != nil {
 		return fmt.Errorf("create link layer: %w", err)
@@ -562,7 +559,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 			addNAT = true
 		}
 	default:
-		return fmt.Errorf("record nat: %w", fmt.Errorf("transport layer type %s not support", newTransportLayerType))
+		return fmt.Errorf("transport layer type %s not support", newTransportLayerType)
 	}
 	if addNAT {
 		ni = &natIndicator{
@@ -586,7 +583,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	case layers.LayerTypeICMPv4:
 		p.icmpv4IdPool[upValue] = time.Now()
 	default:
-		return fmt.Errorf("keep alive: %w", fmt.Errorf("protocol type %s not support", proto))
+		return fmt.Errorf("protocol type %s not support", proto)
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
@@ -642,7 +639,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeICMPv4:
 		p.icmpv4IdPool[indicator.icmpv4Indicator.id()] = time.Now()
 	default:
-		return fmt.Errorf("look up nat: %w", fmt.Errorf("protocol type %s not support", proto))
+		return fmt.Errorf("protocol type %s not support", proto)
 	}
 
 	// Create embedded transport layer
@@ -683,6 +680,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 			newEmbEmbIPv4Layer.SrcIP = ni.EmbSrcIP()
 
+			var err error
 			var newEmbEmbTransportLayer gopacket.Layer
 			switch indicator.icmpv4Indicator.embTransportLayerType {
 			case layers.LayerTypeTCP:
@@ -693,10 +691,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 				newEmbEmbTCPLayer.SrcPort = layers.TCPPort(ni.embSrc.(*net.TCPAddr).Port)
 
-				err := newEmbEmbTCPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
-				if err != nil {
-					return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("set network layer for checksum: %w", err)))
-				}
+				err = newEmbEmbTCPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
 			case layers.LayerTypeUDP:
 				temp := *indicator.icmpv4Indicator.embTransportLayer.(*layers.UDP)
 				newEmbEmbTransportLayer = &temp
@@ -705,10 +700,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 				newEmbEmbUDPLayer.SrcPort = layers.UDPPort(ni.embSrc.(*net.UDPAddr).Port)
 
-				err := newEmbEmbUDPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
-				if err != nil {
-					return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("set network layer for checksum: %w", err)))
-				}
+				err = newEmbEmbUDPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
 			case layers.LayerTypeICMPv4:
 				temp := *indicator.icmpv4Indicator.embTransportLayer.(*layers.ICMPv4)
 				newEmbEmbTransportLayer = &temp
@@ -719,18 +711,21 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 					newEmbEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
 				}
 			default:
-				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("transport layer type %s not support", indicator.icmpv4Indicator.embTransportLayerType)))
+				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("transport layer type %s not support", indicator.icmpv4Indicator.embTransportLayerType))
+			}
+			if err != nil {
+				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
 			}
 
 			payload, err := serialize(newEmbEmbIPv4Layer, newEmbEmbTransportLayer.(gopacket.SerializableLayer))
 			if err != nil {
-				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("create embedded network layer: %w", fmt.Errorf("serialize: %w", err)))
+				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("serialize: %w", err))
 			}
 
 			newEmbICMPv4Layer.Payload = payload
 		}
 	default:
-		return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("type %s not support", embTransportLayerType))
+		return fmt.Errorf("embedded transport layer type %s not support", embTransportLayerType)
 	}
 
 	// Create embedded network layer
@@ -753,7 +748,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 		newEmbIPv6Layer.DstIP = ni.EmbSrcIP()
 	default:
-		return fmt.Errorf("create embedded network layer: %w", fmt.Errorf("network layer type %s not support", embNetworkLayerType))
+		return fmt.Errorf("embedded network layer type %s not support", embNetworkLayerType)
 	}
 
 	// Set network layer for transport layer
@@ -769,10 +764,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeICMPv4:
 		break
 	default:
-		return fmt.Errorf("create embedded network layer: %w", fmt.Errorf("transport layer type %s not support", embTransportLayerType))
+		return fmt.Errorf("embedded transport layer type %s not support", embTransportLayerType)
 	}
 	if err != nil {
-		return fmt.Errorf("create embedded network layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
+		return fmt.Errorf("set embedded network layer for checksum: %w", err)
 	}
 
 	// Construct contents of new application layer
@@ -780,7 +775,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 		embTransportLayer.(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.payload()))
 	if err != nil {
-		return fmt.Errorf("create application layer: %w", fmt.Errorf("serialize: %w", err))
+		return fmt.Errorf("serialize embedded: %w", err)
 	}
 
 	// Wrap
