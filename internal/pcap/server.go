@@ -599,15 +599,13 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	var (
 		indicator             *packetIndicator
-		newTransportLayer     *layers.TCP
 		embTransportLayerType gopacket.LayerType
 		embTransportLayer     gopacket.Layer
 		embNetworkLayerType   gopacket.LayerType
 		embNetworkLayer       gopacket.NetworkLayer
-		newNetworkLayerType   gopacket.LayerType
-		newNetworkLayer       gopacket.NetworkLayer
-		newLinkLayerType      gopacket.LayerType
-		newLinkLayer          gopacket.Layer
+		newTransportLayer     gopacket.SerializableLayer
+		newNetworkLayer       gopacket.SerializableLayer
+		newLinkLayer          gopacket.SerializableLayer
 	)
 
 	// Parse packet
@@ -785,47 +783,10 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 		return fmt.Errorf("create application layer: %w", fmt.Errorf("serialize: %w", err))
 	}
 
-	// Create new transport layer
-	newTransportLayer = createTransportLayerTCP(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack)
-
-	// Decide IPv4 or IPv6
-	if src.(*net.TCPAddr).IP.To4() != nil {
-		newNetworkLayerType = layers.LayerTypeIPv4
-	} else {
-		newNetworkLayerType = layers.LayerTypeIPv6
-	}
-
-	// Create new network layer
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), src.(*net.TCPAddr).IP, p.id, indicator.ipv4Layer().TTL-1, newTransportLayer)
-	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(ni.conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), src.(*net.TCPAddr).IP, indicator.ipv6Layer().HopLimit-1, newTransportLayer)
-	default:
-		return fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", newNetworkLayerType))
-	}
+	// Wrap
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = wrap(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.ttl()-1)
 	if err != nil {
-		return fmt.Errorf("create network layer: %w", err)
-	}
-
-	// Decide Loopback or Ethernet
-	if ni.conn.IsLoop() {
-		newLinkLayerType = layers.LayerTypeLoopback
-	} else {
-		newLinkLayerType = layers.LayerTypeEthernet
-	}
-
-	// Create new link layer
-	switch newLinkLayerType {
-	case layers.LayerTypeLoopback:
-		newLinkLayer = createLinkLayerLoopback()
-	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(ni.conn.SrcDev.HardwareAddr, ni.conn.DstDev.HardwareAddr, newNetworkLayer)
-	default:
-		return fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", newLinkLayerType))
-	}
-	if err != nil {
-		return fmt.Errorf("create link layer: %w", err)
+		return fmt.Errorf("wrap: %w", err)
 	}
 
 	// Encrypt
@@ -853,7 +814,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	client.seq = client.seq + uint32(len(contents))
 
 	// IPv4 Id
-	if newNetworkLayerType == layers.LayerTypeIPv4 {
+	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
 		p.id++
 	}
 

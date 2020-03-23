@@ -98,6 +98,7 @@ go run ./cmd/ikago-server -p [port]
 
 - [ ] Retransmission and out of order packets detection
 - [ ] Bypass filters
+- [ ] Support KCP
 
 ## License
 

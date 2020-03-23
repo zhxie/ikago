@@ -204,6 +204,58 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
+func wrap(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, ttl uint8) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
+	var (
+		networkLayerType gopacket.LayerType
+		linkLayerType    gopacket.LayerType
+	)
+
+	// Create transport layer
+	transportLayer = createTransportLayerTCP(srcPort, dstPort, seq, ack)
+
+	// Decide IPv4 or IPv6
+	if dstIP.To4() != nil {
+		networkLayerType = layers.LayerTypeIPv4
+	} else {
+		networkLayerType = layers.LayerTypeIPv6
+	}
+
+	// Create new network layer
+	switch networkLayerType {
+	case layers.LayerTypeIPv4:
+		networkLayer, err = createNetworkLayerIPv4(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), dstIP, id, ttl-1, transportLayer.(gopacket.TransportLayer))
+	case layers.LayerTypeIPv6:
+		networkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), dstIP, ttl-1, transportLayer.(gopacket.TransportLayer))
+	default:
+		return nil, nil, nil, fmt.Errorf("create network layer: %w", fmt.Errorf("network layer type %s not support", networkLayerType))
+	}
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("create network layer: %w", err)
+	}
+
+	// Decide Loopback or Ethernet
+	if conn.IsLoop() {
+		linkLayerType = layers.LayerTypeLoopback
+	} else {
+		linkLayerType = layers.LayerTypeEthernet
+	}
+
+	// Create new link layer
+	switch linkLayerType {
+	case layers.LayerTypeLoopback:
+		linkLayer = createLinkLayerLoopback()
+	case layers.LayerTypeEthernet:
+		linkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer.(gopacket.NetworkLayer))
+	default:
+		return nil, nil, nil, fmt.Errorf("create link layer: %w", fmt.Errorf("link layer type %s not support", linkLayerType))
+	}
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("create link layer: %w", err)
+	}
+
+	return transportLayer, networkLayer, linkLayer, nil
+}
+
 type icmpv4Indicator struct {
 	layer                 *layers.ICMPv4
 	embIPv4Layer          *layers.IPv4

@@ -111,6 +111,17 @@ func (indicator *packetIndicator) dstIP() net.IP {
 	}
 }
 
+func (indicator *packetIndicator) ttl() uint8 {
+	switch indicator.networkLayerType {
+	case layers.LayerTypeIPv4:
+		return indicator.ipv4Layer().TTL
+	case layers.LayerTypeIPv6:
+		return indicator.ipv6Layer().HopLimit
+	default:
+		panic(fmt.Errorf("network layer type %s not support", indicator.networkLayerType))
+	}
+}
+
 func (indicator *packetIndicator) srcPort() uint16 {
 	switch indicator.transportLayerType {
 	case layers.LayerTypeTCP:
