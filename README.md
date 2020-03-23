@@ -20,12 +20,10 @@
 - **Cross platform** Works well with Windows and Linux, and macOS and others in theory.
 - **NAT support** Performs a full cone NAT.
 - **Encryption** Traffic can be encrypted.
-- **TAP** (Windows/Linux) Use TAP to separate traffic (not tested).
 
 ## Dependencies
 
 1. pcap like [Npcap](http://www.npcap.org/) or WinPcap in Windows, libpcap in macOS, Linux and others.
-2. (Optional) [TAP Driver](https://openvpn.net/community-downloads/) in Windows.
 
 ## Usage
 
@@ -57,12 +55,6 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-tap`: (Optional) Enable TAP. The TAP device will be brought up.
-
-`-tap-name name`: (Optional in Windows) Name of the TAP device, can be set when TAP is enabled in Windows, must be set in Linux. If this value is not set, the first TAP device will be used.
-
-`-tap-address address`: (Optional) Address of the TAP device, can be set when TAP is enabled. Default as `10.10.0.1`.
-
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
 `-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. Any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
@@ -89,15 +81,11 @@ go run ./cmd/ikago-server -p [port]
    pfctl -e
    ```
 
-2. To use TAP in Windows, you have to do some configuration manually to allow other network users to connect through this computer's Internet connection:
-    1. Open `Network Connections` in `Control Panel` or run `ncpa.cpl` in `Win+R`.
-    2. Right click on the TAP adapter, open properties. In the `Sharing` tab, check `Allow other network users to connect through this computer's network connection`, you may also have to select the connection in `Home networking connection` below.
-    3. Applying will change your home networking connection's IP properties, so change it back.
-
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
 - [ ] Bypass filters
+- [ ] Handle ARP
 - [ ] Support KCP
 
 ## License

@@ -6,9 +6,6 @@
   "password": "",
   "verbose": false,
 
-  "tap": false,
-  "tap-name": "",
-  "tap-address":  "",
   "upstream-port": 0,
   "filters": [
     "192.168.1.2",

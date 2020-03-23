@@ -9,12 +9,10 @@ import (
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
-	"ikago/internal/tap"
 	"math/rand"
 	"net"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -28,9 +26,6 @@ var argGateway = flag.String("gateway", "", "Gateway address.")
 var argMethod = flag.String("method", "plain", "Method of encryption.")
 var argPassword = flag.String("password", "", "Password of encryption.")
 var argVerbose = flag.Bool("v", false, "Print verbose messages.")
-var argTAP = flag.Bool("tap", false, "Enable TAP.")
-var argTAPName = flag.String("tap-name", "", "Name of the TAP device.")
-var argTAPAddress = flag.String("tap-address", "10.10.0.1", "Address of the TAP device.")
 var argUpPort = flag.Int("p", 0, "Port for routing upstream.")
 var argFilters = flag.String("f", "", "Filters.")
 var argServer = flag.String("s", "", "Server.")
@@ -52,7 +47,6 @@ func main() {
 		upDev      *pcap.Device
 		gatewayDev *pcap.Device
 		crypt      crypto.Crypt
-		t          *tap.TAP
 	)
 
 	// Configuration
@@ -69,9 +63,6 @@ func main() {
 			Method:     *argMethod,
 			Password:   *argPassword,
 			Verbose:    *argVerbose,
-			TAP:        *argTAP,
-			TAPName:    *argTAPName,
-			TAPAddress: *argTAPAddress,
 			UpPort:     *argUpPort,
 			Filters:    splitArg(*argFilters),
 			Server:     *argServer,
@@ -107,39 +98,6 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
-
-	// TAP
-	if cfg.TAP {
-		var err error
-
-		switch runtime.GOOS {
-		case "linux":
-			if cfg.TAPName == "" {
-				log.Fatalln("Please provide TAP name by -tap-name name.")
-			}
-		default:
-			break
-		}
-		tapAddr := net.ParseIP(cfg.TAPAddress)
-		if tapAddr == nil {
-			log.Fatalln("invalid tap address %s", cfg.TAPAddress)
-		}
-
-		// Create TAP
-		t, err = tap.Create(cfg.TAPName, tapAddr)
-		if err != nil {
-			log.Fatalln(fmt.Errorf("create tap: %s", err))
-		}
-		defer t.Close()
-
-		dev := pcap.Device{
-			Alias:        t.Name(),
-			IPAddrs:      append(make([]*net.IPNet, 0), &net.IPNet{IP: tapAddr}),
-			HardwareAddr: nil,
-		}
-		log.Infof("TAP %s created\n", dev)
-	}
-
 	for _, strFilter := range cfg.Filters {
 		f, err := addr.ParseAddr(strFilter)
 		if err != nil {

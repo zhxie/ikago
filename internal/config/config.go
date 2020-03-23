@@ -17,9 +17,6 @@ type Config struct {
 	Method     string   `json:"method"`
 	Password   string   `json:"password"`
 	Verbose    bool     `json:"verbose"`
-	TAP        bool     `json:"tap"`
-	TAPName    string   `json:"tap-name"`
-	TAPAddress string   `json:"tap-address"`
 	UpPort     int      `json:"upstream-port"`
 	Filters    []string `json:"filters"`
 	Server     string   `json:"server"`
@@ -30,7 +27,6 @@ type Config struct {
 func New() *Config {
 	return &Config{
 		Method: "plain",
-		TAPAddress: "10.10.0.1",
 	}
 }
 
