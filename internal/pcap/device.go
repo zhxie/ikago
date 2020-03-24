@@ -274,7 +274,7 @@ func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
 	}()
 
 	// Attempt to send and capture a UDP packet
-	err = sendUDPPacket(ip.String()+":65535", []byte("0"))
+	err = SendUDPPacket(ip.String()+":65535", []byte("0"))
 	if err != nil {
 		return nil, fmt.Errorf("send udp packet: %w", err)
 	}

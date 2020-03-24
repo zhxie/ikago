@@ -19,6 +19,12 @@ type clientIndicator struct {
 	ack   uint32
 }
 
+type quintuple struct {
+	src   string
+	dst   string
+	proto gopacket.LayerType
+}
+
 // Server describes the packet capture on the server side
 type Server struct {
 	Port           uint16
@@ -29,7 +35,7 @@ type Server struct {
 	isClosed       bool
 	listenConns    []*Conn
 	upConn         *Conn
-	cListenPackets chan connPacket
+	cListenPackets chan ConnPacket
 	clientLock     sync.RWMutex
 	clients        map[string]*clientIndicator
 	id             uint16
@@ -41,7 +47,7 @@ type Server struct {
 	icmpv4IdPool   []time.Time
 	valueMap       map[quintuple]uint16
 	natLock        sync.RWMutex
-	nat            map[natGuide]*natIndicator
+	nat            map[NATGuide]*NATIndicator
 }
 
 const keepAlive float64 = 30 // seconds
@@ -50,14 +56,14 @@ const keepAlive float64 = 30 // seconds
 func NewServer() *Server {
 	return &Server{
 		listenConns:    make([]*Conn, 0),
-		cListenPackets: make(chan connPacket, 1000),
+		cListenPackets: make(chan ConnPacket, 1000),
 		clients:        make(map[string]*clientIndicator),
 		id:             0,
 		tcpPortPool:    make([]time.Time, 16384),
 		udpPortPool:    make([]time.Time, 16384),
 		icmpv4IdPool:   make([]time.Time, 65536),
 		valueMap:       make(map[quintuple]uint16),
-		nat:            make(map[natGuide]*natIndicator),
+		nat:            make(map[NATGuide]*NATIndicator),
 	}
 }
 
@@ -132,7 +138,7 @@ func (p *Server) Open() error {
 				}
 
 				// Avoid conflict
-				p.cListenPackets <- connPacket{packet: packet, conn: conn}
+				p.cListenPackets <- ConnPacket{packet: packet, conn: conn}
 			}
 		}()
 	}
@@ -179,7 +185,7 @@ func (p *Server) Close() {
 }
 
 // handshake sends TCP SYN ACK to the client in handshaking
-func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
+func (p *Server) handshake(indicator *PacketIndicator, conn *Conn) error {
 	var (
 		newTransportLayer gopacket.SerializableLayer
 		newNetworkLayer   gopacket.SerializableLayer
@@ -191,24 +197,24 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	}
 
 	// Initial TCP Seq
-	src := indicator.src()
+	src := indicator.Src()
 	client := &clientIndicator{
 		crypt: p.Crypt,
 		seq:   0,
-		ack:   indicator.tcpLayer().Seq + 1,
+		ack:   indicator.TCPLayer().Seq + 1,
 	}
 
 	// Create layers
-	newTransportLayer, newNetworkLayer, newLinkLayer, err := createLayers(indicator.dstPort(), indicator.srcPort(), client.seq, client.ack, conn, indicator.srcIP(), p.id, 64)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err := CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, conn, indicator.SrcIP(), p.id, 64)
 	if err != nil {
 		return fmt.Errorf("create layers: %w", err)
 	}
 
 	// Make TCP layer SYN & ACK
-	flagTCPLayer(newTransportLayer.(*layers.TCP), true, false, true)
+	FlagTCPLayer(newTransportLayer.(*layers.TCP), true, false, true)
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer)
+	data, err := Serialize(newLinkLayer, newNetworkLayer, newTransportLayer)
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -238,8 +244,8 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 // handleListen handles TCP packets from clients
 func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	var (
-		indicator             *packetIndicator
-		embIndicator          *packetIndicator
+		indicator             *PacketIndicator
+		embIndicator          *PacketIndicator
 		upValue               uint16
 		newTransportLayerType gopacket.LayerType
 		newTransportLayer     gopacket.Layer
@@ -248,12 +254,12 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 		upIP                  net.IP
 		newLinkLayerType      gopacket.LayerType
 		newLinkLayer          gopacket.Layer
-		guide                 natGuide
-		ni                    *natIndicator
+		guide                 NATGuide
+		ni                    *NATIndicator
 	)
 
 	// Parse packet
-	indicator, err := parsePacket(packet)
+	indicator, err := ParsePacket(packet)
 	if err != nil {
 		return fmt.Errorf("parse packet: %w", err)
 	}
@@ -261,10 +267,10 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	if indicator.transportLayerType != layers.LayerTypeTCP {
 		return fmt.Errorf("transport layer type %s not support", indicator.transportLayerType)
 	}
-	src := indicator.src()
+	src := indicator.Src()
 
 	// Handshaking with client (SYN+ACK)
-	if indicator.tcpLayer().SYN {
+	if indicator.TCPLayer().SYN {
 		err := p.handshake(indicator, conn)
 		if err != nil {
 			return fmt.Errorf("handshake: %w", err)
@@ -276,7 +282,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	// Empty payload (An ACK handshaking will also be recognized as empty payload)
-	if len(indicator.payload()) <= 0 {
+	if len(indicator.Payload()) <= 0 {
 		return errors.New("empty payload")
 	}
 
@@ -289,30 +295,30 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	// Ack
-	client.ack = client.ack + uint32(len(indicator.payload()))
+	client.ack = client.ack + uint32(len(indicator.Payload()))
 
 	// Decrypt
-	contents, err := client.crypt.Decrypt(indicator.payload())
+	contents, err := client.crypt.Decrypt(indicator.Payload())
 	if err != nil {
 		return fmt.Errorf("decrypt: %w", err)
 	}
 
 	// Parse embedded packet
-	embIndicator, err = parseEmbPacket(contents)
+	embIndicator, err = ParseEmbPacket(contents)
 	if err != nil {
 		return fmt.Errorf("parse embedded packet: %w", err)
 	}
 
 	// Distribute port/Id by source and client address and protocol
 	q := quintuple{
-		src:   embIndicator.natSrc().String(),
-		dst:   indicator.natSrc().String(),
-		proto: embIndicator.natProto(),
+		src:   embIndicator.NATSrc().String(),
+		dst:   indicator.NATSrc().String(),
+		proto: embIndicator.NATProto(),
 	}
 	upValue, ok = p.valueMap[q]
 	if !ok {
 		// if ICMPv4 error is not in NAT, drop it
-		if embIndicator.transportLayerType == layers.LayerTypeICMPv4 && !embIndicator.icmpv4Indicator.isQuery() {
+		if embIndicator.transportLayerType == layers.LayerTypeICMPv4 && !embIndicator.icmpv4Indicator.IsQuery() {
 			return errors.New("missing nat")
 		}
 		upValue, err = p.dist(embIndicator.transportLayerType)
@@ -326,7 +332,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	newTransportLayerType = embIndicator.transportLayerType
 	switch newTransportLayerType {
 	case layers.LayerTypeTCP:
-		tcpLayer := embIndicator.tcpLayer()
+		tcpLayer := embIndicator.TCPLayer()
 		temp := *tcpLayer
 		newTransportLayer = &temp
 
@@ -334,7 +340,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 		newTCPLayer.SrcPort = layers.TCPPort(upValue)
 	case layers.LayerTypeUDP:
-		udpLayer := embIndicator.udpLayer()
+		udpLayer := embIndicator.UDPLayer()
 		temp := *udpLayer
 		newTransportLayer = &temp
 
@@ -342,7 +348,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 		newUDPLayer.SrcPort = layers.UDPPort(upValue)
 	case layers.LayerTypeICMPv4:
-		if embIndicator.icmpv4Indicator.isQuery() {
+		if embIndicator.icmpv4Indicator.IsQuery() {
 			temp := *embIndicator.icmpv4Indicator.layer
 			newTransportLayer = &temp
 
@@ -350,7 +356,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 
 			newICMPv4Layer.Id = upValue
 		} else {
-			newTransportLayer = embIndicator.icmpv4Indicator.newPureICMPv4Layer()
+			newTransportLayer = embIndicator.icmpv4Indicator.NewPureICMPv4Layer()
 
 			newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
 
@@ -384,7 +390,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 				temp := *embIndicator.icmpv4Indicator.embTransportLayer.(*layers.ICMPv4)
 				newEmbTransportLayer = &temp
 
-				if embIndicator.icmpv4Indicator.isEmbQuery() {
+				if embIndicator.icmpv4Indicator.IsEmbQuery() {
 					newEmbICMPv4Layer := newEmbTransportLayer.(*layers.ICMPv4)
 
 					newEmbICMPv4Layer.Id = upValue
@@ -396,7 +402,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 				return fmt.Errorf("create transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
 			}
 
-			payload, err := serialize(newEmbIPv4Layer, newEmbTransportLayer.(gopacket.SerializableLayer))
+			payload, err := Serialize(newEmbIPv4Layer, newEmbTransportLayer.(gopacket.SerializableLayer))
 			if err != nil {
 				return fmt.Errorf("create transport layer: %w", fmt.Errorf("serialize: %w", err))
 			}
@@ -461,9 +467,9 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	// Create new link layer
 	switch newLinkLayerType {
 	case layers.LayerTypeLoopback:
-		newLinkLayer = createLinkLayerLoopback()
+		newLinkLayer = CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
+		newLinkLayer, err = CreateEthernetLayer(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
@@ -472,10 +478,10 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
+	data, err := Serialize(newLinkLayer.(gopacket.SerializableLayer),
 		newNetworkLayer.(gopacket.SerializableLayer),
 		newTransportLayer.(gopacket.SerializableLayer),
-		gopacket.Payload(embIndicator.payload()))
+		gopacket.Payload(embIndicator.Payload()))
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -494,7 +500,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 			IP:   upIP,
 			Port: int(upValue),
 		}
-		guide = natGuide{
+		guide = NATGuide{
 			src:   a.String(),
 			proto: newTransportLayerType,
 		}
@@ -504,14 +510,14 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 			IP:   upIP,
 			Port: int(upValue),
 		}
-		guide = natGuide{
+		guide = NATGuide{
 			src:   a.String(),
 			proto: newTransportLayerType,
 		}
 		addNAT = true
 	case layers.LayerTypeICMPv4:
-		if embIndicator.icmpv4Indicator.isQuery() {
-			guide = natGuide{
+		if embIndicator.icmpv4Indicator.IsQuery() {
+			guide = NATGuide{
 				src: addr.ICMPQueryAddr{
 					IP: upIP,
 					Id: upValue,
@@ -524,10 +530,10 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 		return fmt.Errorf("transport layer type %s not support", newTransportLayerType)
 	}
 	if addNAT {
-		ni = &natIndicator{
+		ni = &NATIndicator{
 			src:    src,
-			dst:    indicator.dst(),
-			embSrc: embIndicator.natSrc(),
+			dst:    indicator.Dst(),
+			embSrc: embIndicator.NATSrc(),
 			conn:   conn,
 		}
 		p.natLock.Lock()
@@ -536,7 +542,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	// Keep alive
-	proto := embIndicator.natProto()
+	proto := embIndicator.NATProto()
 	switch proto {
 	case layers.LayerTypeTCP:
 		p.tcpPortPool[convertFromPort(upValue)] = time.Now()
@@ -549,7 +555,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s (%d Bytes)\n",
-		embIndicator.transportLayerType, embIndicator.src(), embIndicator.dst(), n)
+		embIndicator.transportLayerType, embIndicator.Src(), embIndicator.Dst(), n)
 
 	return nil
 }
@@ -557,7 +563,7 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 // handleUpstream handles TCP and UDP packets from destinations
 func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	var (
-		indicator             *packetIndicator
+		indicator             *PacketIndicator
 		embTransportLayerType gopacket.LayerType
 		embTransportLayer     gopacket.Layer
 		embNetworkLayerType   gopacket.LayerType
@@ -568,14 +574,14 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	)
 
 	// Parse packet
-	indicator, err := parsePacket(packet)
+	indicator, err := ParsePacket(packet)
 	if err != nil {
 		return fmt.Errorf("parse packet: %w", err)
 	}
 
 	// NAT
-	guide := natGuide{
-		src:   indicator.natDst().String(),
+	guide := NATGuide{
+		src:   indicator.NATDst().String(),
 		proto: indicator.transportLayerType,
 	}
 	p.natLock.RLock()
@@ -592,14 +598,14 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	p.clientLock.RUnlock()
 
 	// Keep alive
-	proto := indicator.natProto()
+	proto := indicator.NATProto()
 	switch proto {
 	case layers.LayerTypeTCP:
-		p.tcpPortPool[convertFromPort(indicator.dstPort())] = time.Now()
+		p.tcpPortPool[convertFromPort(indicator.DstPort())] = time.Now()
 	case layers.LayerTypeUDP:
-		p.udpPortPool[convertFromPort(indicator.dstPort())] = time.Now()
+		p.udpPortPool[convertFromPort(indicator.DstPort())] = time.Now()
 	case layers.LayerTypeICMPv4:
-		p.icmpv4IdPool[indicator.icmpv4Indicator.id()] = time.Now()
+		p.icmpv4IdPool[indicator.icmpv4Indicator.Id()] = time.Now()
 	default:
 		return fmt.Errorf("protocol type %s not support", proto)
 	}
@@ -624,7 +630,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 		newEmbUDPLayer.DstPort = layers.UDPPort(ni.embSrc.(*net.UDPAddr).Port)
 	case layers.LayerTypeICMPv4:
-		if indicator.icmpv4Indicator.isQuery() {
+		if indicator.icmpv4Indicator.IsQuery() {
 			embICMPv4Layer := indicator.icmpv4Indicator.layer
 			temp := *embICMPv4Layer
 			embTransportLayer = &temp
@@ -633,7 +639,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 
 			newEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
 		} else {
-			embTransportLayer = indicator.icmpv4Indicator.newPureICMPv4Layer()
+			embTransportLayer = indicator.icmpv4Indicator.NewPureICMPv4Layer()
 
 			newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
 
@@ -667,7 +673,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 				temp := *indicator.icmpv4Indicator.embTransportLayer.(*layers.ICMPv4)
 				newEmbEmbTransportLayer = &temp
 
-				if indicator.icmpv4Indicator.isEmbQuery() {
+				if indicator.icmpv4Indicator.IsEmbQuery() {
 					newEmbEmbICMPv4Layer := newEmbEmbTransportLayer.(*layers.ICMPv4)
 
 					newEmbEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
@@ -679,7 +685,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
 			}
 
-			payload, err := serialize(newEmbEmbIPv4Layer, newEmbEmbTransportLayer.(gopacket.SerializableLayer))
+			payload, err := Serialize(newEmbEmbIPv4Layer, newEmbEmbTransportLayer.(gopacket.SerializableLayer))
 			if err != nil {
 				return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("serialize: %w", err))
 			}
@@ -733,15 +739,15 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Construct contents of new application layer
-	contents, err := serialize(embNetworkLayer.(gopacket.SerializableLayer),
+	contents, err := Serialize(embNetworkLayer.(gopacket.SerializableLayer),
 		embTransportLayer.(gopacket.SerializableLayer),
-		gopacket.Payload(indicator.payload()))
+		gopacket.Payload(indicator.Payload()))
 	if err != nil {
 		return fmt.Errorf("serialize embedded: %w", err)
 	}
 
 	// Wrap
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = createLayers(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.ttl()-1)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = CreateLayers(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.Hop()-1)
 	if err != nil {
 		return fmt.Errorf("wrap: %w", err)
 	}
@@ -753,7 +759,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(contents))
+	data, err := Serialize(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(contents))
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -773,7 +779,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s <- %s (%d Bytes)\n",
-		indicator.transportLayerType, ni.embSrc.String(), indicator.src(), n)
+		indicator.transportLayerType, ni.embSrc.String(), indicator.Src(), n)
 
 	return nil
 }

@@ -9,7 +9,8 @@ import (
 	"net"
 )
 
-func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
+// CreateTCPLayer returns a TCP layer
+func CreateTCPLayer(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	return &layers.TCP{
 		SrcPort:    layers.TCPPort(srcPort),
 		DstPort:    layers.TCPPort(dstPort),
@@ -23,13 +24,15 @@ func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.T
 	}
 }
 
-func flagTCPLayer(layer *layers.TCP, syn, psh, ack bool) {
+// FlagTCPLayer reflags flags in a TCP layer
+func FlagTCPLayer(layer *layers.TCP, syn, psh, ack bool) {
 	layer.SYN = syn
 	layer.PSH = psh
 	layer.ACK = ack
 }
 
-func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
+// CreateUDPLayer returns an UDP layer
+func CreateUDPLayer(srcPort, dstPort uint16) *layers.UDP {
 	return &layers.UDP{
 		SrcPort: layers.UDPPort(srcPort),
 		DstPort: layers.UDPPort(dstPort),
@@ -38,7 +41,8 @@ func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
 	}
 }
 
-func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
+// CreateIPv4Layer returns an IPv4 layer
+func CreateIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
 	if srcIP.To4() == nil {
 		return nil, fmt.Errorf("invalid source ip %s", srcIP)
 	}
@@ -87,7 +91,8 @@ func createNetworkLayerIPv4(srcIP, dstIP net.IP, id uint16, ttl uint8, transport
 	return ipv4Layer, nil
 }
 
-func createNetworkLayerIPv6(srcIP, dstIP net.IP, hopLimit uint8, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
+// CreateIPv6Layer returns an IPv6 layer
+func CreateIPv6Layer(srcIP, dstIP net.IP, hopLimit uint8, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
 	if srcIP.To4() != nil {
 		return nil, fmt.Errorf("invalid source ip %s", srcIP)
 	}
@@ -119,11 +124,13 @@ func createNetworkLayerIPv6(srcIP, dstIP net.IP, hopLimit uint8, transportLayer 
 	return ipv6Layer, nil
 }
 
-func createLinkLayerLoopback() *layers.Loopback {
+// CreateLoopbackLayer returns a loopback layer
+func CreateLoopbackLayer() *layers.Loopback {
 	return &layers.Loopback{}
 }
 
-func createLinkLayerEthernet(srcMAC, dstMAC net.HardwareAddr, networkLayer gopacket.NetworkLayer) (*layers.Ethernet, error) {
+// CreateEthernetLayer returns an Ethernet layer
+func CreateEthernetLayer(srcMAC, dstMAC net.HardwareAddr, networkLayer gopacket.NetworkLayer) (*layers.Ethernet, error) {
 	ethernetLayer := &layers.Ethernet{
 		SrcMAC: srcMAC,
 		DstMAC: dstMAC,
@@ -144,7 +151,8 @@ func createLinkLayerEthernet(srcMAC, dstMAC net.HardwareAddr, networkLayer gopac
 	return ethernetLayer, nil
 }
 
-func serialize(layers ...gopacket.SerializableLayer) ([]byte, error) {
+// Serialize serializes layers to byte array
+func Serialize(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	// Recalculate checksum and length
 	options := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	buffer := gopacket.NewSerializeBuffer()
@@ -157,7 +165,8 @@ func serialize(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
+// SerializeRaw serializes layers to byte array without computing checksums and updating lengths
+func SerializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	// Recalculate checksum and length
 	options := gopacket.SerializeOptions{}
 	buffer := gopacket.NewSerializeBuffer()
@@ -170,14 +179,15 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func createLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, ttl uint8) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
+// CreateLayers return layers of transferring between client and server
+func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, hop uint8) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
 		networkLayerType gopacket.LayerType
 		linkLayerType    gopacket.LayerType
 	)
 
 	// Create transport layer
-	transportLayer = createTransportLayerTCP(srcPort, dstPort, seq, ack)
+	transportLayer = CreateTCPLayer(srcPort, dstPort, seq, ack)
 
 	// Decide IPv4 or IPv6
 	if dstIP.To4() != nil {
@@ -189,9 +199,9 @@ func createLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 	// Create new network layer
 	switch networkLayerType {
 	case layers.LayerTypeIPv4:
-		networkLayer, err = createNetworkLayerIPv4(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), dstIP, id, ttl-1, transportLayer.(gopacket.TransportLayer))
+		networkLayer, err = CreateIPv4Layer(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), dstIP, id, hop-1, transportLayer.(gopacket.TransportLayer))
 	case layers.LayerTypeIPv6:
-		networkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), dstIP, ttl-1, transportLayer.(gopacket.TransportLayer))
+		networkLayer, err = CreateIPv6Layer(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), dstIP, hop-1, transportLayer.(gopacket.TransportLayer))
 	default:
 		return nil, nil, nil, fmt.Errorf("network layer type %s not support", networkLayerType)
 	}
@@ -209,9 +219,9 @@ func createLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 	// Create new link layer
 	switch linkLayerType {
 	case layers.LayerTypeLoopback:
-		linkLayer = createLinkLayerLoopback()
+		linkLayer = CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		linkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer.(gopacket.NetworkLayer))
+		linkLayer, err = CreateEthernetLayer(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer.(gopacket.NetworkLayer))
 	default:
 		return nil, nil, nil, fmt.Errorf("link layer type %s not support", linkLayerType)
 	}
@@ -222,14 +232,16 @@ func createLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 	return transportLayer, networkLayer, linkLayer, nil
 }
 
-type icmpv4Indicator struct {
+// ICMPv4Indicator indicates an ICMPv4 layer
+type ICMPv4Indicator struct {
 	layer                 *layers.ICMPv4
 	embIPv4Layer          *layers.IPv4
 	embTransportLayer     gopacket.Layer
 	embTransportLayerType gopacket.LayerType
 }
 
-func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
+// ParseICMPv4Layer parses an ICMPv4 layer and returns an ICMPv4 indicator
+func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 	var (
 		embIPv4Layer          *layers.IPv4
 		embTransportLayer     gopacket.Layer
@@ -280,7 +292,7 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 		return nil, fmt.Errorf("icmpv4 type %d not support", t)
 	}
 
-	return &icmpv4Indicator{
+	return &ICMPv4Indicator{
 		layer:                 layer,
 		embIPv4Layer:          embIPv4Layer,
 		embTransportLayer:     embTransportLayer,
@@ -288,7 +300,8 @@ func parseICMPv4Layer(layer *layers.ICMPv4) (*icmpv4Indicator, error) {
 	}, nil
 }
 
-func (indicator *icmpv4Indicator) newPureICMPv4Layer() *layers.ICMPv4 {
+// NewPureICMPv4Layer returns an new ICMPv4 layer copied from the original ICMPv4 layer without any encapped layers
+func (indicator *ICMPv4Indicator) NewPureICMPv4Layer() *layers.ICMPv4 {
 	return &layers.ICMPv4{
 		TypeCode: indicator.layer.TypeCode,
 		Id:       indicator.layer.Id,
@@ -296,7 +309,8 @@ func (indicator *icmpv4Indicator) newPureICMPv4Layer() *layers.ICMPv4 {
 	}
 }
 
-func (indicator *icmpv4Indicator) isQuery() bool {
+// IsQuery returns if the ICMPv4 layer is a query
+func (indicator *ICMPv4Indicator) IsQuery() bool {
 	t := indicator.layer.TypeCode.Type()
 	switch t {
 	case layers.ICMPv4TypeEchoReply,
@@ -321,15 +335,20 @@ func (indicator *icmpv4Indicator) isQuery() bool {
 	}
 }
 
-func (indicator *icmpv4Indicator) embSrcIP() net.IP {
+// Id returns the ICMPv4 id
+func (indicator *ICMPv4Indicator) Id() uint16 {
+	return indicator.layer.Id
+}
+
+func (indicator *ICMPv4Indicator) embSrcIP() net.IP {
 	return indicator.embIPv4Layer.SrcIP
 }
 
-func (indicator *icmpv4Indicator) embDstIP() net.IP {
+func (indicator *ICMPv4Indicator) embDstIP() net.IP {
 	return indicator.embIPv4Layer.DstIP
 }
 
-func (indicator *icmpv4Indicator) embTCPLayer() *layers.TCP {
+func (indicator *ICMPv4Indicator) embTCPLayer() *layers.TCP {
 	if indicator.embTransportLayerType == layers.LayerTypeTCP {
 		return indicator.embTransportLayer.(*layers.TCP)
 	}
@@ -337,7 +356,7 @@ func (indicator *icmpv4Indicator) embTCPLayer() *layers.TCP {
 	return nil
 }
 
-func (indicator *icmpv4Indicator) embUDPLayer() *layers.UDP {
+func (indicator *ICMPv4Indicator) embUDPLayer() *layers.UDP {
 	if indicator.embTransportLayerType == layers.LayerTypeUDP {
 		return indicator.embTransportLayer.(*layers.UDP)
 	}
@@ -345,7 +364,7 @@ func (indicator *icmpv4Indicator) embUDPLayer() *layers.UDP {
 	return nil
 }
 
-func (indicator *icmpv4Indicator) embICMPv4Layer() *layers.ICMPv4 {
+func (indicator *ICMPv4Indicator) embICMPv4Layer() *layers.ICMPv4 {
 	if indicator.embTransportLayerType == layers.LayerTypeICMPv4 {
 		return indicator.embTransportLayer.(*layers.ICMPv4)
 	}
@@ -353,11 +372,7 @@ func (indicator *icmpv4Indicator) embICMPv4Layer() *layers.ICMPv4 {
 	return nil
 }
 
-func (indicator *icmpv4Indicator) id() uint16 {
-	return indicator.layer.Id
-}
-
-func (indicator *icmpv4Indicator) embId() uint16 {
+func (indicator *ICMPv4Indicator) embId() uint16 {
 	switch indicator.embTransportLayerType {
 	case layers.LayerTypeICMPv4:
 		return uint16(indicator.embICMPv4Layer().Id)
@@ -366,7 +381,7 @@ func (indicator *icmpv4Indicator) embId() uint16 {
 	}
 }
 
-func (indicator *icmpv4Indicator) embSrcPort() uint16 {
+func (indicator *ICMPv4Indicator) embSrcPort() uint16 {
 	switch indicator.embTransportLayerType {
 	case layers.LayerTypeTCP:
 		return uint16(indicator.embTCPLayer().SrcPort)
@@ -377,7 +392,7 @@ func (indicator *icmpv4Indicator) embSrcPort() uint16 {
 	}
 }
 
-func (indicator *icmpv4Indicator) embDstPort() uint16 {
+func (indicator *ICMPv4Indicator) embDstPort() uint16 {
 	switch indicator.embTransportLayerType {
 	case layers.LayerTypeTCP:
 		return uint16(indicator.embTCPLayer().DstPort)
@@ -388,7 +403,8 @@ func (indicator *icmpv4Indicator) embDstPort() uint16 {
 	}
 }
 
-func (indicator *icmpv4Indicator) isEmbQuery() bool {
+// IsEmbQuery returns if the embedded ICMPv4 layer is a query
+func (indicator *ICMPv4Indicator) IsEmbQuery() bool {
 	t := indicator.embICMPv4Layer().TypeCode.Type()
 	switch t {
 	case layers.ICMPv4TypeEchoReply,
@@ -413,8 +429,9 @@ func (indicator *icmpv4Indicator) isEmbQuery() bool {
 	}
 }
 
-func (indicator *icmpv4Indicator) natSrc() net.Addr {
-	if indicator.isQuery() {
+// NATSrc returns the source used in NAT
+func (indicator *ICMPv4Indicator) NATSrc() net.Addr {
+	if indicator.IsQuery() {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
@@ -430,7 +447,7 @@ func (indicator *icmpv4Indicator) natSrc() net.Addr {
 				Port: int(indicator.embDstPort()),
 			}
 		case layers.LayerTypeICMPv4:
-			if indicator.isEmbQuery() {
+			if indicator.IsEmbQuery() {
 				return &addr.ICMPQueryAddr{
 					IP: indicator.embDstIP(),
 					Id: indicator.embId(),
@@ -446,8 +463,9 @@ func (indicator *icmpv4Indicator) natSrc() net.Addr {
 	}
 }
 
-func (indicator *icmpv4Indicator) natDst() net.Addr {
-	if indicator.isQuery() {
+// NATDst returns the destination used in NAT
+func (indicator *ICMPv4Indicator) NATDst() net.Addr {
+	if indicator.IsQuery() {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
@@ -463,7 +481,7 @@ func (indicator *icmpv4Indicator) natDst() net.Addr {
 				Port: int(indicator.embSrcPort()),
 			}
 		case layers.LayerTypeICMPv4:
-			if indicator.isEmbQuery() {
+			if indicator.IsEmbQuery() {
 				return &addr.ICMPQueryAddr{
 					IP: indicator.embSrcIP(),
 					Id: indicator.embId(),
