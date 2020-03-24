@@ -88,10 +88,13 @@ func main() {
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.Port))
 	}
+
+	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
 	}
+
 	log.Infof("Proxy from :%d\n", cfg.Port)
 
 	// Find devices

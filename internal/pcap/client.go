@@ -27,7 +27,6 @@ type Client struct {
 	isClosed       bool
 	listenConns    []*Conn
 	upConn         *Conn
-	handshakeConn  *Conn
 	cListenPackets chan connPacket
 	seq            uint32
 	ack            uint32
@@ -89,65 +88,11 @@ func (p *Client) Open() error {
 		log.Infof("Route upstream in %s\n", p.UpDev)
 	}
 
-	// Handle for handshaking
-	p.handshakeConn, err = Dial(p.UpDev, p.GatewayDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
-		p.UpPort, p.ServerIP, p.ServerPort))
-	if err != nil {
-		return fmt.Errorf("open handshake device %s: %w", p.UpDev.Name, err)
-	}
-
-	// Handshaking with server (SYN)
-	err = p.handshakeSYN(p.handshakeConn)
+	// Handshake
+	err = p.handshake()
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
-	serverAddr := net.TCPAddr{IP: p.ServerIP, Port: int(p.ServerPort)}
-	serverAddrStr := serverAddr.String()
-	log.Infof("Connect to server %s\n", serverAddrStr)
-
-	// Latency test
-	t := time.Now()
-
-	err = p.handshakeConn.SetReadDeadline(t.Add(3 * time.Second))
-	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
-	}
-
-	packet, err := p.handshakeConn.ReadPacket()
-	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
-	}
-
-	transportLayer := packet.TransportLayer()
-	if transportLayer == nil {
-		return fmt.Errorf("handshake: %w", errors.New("missing transport layer"))
-	}
-	transportLayerType := transportLayer.LayerType()
-	switch transportLayerType {
-	case layers.LayerTypeTCP:
-		tcpLayer := transportLayer.(*layers.TCP)
-		if tcpLayer.RST {
-			return fmt.Errorf("handshake: %w", errors.New("connection reset"))
-		}
-		if !tcpLayer.SYN {
-			return fmt.Errorf("handshake: %w", errors.New("invalid packet"))
-		}
-	default:
-		return fmt.Errorf("handshake: %w", fmt.Errorf("transport layer type %s not support", transportLayerType))
-	}
-
-	// Latency test
-	d := time.Now().Sub(t)
-
-	// Handshaking with server (ACK)
-	err = p.handshakeACK(packet, p.handshakeConn)
-	if err != nil {
-		return fmt.Errorf("handshake: %w", err)
-	}
-	log.Infof("Connected to server %s in %.3f ms (two-way)\n", serverAddrStr, float64(d.Microseconds())/1000)
-
-	// Close in advance
-	p.handshakeConn.Close()
 
 	// Filters for listening
 	fs := make([]string, 0)
@@ -238,9 +183,6 @@ func (p *Client) Open() error {
 // Close implements a method closes the pcap
 func (p *Client) Close() {
 	p.isClosed = true
-	if p.handshakeConn != nil {
-		p.handshakeConn.Close()
-	}
 	for _, handle := range p.listenConns {
 		if handle != nil {
 			handle.Close()
@@ -251,62 +193,89 @@ func (p *Client) Close() {
 	}
 }
 
+func (p *Client) handshake() error {
+	// Handle for handshaking
+	conn, err := Dial(p.UpDev, p.GatewayDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
+		p.UpPort, p.ServerIP, p.ServerPort))
+	if err != nil {
+		return fmt.Errorf("open device %s: %w", p.UpDev.Name, err)
+	}
+	defer conn.Close()
+
+	// Handshaking with server (SYN)
+	err = p.handshakeSYN(conn)
+	if err != nil {
+		return fmt.Errorf("synchronize: %w", err)
+	}
+	serverAddr := net.TCPAddr{IP: p.ServerIP, Port: int(p.ServerPort)}
+	serverAddrStr := serverAddr.String()
+
+	log.Infof("Connect to server %s\n", serverAddrStr)
+
+	// Latency test
+	t := time.Now()
+
+	err = conn.SetReadDeadline(t.Add(3 * time.Second))
+	if err != nil {
+		return err
+	}
+
+	packet, err := conn.ReadPacket()
+	if err != nil {
+		return err
+	}
+
+	transportLayer := packet.TransportLayer()
+	if transportLayer == nil {
+		return errors.New("missing transport layer")
+	}
+	transportLayerType := transportLayer.LayerType()
+	switch transportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := transportLayer.(*layers.TCP)
+		if tcpLayer.RST {
+			return errors.New("connection reset")
+		}
+		if !tcpLayer.SYN {
+			return errors.New("invalid packet")
+		}
+	default:
+		return fmt.Errorf("transport layer type %s not support", transportLayerType)
+	}
+
+	// Latency test
+	d := time.Now().Sub(t)
+
+	// Handshaking with server (ACK)
+	err = p.handshakeACK(packet, conn)
+	if err != nil {
+		return fmt.Errorf("acknowledge: %w", err)
+	}
+
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", serverAddrStr, float64(d.Microseconds())/1000)
+
+	return nil
+}
+
 // handshakeSYN sends TCP SYN to the server in handshaking
 func (p *Client) handshakeSYN(conn *Conn) error {
 	var (
-		transportLayer   *layers.TCP
-		networkLayerType gopacket.LayerType
-		networkLayer     gopacket.NetworkLayer
-		linkLayerType    gopacket.LayerType
-		linkLayer        gopacket.Layer
+		transportLayer gopacket.SerializableLayer
+		networkLayer   gopacket.SerializableLayer
+		linkLayer      gopacket.SerializableLayer
 	)
 
-	// Create transport layer
-	transportLayer = createTCPLayerSYN(p.UpPort, p.ServerPort, p.seq)
-
-	// Decide IPv4 or IPv6
-	if p.ServerIP.To4() != nil {
-		networkLayerType = layers.LayerTypeIPv4
-	} else {
-		networkLayerType = layers.LayerTypeIPv6
-	}
-
-	// Create new network layer
-	var err error
-	switch networkLayerType {
-	case layers.LayerTypeIPv4:
-		networkLayer, err = createNetworkLayerIPv4(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), p.ServerIP, p.id, 128, transportLayer)
-	case layers.LayerTypeIPv6:
-		networkLayer, err = createNetworkLayerIPv6(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), p.ServerIP, 128, transportLayer)
-	default:
-		return fmt.Errorf("network layer type %s not support", networkLayerType)
-	}
+	// Create layers
+	transportLayer, networkLayer, linkLayer, err := createLayers(p.UpPort, p.ServerPort, p.seq, 0, conn, p.ServerIP, p.id, 128)
 	if err != nil {
-		return fmt.Errorf("create network layer: %w", err)
+		return err
 	}
 
-	// Decide Loopback or Ethernet
-	if conn.IsLoop() {
-		linkLayerType = layers.LayerTypeLoopback
-	} else {
-		linkLayerType = layers.LayerTypeEthernet
-	}
-
-	// Create new link layer
-	switch linkLayerType {
-	case layers.LayerTypeLoopback:
-		linkLayer = createLinkLayerLoopback()
-	case layers.LayerTypeEthernet:
-		linkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer)
-	default:
-		return fmt.Errorf("link layer type %s not support", linkLayerType)
-	}
-	if err != nil {
-		return fmt.Errorf("create link layer: %w", err)
-	}
+	// Make TCP layer SYN
+	flagTCPLayer(transportLayer.(*layers.TCP), true, false, false)
 
 	// Serialize layers
-	data, err := serialize(linkLayer.(gopacket.SerializableLayer), networkLayer.(gopacket.SerializableLayer), transportLayer)
+	data, err := serialize(linkLayer, networkLayer, transportLayer)
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -321,7 +290,7 @@ func (p *Client) handshakeSYN(conn *Conn) error {
 	p.seq++
 
 	// IPv4 Id
-	if networkLayerType == layers.LayerTypeIPv4 {
+	if networkLayer.LayerType() == layers.LayerTypeIPv4 {
 		p.id++
 	}
 
@@ -331,12 +300,10 @@ func (p *Client) handshakeSYN(conn *Conn) error {
 // handshakeACK sends TCP ACK to the server in handshaking
 func (p *Client) handshakeACK(packet gopacket.Packet, conn *Conn) error {
 	var (
-		indicator           *packetIndicator
-		newTransportLayer   *layers.TCP
-		newNetworkLayerType gopacket.LayerType
-		newNetworkLayer     gopacket.NetworkLayer
-		newLinkLayerType    gopacket.LayerType
-		newLinkLayer        gopacket.Layer
+		indicator         *packetIndicator
+		newTransportLayer gopacket.SerializableLayer
+		newNetworkLayer   gopacket.SerializableLayer
+		newLinkLayer      gopacket.SerializableLayer
 	)
 
 	// Parse packet
@@ -352,51 +319,17 @@ func (p *Client) handshakeACK(packet gopacket.Packet, conn *Conn) error {
 	// TCP Ack
 	p.ack = indicator.tcpLayer().Seq + 1
 
-	// Create transport layer
-	newTransportLayer = createTCPLayerACK(indicator.dstPort(), indicator.srcPort(), p.seq, p.ack)
-
-	// Decide IPv4 or IPv6
-	if indicator.dstIP().To4() != nil {
-		newNetworkLayerType = layers.LayerTypeIPv4
-	} else {
-		newNetworkLayerType = layers.LayerTypeIPv6
-	}
-
-	// Create new network layer
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(indicator.dstIP(), indicator.srcIP(), p.id, 128, newTransportLayer)
-	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), 128, newTransportLayer)
-	default:
-		return fmt.Errorf("network layer type %s not support", newNetworkLayerType)
-	}
+	// Create layers
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = createLayers(indicator.dstPort(), indicator.srcPort(), p.seq, p.ack, conn, indicator.srcIP(), p.id, 128)
 	if err != nil {
-		return fmt.Errorf("create network layer: %w", err)
+		return fmt.Errorf("create layers: %w", err)
 	}
 
-	// Decide Loopback or Ethernet
-	if conn.IsLoop() {
-		newLinkLayerType = layers.LayerTypeLoopback
-	} else {
-		newLinkLayerType = layers.LayerTypeEthernet
-	}
-
-	// Create new link layer
-	switch newLinkLayerType {
-	case layers.LayerTypeLoopback:
-		newLinkLayer = createLinkLayerLoopback()
-	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
-	default:
-		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
-	}
-	if err != nil {
-		return fmt.Errorf("create link layer: %w", err)
-	}
+	// Make TCP layer ACK
+	flagTCPLayer(newTransportLayer.(*layers.TCP), false, false, true)
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer), newNetworkLayer.(gopacket.SerializableLayer), newTransportLayer)
+	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer)
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -408,7 +341,7 @@ func (p *Client) handshakeACK(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	// IPv4 Id
-	if newNetworkLayerType == layers.LayerTypeIPv4 {
+	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
 		p.id++
 	}
 
@@ -439,7 +372,7 @@ func (p *Client) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 
 	// Wrap
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = wrap(p.UpPort, p.ServerPort, p.seq, p.ack, conn, p.ServerIP, p.id, indicator.ttl()-1)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = createLayers(p.UpPort, p.ServerPort, p.seq, p.ack, conn, p.ServerIP, p.id, indicator.ttl()-1)
 	if err != nil {
 		return fmt.Errorf("wrap: %w", err)
 	}

@@ -98,16 +98,18 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
+	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
+		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
+		os.Exit(1)
+	}
+
+	// Filters
 	for _, strFilter := range cfg.Filters {
 		f, err := addr.ParseAddr(strFilter)
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse filter %s: %w", strFilter, err))
 		}
 		filters = append(filters, f)
-	}
-	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
-		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
-		os.Exit(1)
 	}
 
 	// Randomize upstream port
@@ -145,10 +147,13 @@ func main() {
 	}
 	serverIP = serverAddr.IP
 	serverPort = uint16(serverAddr.Port)
+
+	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
 	}
+
 	if len(filters) == 1 {
 		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverAddr)
 	} else {

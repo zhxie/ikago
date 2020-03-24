@@ -181,11 +181,9 @@ func (p *Server) Close() {
 // handshake sends TCP SYN ACK to the client in handshaking
 func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	var (
-		newTransportLayer   *layers.TCP
-		newNetworkLayerType gopacket.LayerType
-		newNetworkLayer     gopacket.NetworkLayer
-		newLinkLayerType    gopacket.LayerType
-		newLinkLayer        gopacket.Layer
+		newTransportLayer gopacket.SerializableLayer
+		newNetworkLayer   gopacket.SerializableLayer
+		newLinkLayer      gopacket.SerializableLayer
 	)
 
 	if indicator.transportLayerType != layers.LayerTypeTCP {
@@ -200,53 +198,17 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 		ack:   indicator.tcpLayer().Seq + 1,
 	}
 
-	// Create transport layer
-	newTransportLayer = createTCPLayerSYNACK(indicator.dstPort(), indicator.srcPort(), client.seq, client.ack)
-
-	// Decide IPv4 or IPv6
-	if indicator.dstIP().To4() != nil {
-		newNetworkLayerType = layers.LayerTypeIPv4
-	} else {
-		newNetworkLayerType = layers.LayerTypeIPv6
-	}
-
-	// Create new network layer
-	var err error
-	switch newNetworkLayerType {
-	case layers.LayerTypeIPv4:
-		newNetworkLayer, err = createNetworkLayerIPv4(indicator.dstIP(), indicator.srcIP(), p.id, 128, newTransportLayer)
-	case layers.LayerTypeIPv6:
-		newNetworkLayer, err = createNetworkLayerIPv6(indicator.dstIP(), indicator.srcIP(), 64, newTransportLayer)
-	default:
-		return fmt.Errorf("network layer type %s not support", newNetworkLayerType)
-
-	}
+	// Create layers
+	newTransportLayer, newNetworkLayer, newLinkLayer, err := createLayers(indicator.dstPort(), indicator.srcPort(), client.seq, client.ack, conn, indicator.srcIP(), p.id, 64)
 	if err != nil {
-		return fmt.Errorf("create network layer: %w", err)
+		return fmt.Errorf("create layers: %w", err)
 	}
 
-	// Decide Loopback or Ethernet
-	if conn.IsLoop() {
-		newLinkLayerType = layers.LayerTypeLoopback
-	} else {
-		newLinkLayerType = layers.LayerTypeEthernet
-	}
-
-	// Create new link layer
-	switch newLinkLayerType {
-	case layers.LayerTypeLoopback:
-		newLinkLayer = createLinkLayerLoopback()
-	case layers.LayerTypeEthernet:
-		newLinkLayer, err = createLinkLayerEthernet(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
-	default:
-		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
-	}
-	if err != nil {
-		return fmt.Errorf("create link layer: %w", err)
-	}
+	// Make TCP layer SYN & ACK
+	flagTCPLayer(newTransportLayer.(*layers.TCP), true, false, true)
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer), newNetworkLayer.(gopacket.SerializableLayer), newTransportLayer)
+	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer)
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -266,7 +228,7 @@ func (p *Server) handshake(indicator *packetIndicator, conn *Conn) error {
 	p.clientLock.Unlock()
 
 	// IPv4 Id
-	if newNetworkLayerType == layers.LayerTypeIPv4 {
+	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
 		p.id++
 	}
 
@@ -779,7 +741,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Wrap
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = wrap(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.ttl()-1)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = createLayers(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.ttl()-1)
 	if err != nil {
 		return fmt.Errorf("wrap: %w", err)
 	}
@@ -791,10 +753,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Serialize layers
-	data, err := serialize(newLinkLayer.(gopacket.SerializableLayer),
-		newNetworkLayer.(gopacket.SerializableLayer),
-		newTransportLayer,
-		gopacket.Payload(contents))
+	data, err := serialize(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(contents))
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}

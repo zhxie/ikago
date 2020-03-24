@@ -9,45 +9,6 @@ import (
 	"net"
 )
 
-func createTCPLayerSYN(srcPort, dstPort uint16, seq uint32) *layers.TCP {
-	return &layers.TCP{
-		SrcPort:    layers.TCPPort(srcPort),
-		DstPort:    layers.TCPPort(dstPort),
-		Seq:        seq,
-		DataOffset: 5,
-		SYN:        true,
-		Window:     65535,
-		// Checksum:   0,
-	}
-}
-
-func createTCPLayerSYNACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
-	return &layers.TCP{
-		SrcPort:    layers.TCPPort(srcPort),
-		DstPort:    layers.TCPPort(dstPort),
-		Seq:        seq,
-		Ack:        ack,
-		DataOffset: 5,
-		SYN:        true,
-		ACK:        true,
-		Window:     65535,
-		// Checksum:   0,
-	}
-}
-
-func createTCPLayerACK(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
-	return &layers.TCP{
-		SrcPort:    layers.TCPPort(srcPort),
-		DstPort:    layers.TCPPort(dstPort),
-		Seq:        seq,
-		Ack:        ack,
-		DataOffset: 5,
-		ACK:        true,
-		Window:     65535,
-		// Checksum:   0,
-	}
-}
-
 func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.TCP {
 	return &layers.TCP{
 		SrcPort:    layers.TCPPort(srcPort),
@@ -60,6 +21,12 @@ func createTransportLayerTCP(srcPort, dstPort uint16, seq, ack uint32) *layers.T
 		Window:     65535,
 		// Checksum: 0,
 	}
+}
+
+func flagTCPLayer(layer *layers.TCP, syn, psh, ack bool) {
+	layer.SYN = syn
+	layer.PSH = psh
+	layer.ACK = ack
 }
 
 func createTransportLayerUDP(srcPort, dstPort uint16) *layers.UDP {
@@ -203,7 +170,7 @@ func serializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func wrap(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, ttl uint8) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
+func createLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, ttl uint8) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
 		networkLayerType gopacket.LayerType
 		linkLayerType    gopacket.LayerType
