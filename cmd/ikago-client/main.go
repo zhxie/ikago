@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -14,39 +16,68 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
-var argListDevs = flag.Bool("list-devices", false, "List all valid devices in current computer.")
-var argConfig = flag.String("c", "", "Configuration file.")
-var argListenDevs = flag.String("listen-devices", "", "Devices for listening.")
-var argUpDev = flag.String("upstream-device", "", "Device for routing upstream to.")
-var argGateway = flag.String("gateway", "", "Gateway address.")
-var argMethod = flag.String("method", "plain", "Method of encryption.")
-var argPassword = flag.String("password", "", "Password of encryption.")
-var argVerbose = flag.Bool("v", false, "Print verbose messages.")
-var argUpPort = flag.Int("p", 0, "Port for routing upstream.")
-var argFilters = flag.String("f", "", "Filters.")
-var argServer = flag.String("s", "", "Server.")
+var (
+	argListDevs   = flag.Bool("list-devices", false, "List all valid devices in current computer.")
+	argConfig     = flag.String("c", "", "Configuration file.")
+	argListenDevs = flag.String("listen-devices", "", "Devices for listening.")
+	argUpDev      = flag.String("upstream-device", "", "Device for routing upstream to.")
+	argGateway    = flag.String("gateway", "", "Gateway address.")
+	argMethod     = flag.String("method", "plain", "Method of encryption.")
+	argPassword   = flag.String("password", "", "Password of encryption.")
+	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
+	argUpPort     = flag.Int("p", 0, "Port for routing upstream.")
+	argFilters    = flag.String("f", "", "Filters.")
+	argServer     = flag.String("s", "", "Server.")
+)
+
+var (
+	filters    []net.Addr
+	upPort     uint16
+	serverIP   net.IP
+	serverPort uint16
+	listenDevs []*pcap.Device
+	upDev      *pcap.Device
+	gatewayDev *pcap.Device
+	crypt      crypto.Crypt
+)
+
+var (
+	isClosed    bool
+	listenConns []*pcap.Conn
+	upConn      *pcap.Conn
+	c           chan pcap.ConnPacket
+	seq         uint32
+	ack         uint32
+	id          uint16
+	connMapLock sync.RWMutex
+	connMap     map[pcap.NATGuide]*pcap.Conn
+)
 
 func init() {
+	filters = make([]net.Addr, 0)
+	listenDevs = make([]*pcap.Device, 0)
+
+	listenConns = make([]*pcap.Conn, 0)
+	c = make(chan pcap.ConnPacket, 1000)
+	seq = 0
+	ack = 0
+	id = 0
+	connMap = make(map[pcap.NATGuide]*pcap.Conn)
+
 	// Parse arguments
 	flag.Parse()
 }
 
 func main() {
 	var (
-		err        error
-		cfg        *config.Config
-		gateway    net.IP
-		filters    = make([]net.Addr, 0)
-		serverIP   net.IP
-		serverPort uint16
-		listenDevs = make([]*pcap.Device, 0)
-		upDev      *pcap.Device
-		gatewayDev *pcap.Device
-		crypt      crypto.Crypt
+		err     error
+		cfg     *config.Config
+		gateway net.IP
 	)
 
 	// Configuration
@@ -140,6 +171,7 @@ func main() {
 			}
 		}
 	}
+	upPort = uint16(cfg.UpPort)
 
 	serverAddr, err := addr.ParseTCPAddr(cfg.Server)
 	if err != nil {
@@ -200,30 +232,443 @@ func main() {
 		log.Fatalln(errors.New("cannot determine gateway device"))
 	}
 
-	// Packet capture
-	p := pcap.NewClient()
-	p.Filters = filters
-	p.UpPort = uint16(cfg.UpPort)
-	p.ServerIP = serverIP
-	p.ServerPort = serverPort
-	p.ListenDevs = listenDevs
-	p.UpDev = upDev
-	p.GatewayDev = gatewayDev
-	p.Crypt = crypt
-
 	// Wait signals
 	sig := make(chan os.Signal)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sig
-		p.Close()
+		closeAll()
 		os.Exit(0)
 	}()
 
-	err = p.Open()
+	// Open pcap
+	err = open()
 	if err != nil {
 		log.Fatalln(fmt.Errorf("open pcap: %w", err))
 	}
+}
+
+func open() error {
+	var err error
+
+	if len(listenDevs) == 1 {
+		log.Infof("Listen on %s\n", listenDevs[0])
+	} else {
+		log.Infoln("Listen on:")
+		for _, dev := range listenDevs {
+			log.Infof("  %s\n", dev)
+		}
+	}
+	if !gatewayDev.IsLoop {
+		log.Infof("Route upstream from %s to %s\n", upDev, gatewayDev)
+	} else {
+		log.Infof("Route upstream in %s\n", upDev)
+	}
+
+	// Handshake
+	err = handshake()
+	if err != nil {
+		return fmt.Errorf("handshake: %w", err)
+	}
+
+	// Filters for listening
+	fs := make([]string, 0)
+	for _, f := range filters {
+		s, err := addr.SrcBPFFilter(f)
+		if err != nil {
+			return fmt.Errorf("parse filter %s: %w", f, err)
+		}
+
+		fs = append(fs, s)
+	}
+	f := strings.Join(fs, " || ")
+
+	// Handles for listening
+	for _, dev := range listenDevs {
+		var (
+			err  error
+			conn *pcap.Conn
+		)
+
+		filter := fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",
+			f, serverIP, serverPort, serverIP)
+
+		if dev.IsLoop {
+			conn, err = pcap.Dial(dev, dev, filter)
+		} else {
+			conn, err = pcap.Dial(dev, gatewayDev, filter)
+		}
+		if err != nil {
+			return fmt.Errorf("open listen device %s: %w", dev.Alias, err)
+		}
+
+		listenConns = append(listenConns, conn)
+	}
+
+	// Handle for routing upstream
+	upConn, err = pcap.Dial(upDev, gatewayDev, fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d))",
+		upPort, serverIP, serverPort))
+	if err != nil {
+		return fmt.Errorf("open upstream device %s: %w", upDev.Alias, err)
+	}
+
+	// Start handling
+	for i := 0; i < len(listenConns); i++ {
+		conn := listenConns[i]
+
+		go func() {
+			for {
+				packet, err := conn.ReadPacket()
+				if err != nil {
+					if isClosed {
+						return
+					}
+					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.SrcDev.Alias, err))
+					continue
+				}
+
+				c <- pcap.ConnPacket{Packet: packet, Conn: conn}
+			}
+		}()
+	}
+
+	go func() {
+		for cp := range c {
+			err := handleListen(cp.Packet, cp.Conn)
+			if err != nil {
+				log.Errorln(fmt.Errorf("handle listen in device %s: %w", cp.Conn.SrcDev.Alias, err))
+				log.Verboseln(cp.Packet)
+				continue
+			}
+		}
+	}()
+
+	for {
+		packet, err := upConn.ReadPacket()
+		if err != nil {
+			if isClosed {
+				return nil
+			}
+			log.Errorln("read upstream device %s: %w", upConn.SrcDev.Alias, err)
+			continue
+		}
+
+		err = handleUpstream(packet)
+		if err != nil {
+			log.Errorln(fmt.Errorf("handle upstream: %w", err))
+			log.Verboseln(packet)
+			continue
+		}
+	}
+}
+
+func closeAll() {
+	isClosed = true
+	for _, handle := range listenConns {
+		if handle != nil {
+			handle.Close()
+		}
+	}
+	if upConn != nil {
+		upConn.Close()
+	}
+}
+
+func handshake() error {
+	// Handle for handshaking
+	conn, err := pcap.Dial(upDev, gatewayDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
+		upPort, serverIP, serverPort))
+	if err != nil {
+		return fmt.Errorf("open device %s: %w", upDev.Name, err)
+	}
+	defer conn.Close()
+
+	// Handshaking with server (SYN)
+	err = handshakeSYN(conn)
+	if err != nil {
+		return fmt.Errorf("synchronize: %w", err)
+	}
+	serverAddr := net.TCPAddr{IP: serverIP, Port: int(serverPort)}
+	serverAddrStr := serverAddr.String()
+
+	log.Infof("Connect to server %s\n", serverAddrStr)
+
+	// Latency test
+	t := time.Now()
+
+	err = conn.SetReadDeadline(t.Add(3 * time.Second))
+	if err != nil {
+		return err
+	}
+
+	packet, err := conn.ReadPacket()
+	if err != nil {
+		return err
+	}
+
+	transportLayer := packet.TransportLayer()
+	if transportLayer == nil {
+		return errors.New("missing transport layer")
+	}
+	transportLayerType := transportLayer.LayerType()
+	switch transportLayerType {
+	case layers.LayerTypeTCP:
+		tcpLayer := transportLayer.(*layers.TCP)
+		if tcpLayer.RST {
+			return errors.New("connection reset")
+		}
+		if !tcpLayer.SYN {
+			return errors.New("invalid packet")
+		}
+	default:
+		return fmt.Errorf("transport layer type %s not support", transportLayerType)
+	}
+
+	// Latency test
+	d := time.Now().Sub(t)
+
+	// Handshaking with server (ACK)
+	err = handshakeACK(packet, conn)
+	if err != nil {
+		return fmt.Errorf("acknowledge: %w", err)
+	}
+
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", serverAddrStr, float64(d.Microseconds())/1000)
+
+	return nil
+}
+
+func handshakeSYN(conn *pcap.Conn) error {
+	var (
+		transportLayer gopacket.SerializableLayer
+		networkLayer   gopacket.SerializableLayer
+		linkLayer      gopacket.SerializableLayer
+	)
+
+	// Create layers
+	transportLayer, networkLayer, linkLayer, err := pcap.CreateLayers(upPort, serverPort, seq, 0, conn, serverIP, id, 128)
+	if err != nil {
+		return err
+	}
+
+	// Make TCP layer SYN
+	pcap.FlagTCPLayer(transportLayer.(*layers.TCP), true, false, false)
+
+	// Serialize layers
+	data, err := pcap.Serialize(linkLayer, networkLayer, transportLayer)
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
+
+	// Write packet data
+	_, err = conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	// TCP Seq
+	seq++
+
+	// IPv4 Id
+	if networkLayer.LayerType() == layers.LayerTypeIPv4 {
+		id++
+	}
+
+	return nil
+}
+
+func handshakeACK(packet gopacket.Packet, conn *pcap.Conn) error {
+	var (
+		indicator          *pcap.PacketIndicator
+		transportLayerType gopacket.LayerType
+		newTransportLayer  gopacket.SerializableLayer
+		newNetworkLayer    gopacket.SerializableLayer
+		newLinkLayer       gopacket.SerializableLayer
+	)
+
+	// Parse packet
+	indicator, err := pcap.ParsePacket(packet)
+	if err != nil {
+		return fmt.Errorf("parse packet: %w", err)
+	}
+
+	transportLayerType = indicator.TransportLayerType()
+	if transportLayerType != layers.LayerTypeTCP {
+		return fmt.Errorf("transport layer type %s not support", transportLayerType)
+	}
+
+	// TCP Ack
+	ack = indicator.TCPLayer().Seq + 1
+
+	// Create layers
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(indicator.DstPort(), indicator.SrcPort(), seq, ack, conn, indicator.SrcIP(), id, 128)
+	if err != nil {
+		return fmt.Errorf("create layers: %w", err)
+	}
+
+	// Make TCP layer ACK
+	pcap.FlagTCPLayer(newTransportLayer.(*layers.TCP), false, false, true)
+
+	// Serialize layers
+	data, err := pcap.Serialize(newLinkLayer, newNetworkLayer, newTransportLayer)
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
+
+	// Write packet data
+	_, err = conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	// IPv4 Id
+	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
+		id++
+	}
+
+	return nil
+}
+
+func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
+	var (
+		indicator         *pcap.PacketIndicator
+		newTransportLayer gopacket.SerializableLayer
+		newNetworkLayer   gopacket.SerializableLayer
+		newLinkLayer      gopacket.SerializableLayer
+	)
+
+	// Parse packet
+	indicator, err := pcap.ParsePacket(packet)
+	if err != nil {
+		return fmt.Errorf("parse packet: %w", err)
+	}
+
+	// Construct contents of new application layer
+	contents, err := pcap.SerializeRaw(indicator.NetworkLayer().(gopacket.SerializableLayer),
+		indicator.TransportLayer().(gopacket.SerializableLayer),
+		gopacket.Payload(indicator.Payload()))
+	if err != nil {
+		return fmt.Errorf("serialize embedded: %w", err)
+	}
+
+	// Wrap
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(upPort, serverPort, seq, ack, conn, serverIP, id, indicator.Hop()-1)
+	if err != nil {
+		return fmt.Errorf("wrap: %w", err)
+	}
+
+	// Encrypt
+	contents, err = crypt.Encrypt(contents)
+	if err != nil {
+		return fmt.Errorf("encrypt: %w", err)
+	}
+
+	// Serialize layers
+	data, err := pcap.Serialize(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(contents))
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
+
+	// Write packet data
+	n, err := conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	// Record the connection of the packet
+	connMapLock.Lock()
+	connMap[pcap.NATGuide{Src: indicator.NATSrc().String(), Proto: indicator.NATProto()}] = conn
+	connMapLock.Unlock()
+
+	// TCP Seq
+	seq = seq + uint32(len(contents))
+
+	// IPv4 Id
+	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
+		id++
+	}
+
+	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.TransportLayerType(), indicator.Src(), indicator.Dst(), n)
+
+	return nil
+}
+
+func handleUpstream(packet gopacket.Packet) error {
+	var (
+		embIndicator     *pcap.PacketIndicator
+		newLinkLayer     gopacket.Layer
+		newLinkLayerType gopacket.LayerType
+	)
+
+	// Parse packet
+	applicationLayer := packet.ApplicationLayer()
+
+	// Empty payload
+	if applicationLayer == nil {
+		return errors.New("empty payload")
+	}
+
+	// TCP Ack
+	ack = ack + uint32(len(applicationLayer.LayerContents()))
+
+	// Decrypt
+	contents, err := crypt.Decrypt(applicationLayer.LayerContents())
+	if err != nil {
+		return fmt.Errorf("decrypt: %w", err)
+	}
+
+	// Parse embedded packet
+	embIndicator, err = pcap.ParseEmbPacket(contents)
+	if err != nil {
+		return fmt.Errorf("parse embedded packet: %w", err)
+	}
+
+	// Check map
+	connMapLock.RLock()
+	conn, ok := connMap[pcap.NATGuide{Src: embIndicator.NATDst().String(), Proto: embIndicator.NATProto()}]
+	connMapLock.RUnlock()
+	if !ok {
+		return fmt.Errorf("missing %s nat to %s", embIndicator.NATProto(), embIndicator.NATDst())
+	}
+
+	// Decide Loopback or Ethernet
+	if conn.IsLoop() {
+		newLinkLayerType = layers.LayerTypeLoopback
+	} else {
+		newLinkLayerType = layers.LayerTypeEthernet
+	}
+
+	// Create new link layer
+	switch newLinkLayerType {
+	case layers.LayerTypeLoopback:
+		newLinkLayer = pcap.CreateLoopbackLayer()
+	case layers.LayerTypeEthernet:
+		newLinkLayer, err = pcap.CreateEthernetLayer(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, embIndicator.NetworkLayer())
+	default:
+		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
+	}
+	if err != nil {
+		return fmt.Errorf("create link layer: %w", err)
+	}
+
+	// Serialize layers
+	data, err := pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+		embIndicator.NetworkLayer().(gopacket.SerializableLayer),
+		embIndicator.TransportLayer().(gopacket.SerializableLayer),
+		gopacket.Payload(embIndicator.Payload()))
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
+
+	// Write packet data
+	n, err := conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportLayerType(), embIndicator.Dst(), embIndicator.Src(), n)
+
+	return nil
 }
 
 func splitArg(s string) []string {
