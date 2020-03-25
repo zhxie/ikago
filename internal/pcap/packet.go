@@ -51,7 +51,8 @@ func (indicator *NATIndicator) EmbSrcIP() net.IP {
 
 // PacketIndicator indicates a packet
 type PacketIndicator struct {
-	networkLayer     gopacket.NetworkLayer
+	linkLayer        gopacket.Layer
+	networkLayer     gopacket.Layer
 	transportLayer   gopacket.Layer
 	icmpv4Indicator  *ICMPv4Indicator
 	applicationLayer gopacket.ApplicationLayer
@@ -73,22 +74,66 @@ func (indicator *PacketIndicator) ipv6Layer() *layers.IPv6 {
 	return nil
 }
 
-// NetworkLayer return the network layer
-func (indicator *PacketIndicator) NetworkLayer() gopacket.NetworkLayer {
+func (indicator *PacketIndicator) arpLayer() *layers.ARP {
+	if indicator.NetworkLayerType() == layers.LayerTypeARP {
+		return indicator.networkLayer.(*layers.ARP)
+	}
+
+	return nil
+}
+
+// LinkLayer returns the link layer
+func (indicator *PacketIndicator) LinkLayer() gopacket.Layer {
+	return indicator.linkLayer
+}
+
+// LinkLayerType returns the type of the link layer
+func (indicator *PacketIndicator) LinkLayerType() gopacket.LayerType {
+	return indicator.linkLayer.LayerType()
+}
+
+// SrcHardwareAddr returns the source hardware address
+func (indicator *PacketIndicator) SrcHardwareAddr() net.HardwareAddr {
+	t := indicator.LinkLayerType()
+	switch t {
+	case layers.LayerTypeLoopback:
+		return nil
+	case layers.LayerTypeEthernet:
+		return indicator.linkLayer.(*layers.Ethernet).SrcMAC
+	default:
+		panic(fmt.Errorf("link layer type %s not support", t))
+	}
+}
+
+// DstHardwareAddr returns the destination hardware address
+func (indicator *PacketIndicator) DstHardwareAddr() net.HardwareAddr {
+	t := indicator.LinkLayerType()
+	switch t {
+	case layers.LayerTypeLoopback:
+		return nil
+	case layers.LayerTypeEthernet:
+		return indicator.linkLayer.(*layers.Ethernet).DstMAC
+	default:
+		panic(fmt.Errorf("link layer type %s not support", t))
+	}
+}
+
+// NetworkLayer returns the network layer
+func (indicator *PacketIndicator) NetworkLayer() gopacket.Layer {
 	return indicator.networkLayer
 }
 
-// NetworkLayerType return the type of the network layer
+// NetworkLayerType returns the type of the network layer
 func (indicator *PacketIndicator) NetworkLayerType() gopacket.LayerType {
 	return indicator.networkLayer.LayerType()
 }
 
-// TransportLayer return the transport layer
+// TransportLayer returns the transport layer
 func (indicator *PacketIndicator) TransportLayer() gopacket.Layer {
 	return indicator.transportLayer
 }
 
-// TransportLayerType return the type of the transport layer
+// TransportLayerType returns the type of the transport layer
 func (indicator *PacketIndicator) TransportLayerType() gopacket.LayerType {
 	return indicator.transportLayer.LayerType()
 }
@@ -119,6 +164,8 @@ func (indicator *PacketIndicator) SrcIP() net.IP {
 		return indicator.ipv4Layer().SrcIP
 	case layers.LayerTypeIPv6:
 		return indicator.ipv6Layer().SrcIP
+	case layers.LayerTypeARP:
+		return indicator.arpLayer().SourceProtAddress
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -132,6 +179,8 @@ func (indicator *PacketIndicator) DstIP() net.IP {
 		return indicator.ipv4Layer().DstIP
 	case layers.LayerTypeIPv6:
 		return indicator.ipv6Layer().DstIP
+	case layers.LayerTypeARP:
+		return indicator.arpLayer().DstProtAddress
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -320,7 +369,8 @@ func (indicator *PacketIndicator) Payload() []byte {
 // ParsePacket parses a packet and returns a packet indicator
 func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	var (
-		networkLayer       gopacket.NetworkLayer
+		linkLayer          gopacket.Layer
+		networkLayer       gopacket.Layer
 		networkLayerType   gopacket.LayerType
 		transportLayer     gopacket.Layer
 		transportLayerType gopacket.LayerType
@@ -329,9 +379,25 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	)
 
 	// Parse packet
+	linkLayer = packet.LinkLayer()
+	if linkLayer == nil {
+		// Guess loopback
+		linkLayer = packet.Layer(layers.LayerTypeLoopback)
+	}
 	networkLayer = packet.NetworkLayer()
 	if networkLayer == nil {
-		return nil, errors.New("missing network layer")
+		// Guess ARP
+		networkLayer = packet.Layer(layers.LayerTypeARP)
+		if networkLayer == nil {
+			return nil, errors.New("missing network layer")
+		}
+
+		return &PacketIndicator{
+			networkLayer:     networkLayer,
+			transportLayer:   nil,
+			icmpv4Indicator:  nil,
+			applicationLayer: nil,
+		}, nil
 	}
 	networkLayerType = networkLayer.LayerType()
 	transportLayer = packet.TransportLayer()
@@ -355,7 +421,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 
 	// Parse transport layer
 	switch transportLayerType {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP:
+	case layers.LayerTypeTCP, layers.LayerTypeUDP, layers.LayerTypeARP:
 		break
 	case layers.LayerTypeICMPv4:
 		var err error
@@ -368,6 +434,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}
 
 	return &PacketIndicator{
+		linkLayer:        linkLayer,
 		networkLayer:     networkLayer,
 		transportLayer:   transportLayer,
 		icmpv4Indicator:  icmpv4Indicator,
@@ -414,23 +481,28 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 
 // ParseRawPacket parses an array of byte as a packet and returns a packet indicator
 func ParseRawPacket(contents []byte) (*gopacket.Packet, error) {
-	// Guess link layer type, and here we regard loopback layer as a link layer
-	packet := gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
+	// Guess link layer type, and here we regard Ethernet layer as a link layer
+	packet := gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
 	if len(packet.Layers()) < 0 {
 		return nil, errors.New("missing link layer")
 	}
-	// Raw packet must start from the link layer
-	linkLayer := packet.Layers()[0]
-	if linkLayer.LayerType() != layers.LayerTypeLoopback {
-		// Not Loopback, then Ethernet
-		packet = gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
-		linkLayer := packet.LinkLayer()
+
+	linkLayer := packet.LinkLayer()
+	if linkLayer == nil {
+		// Guess loopback
+		packet = gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
+
+		linkLayer := packet.Layer(layers.LayerTypeLoopback)
 		if linkLayer == nil {
 			return nil, errors.New("missing link layer")
 		}
-		if linkLayer.LayerType() != layers.LayerTypeEthernet {
-			return nil, errors.New("link layer type not support")
-		}
+
+		return &packet, nil
+	}
+
+	linkLayerType := linkLayer.LayerType()
+	if linkLayerType != layers.LayerTypeEthernet {
+		return nil, fmt.Errorf("link layer type %s not support", linkLayerType)
 	}
 
 	return &packet, nil

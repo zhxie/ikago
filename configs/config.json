@@ -6,6 +6,7 @@
   "password": "",
   "verbose": false,
 
+  "pretend": "",
   "upstream-port": 0,
   "filters": [
     "192.168.1.2",

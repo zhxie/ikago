@@ -17,6 +17,7 @@ type Config struct {
 	Method     string   `json:"method"`
 	Password   string   `json:"password"`
 	Verbose    bool     `json:"verbose"`
+	Pretend    string   `json:"pretend"`
 	UpPort     int      `json:"upstream-port"`
 	Filters    []string `json:"filters"`
 	Server     string   `json:"server"`

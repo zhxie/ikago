@@ -21,6 +21,11 @@ import (
 	"time"
 )
 
+type hardwareConn struct {
+	conn         *pcap.Conn
+	hardwareAddr net.HardwareAddr
+}
+
 var (
 	argListDevs   = flag.Bool("list-devices", false, "List all valid devices in current computer.")
 	argConfig     = flag.String("c", "", "Configuration file.")
@@ -30,12 +35,14 @@ var (
 	argMethod     = flag.String("method", "plain", "Method of encryption.")
 	argPassword   = flag.String("password", "", "Password of encryption.")
 	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
+	argPretend    = flag.String("pretend", "", "Address pretended to be.")
 	argUpPort     = flag.Int("p", 0, "Port for routing upstream.")
 	argFilters    = flag.String("f", "", "Filters.")
 	argServer     = flag.String("s", "", "Server.")
 )
 
 var (
+	pretendIP  net.IP
 	filters    []net.Addr
 	upPort     uint16
 	serverIP   net.IP
@@ -54,8 +61,8 @@ var (
 	seq         uint32
 	ack         uint32
 	id          uint16
-	connMapLock sync.RWMutex
-	connMap     map[pcap.NATGuide]*pcap.Conn
+	natLock     sync.RWMutex
+	nat         map[pcap.NATGuide]*hardwareConn
 )
 
 func init() {
@@ -67,7 +74,7 @@ func init() {
 	seq = 0
 	ack = 0
 	id = 0
-	connMap = make(map[pcap.NATGuide]*pcap.Conn)
+	nat = make(map[pcap.NATGuide]*hardwareConn)
 
 	// Parse arguments
 	flag.Parse()
@@ -94,6 +101,7 @@ func main() {
 			Method:     *argMethod,
 			Password:   *argPassword,
 			Verbose:    *argVerbose,
+			Pretend:    *argPretend,
 			UpPort:     *argUpPort,
 			Filters:    splitArg(*argFilters),
 			Server:     *argServer,
@@ -131,7 +139,14 @@ func main() {
 	}
 	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
-		os.Exit(1)
+	}
+
+	// Pretend
+	if cfg.Pretend != "" {
+		pretendIP = net.ParseIP(cfg.Pretend)
+		if pretendIP == nil {
+			log.Fatalln(fmt.Errorf("invalid pretend %s", cfg.Pretend))
+		}
 	}
 
 	// Filters
@@ -282,6 +297,12 @@ func open() error {
 		fs = append(fs, s)
 	}
 	f := strings.Join(fs, " || ")
+	filter := fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",
+		f, serverIP, serverPort, f, serverIP)
+	if pretendIP != nil {
+		filter = filter + fmt.Sprintf(" || ((arp[6:2] = 1) && dst host %s)", pretendIP)
+		log.Infof("Pretend to be %s\n", pretendIP)
+	}
 
 	// Handles for listening
 	for _, dev := range listenDevs {
@@ -289,9 +310,6 @@ func open() error {
 			err  error
 			conn *pcap.Conn
 		)
-
-		filter := fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",
-			f, serverIP, serverPort, serverIP)
 
 		if dev.IsLoop {
 			conn, err = pcap.Dial(dev, dev, filter)
@@ -312,7 +330,6 @@ func open() error {
 		return fmt.Errorf("open upstream device %s: %w", upDev.Alias, err)
 	}
 
-	// Start handling
 	for i := 0; i < len(listenConns); i++ {
 		conn := listenConns[i]
 
@@ -529,6 +546,72 @@ func handshakeACK(packet gopacket.Packet, conn *pcap.Conn) error {
 	return nil
 }
 
+func pretend(packet gopacket.Packet, conn *pcap.Conn) error {
+	var (
+		indicator     *pcap.PacketIndicator
+		arpLayer      *layers.ARP
+		newARPLayer   *layers.ARP
+		linkLayer     gopacket.Layer
+		linkLayerType gopacket.LayerType
+		newLinkLayer  *layers.Ethernet
+	)
+
+	// Parse packet
+	indicator, err := pcap.ParsePacket(packet)
+	if err != nil {
+		return fmt.Errorf("parse packet: %w", err)
+	}
+
+	t := indicator.NetworkLayerType()
+	if t != layers.LayerTypeARP {
+		return fmt.Errorf("network layer type %s not support", t)
+	}
+
+	// Create new ARP layer
+	arpLayer = indicator.NetworkLayer().(*layers.ARP)
+	newARPLayer = &layers.ARP{
+		AddrType:          arpLayer.AddrType,
+		Protocol:          arpLayer.Protocol,
+		HwAddressSize:     arpLayer.HwAddressSize,
+		ProtAddressSize:   arpLayer.ProtAddressSize,
+		Operation:         layers.ARPReply,
+		SourceHwAddress:   conn.SrcDev.HardwareAddr,
+		SourceProtAddress: arpLayer.DstProtAddress,
+		DstHwAddress:      arpLayer.SourceHwAddress,
+		DstProtAddress:    arpLayer.SourceProtAddress,
+	}
+
+	// Create new link layer
+	linkLayer = packet.LinkLayer()
+	linkLayerType = linkLayer.LayerType()
+	switch linkLayerType {
+	case layers.LayerTypeEthernet:
+		newLinkLayer = &layers.Ethernet{
+			SrcMAC:       conn.SrcDev.HardwareAddr,
+			DstMAC:       linkLayer.(*layers.Ethernet).SrcMAC,
+			EthernetType: linkLayer.(*layers.Ethernet).EthernetType,
+		}
+	default:
+		return fmt.Errorf("link layer type %s not support", linkLayerType)
+	}
+
+	// Serialize layers
+	data, err := pcap.Serialize(newLinkLayer, newARPLayer)
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
+
+	// Write packet data
+	n, err := conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	log.Verbosef("Reply an %s request: %s -> %s (%d Bytes)\n", indicator.NetworkLayerType(), indicator.SrcIP(), indicator.DstIP(), n)
+
+	return nil
+}
+
 func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 	var (
 		indicator         *pcap.PacketIndicator
@@ -541,6 +624,16 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 	indicator, err := pcap.ParsePacket(packet)
 	if err != nil {
 		return fmt.Errorf("parse packet: %w", err)
+	}
+
+	// ARP
+	if indicator.NetworkLayerType() == layers.LayerTypeARP {
+		err := pretend(packet, conn)
+		if err != nil {
+			return fmt.Errorf("pretend: %w", err)
+		}
+
+		return nil
 	}
 
 	// Construct contents of new application layer
@@ -576,9 +669,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 	}
 
 	// Record the connection of the packet
-	connMapLock.Lock()
-	connMap[pcap.NATGuide{Src: indicator.NATSrc().String(), Proto: indicator.NATProto()}] = conn
-	connMapLock.Unlock()
+	natLock.Lock()
+	nat[pcap.NATGuide{Src: indicator.NATSrc().String(), Proto: indicator.NATProto()}] = &hardwareConn{conn: conn, hardwareAddr: indicator.SrcHardwareAddr()}
+	natLock.Unlock()
 
 	// TCP Seq
 	seq = seq + uint32(len(contents))
@@ -624,15 +717,15 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Check map
-	connMapLock.RLock()
-	conn, ok := connMap[pcap.NATGuide{Src: embIndicator.NATDst().String(), Proto: embIndicator.NATProto()}]
-	connMapLock.RUnlock()
+	natLock.RLock()
+	hardwareConn, ok := nat[pcap.NATGuide{Src: embIndicator.NATDst().String(), Proto: embIndicator.NATProto()}]
+	natLock.RUnlock()
 	if !ok {
 		return fmt.Errorf("missing %s nat to %s", embIndicator.NATProto(), embIndicator.NATDst())
 	}
 
 	// Decide Loopback or Ethernet
-	if conn.IsLoop() {
+	if hardwareConn.conn.IsLoop() {
 		newLinkLayerType = layers.LayerTypeLoopback
 	} else {
 		newLinkLayerType = layers.LayerTypeEthernet
@@ -643,7 +736,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, embIndicator.NetworkLayer())
+		newLinkLayer, err = pcap.CreateEthernetLayer(hardwareConn.conn.SrcDev.HardwareAddr, hardwareConn.hardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
@@ -661,7 +754,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Write packet data
-	n, err := conn.Write(data)
+	n, err := hardwareConn.conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
