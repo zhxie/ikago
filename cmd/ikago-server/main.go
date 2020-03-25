@@ -721,8 +721,8 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 		return fmt.Errorf("protocol type %s not support", proto)
 	}
 
-	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s -> %s (%d Bytes)\n",
-		embIndicator.TransportLayerType(), embIndicator.Src().String(), indicator.Src().String(), src, embIndicator.Dst().String(), n)
+	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
+		embIndicator.TransportLayerType(), embIndicator.Src().String(), src.String(), embIndicator.Dst().String(), n)
 
 	return nil
 }
@@ -947,8 +947,8 @@ func handleUpstream(packet gopacket.Packet) error {
 		id++
 	}
 
-	log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s <- %s (%d Bytes)\n",
-		transportLayerType, ni.embSrc.String(), ni.src.String(), indicator.Dst(), indicator.Src(), n)
+	log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s (%d Bytes)\n",
+		transportLayerType, ni.embSrc.String(), ni.src.String(), indicator.Src(), n)
 
 	return nil
 }
