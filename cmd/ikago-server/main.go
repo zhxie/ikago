@@ -105,9 +105,9 @@ func init() {
 	listenConns = make([]*pcap.Conn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	clients = make(map[string]*clientIndicator)
-	tcpPortPool = make([]time.Time, 0)
-	udpPortPool = make([]time.Time, 0)
-	icmpv4IdPool = make([]time.Time, 0)
+	tcpPortPool = make([]time.Time, 16384)
+	udpPortPool = make([]time.Time, 16384)
+	icmpv4IdPool = make([]time.Time, 65536)
 	valueMap = make(map[quintuple]uint16)
 	nat = make(map[pcap.NATGuide]*natIndicator)
 }
