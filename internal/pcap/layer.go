@@ -180,7 +180,7 @@ func SerializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 }
 
 // CreateLayers return layers of transferring between client and server
-func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, hop uint8) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
+func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, hop uint8, dstHardwareAddr net.HardwareAddr) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
 		networkLayerType gopacket.LayerType
 		linkLayerType    gopacket.LayerType
@@ -221,7 +221,7 @@ func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 	case layers.LayerTypeLoopback:
 		linkLayer = CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		linkLayer, err = CreateEthernetLayer(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, networkLayer.(gopacket.NetworkLayer))
+		linkLayer, err = CreateEthernetLayer(conn.SrcDev.HardwareAddr, dstHardwareAddr, networkLayer.(gopacket.NetworkLayer))
 	default:
 		return nil, nil, nil, fmt.Errorf("link layer type %s not support", linkLayerType)
 	}

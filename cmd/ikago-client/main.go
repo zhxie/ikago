@@ -279,6 +279,9 @@ func open() error {
 	} else {
 		log.Infof("Route upstream in %s\n", upDev)
 	}
+	if pretendIP != nil {
+		log.Infof("Pretend to be %s\n", pretendIP)
+	}
 
 	// Handshake
 	err = handshake()
@@ -301,7 +304,6 @@ func open() error {
 		f, serverIP, serverPort, f, serverIP)
 	if pretendIP != nil {
 		filter = filter + fmt.Sprintf(" || ((arp[6:2] = 1) && dst host %s)", pretendIP)
-		log.Infof("Pretend to be %s\n", pretendIP)
 	}
 
 	// Handles for listening
@@ -463,7 +465,7 @@ func handshakeSYN(conn *pcap.Conn) error {
 	)
 
 	// Create layers
-	transportLayer, networkLayer, linkLayer, err := pcap.CreateLayers(upPort, serverPort, seq, 0, conn, serverIP, id, 128)
+	transportLayer, networkLayer, linkLayer, err := pcap.CreateLayers(upPort, serverPort, seq, 0, conn, serverIP, id, 128, conn.DstDev.HardwareAddr)
 	if err != nil {
 		return err
 	}
@@ -518,7 +520,7 @@ func handshakeACK(packet gopacket.Packet, conn *pcap.Conn) error {
 	ack = indicator.TCPLayer().Seq + 1
 
 	// Create layers
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(indicator.DstPort(), indicator.SrcPort(), seq, ack, conn, indicator.SrcIP(), id, 128)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(indicator.DstPort(), indicator.SrcPort(), seq, ack, conn, indicator.SrcIP(), id, 128, indicator.SrcHardwareAddr())
 	if err != nil {
 		return fmt.Errorf("create layers: %w", err)
 	}
@@ -645,7 +647,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 	}
 
 	// Wrap
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(upPort, serverPort, seq, ack, conn, serverIP, id, indicator.Hop()-1)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(upPort, serverPort, seq, ack, conn, serverIP, id, indicator.Hop()-1, conn.DstDev.HardwareAddr)
 	if err != nil {
 		return fmt.Errorf("wrap: %w", err)
 	}

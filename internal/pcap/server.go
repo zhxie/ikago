@@ -207,7 +207,7 @@ func (p *Server) handshake(indicator *PacketIndicator, conn *Conn) error {
 	}
 
 	// Create layers
-	newTransportLayer, newNetworkLayer, newLinkLayer, err := CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, conn, indicator.SrcIP(), p.id, 64)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err := CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, conn, indicator.SrcIP(), p.id, 64, indicator.SrcHardwareAddr())
 	if err != nil {
 		return fmt.Errorf("create layers: %w", err)
 	}
@@ -536,10 +536,11 @@ func (p *Server) handleListen(packet gopacket.Packet, conn *Conn) error {
 	}
 	if addNAT {
 		ni = &NATIndicator{
-			src:    src,
-			dst:    indicator.Dst(),
-			embSrc: embIndicator.NATSrc(),
-			conn:   conn,
+			src:          src,
+			dst:          indicator.Dst(),
+			embSrc:       embIndicator.NATSrc(),
+			conn:         conn,
+			hardwareAddr: indicator.SrcHardwareAddr(),
 		}
 		p.natLock.Lock()
 		p.nat[guide] = ni
@@ -754,7 +755,7 @@ func (p *Server) handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Wrap
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = CreateLayers(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.Hop()-1)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = CreateLayers(uint16(ni.dst.(*net.TCPAddr).Port), uint16(src.(*net.TCPAddr).Port), client.seq, client.ack, ni.conn, src.(*net.TCPAddr).IP, p.id, indicator.Hop()-1, ni.hardwareAddr)
 	if err != nil {
 		return fmt.Errorf("wrap: %w", err)
 	}

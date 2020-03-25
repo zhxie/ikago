@@ -27,10 +27,11 @@ type NATGuide struct {
 
 // NATIndicator indicates the NAT information about a packet
 type NATIndicator struct {
-	src    net.Addr
-	dst    net.Addr
-	embSrc net.Addr
-	conn   *Conn
+	src          net.Addr
+	dst          net.Addr
+	embSrc       net.Addr
+	conn         *Conn
+	hardwareAddr net.HardwareAddr
 }
 
 // EmbSrcIP returns the embedded source IP
