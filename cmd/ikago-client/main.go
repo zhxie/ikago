@@ -683,7 +683,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 		id++
 	}
 
-	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.TransportLayerType(), indicator.Src(), indicator.Dst(), n)
+	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.TransportLayerType(), indicator.Src().String(), indicator.Dst().String(), n)
 
 	return nil
 }
@@ -761,7 +761,7 @@ func handleUpstream(packet gopacket.Packet) error {
 		return fmt.Errorf("write: %w", err)
 	}
 
-	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportLayerType(), embIndicator.Dst(), embIndicator.Src(), n)
+	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportLayerType(), embIndicator.Dst().String(), embIndicator.Src().String(), n)
 
 	return nil
 }
