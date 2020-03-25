@@ -21,9 +21,9 @@ import (
 	"time"
 )
 
-type hardwareConn struct {
-	conn         *pcap.Conn
-	hardwareAddr net.HardwareAddr
+type natIndicator struct {
+	srcHardwareAddr net.HardwareAddr
+	conn            *pcap.Conn
 }
 
 var (
@@ -62,10 +62,13 @@ var (
 	ack         uint32
 	id          uint16
 	natLock     sync.RWMutex
-	nat         map[pcap.NATGuide]*hardwareConn
+	nat         map[pcap.NATGuide]*natIndicator
 )
 
 func init() {
+	// Parse arguments
+	flag.Parse()
+
 	filters = make([]net.Addr, 0)
 	listenDevs = make([]*pcap.Device, 0)
 
@@ -74,10 +77,7 @@ func init() {
 	seq = 0
 	ack = 0
 	id = 0
-	nat = make(map[pcap.NATGuide]*hardwareConn)
-
-	// Parse arguments
-	flag.Parse()
+	nat = make(map[pcap.NATGuide]*natIndicator)
 }
 
 func main() {
@@ -374,7 +374,7 @@ func open() error {
 
 		err = handleUpstream(packet)
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream: %w", err))
+			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.SrcDev.Alias, err))
 			log.Verboseln(packet)
 			continue
 		}
@@ -570,7 +570,7 @@ func pretend(packet gopacket.Packet, conn *pcap.Conn) error {
 	}
 
 	// Create new ARP layer
-	arpLayer = indicator.NetworkLayer().(*layers.ARP)
+	arpLayer = indicator.ARPLayer()
 	newARPLayer = &layers.ARP{
 		AddrType:          arpLayer.AddrType,
 		Protocol:          arpLayer.Protocol,
@@ -672,7 +672,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 
 	// Record the connection of the packet
 	natLock.Lock()
-	nat[pcap.NATGuide{Src: indicator.NATSrc().String(), Proto: indicator.NATProto()}] = &hardwareConn{conn: conn, hardwareAddr: indicator.SrcHardwareAddr()}
+	nat[pcap.NATGuide{Src: indicator.NATSrc().String(), Proto: indicator.NATProto()}] = &natIndicator{srcHardwareAddr: indicator.SrcHardwareAddr(), conn: conn}
 	natLock.Unlock()
 
 	// TCP Seq
@@ -720,14 +720,14 @@ func handleUpstream(packet gopacket.Packet) error {
 
 	// Check map
 	natLock.RLock()
-	hardwareConn, ok := nat[pcap.NATGuide{Src: embIndicator.NATDst().String(), Proto: embIndicator.NATProto()}]
+	ni, ok := nat[pcap.NATGuide{Src: embIndicator.NATDst().String(), Proto: embIndicator.NATProto()}]
 	natLock.RUnlock()
 	if !ok {
 		return fmt.Errorf("missing %s nat to %s", embIndicator.NATProto(), embIndicator.NATDst())
 	}
 
 	// Decide Loopback or Ethernet
-	if hardwareConn.conn.IsLoop() {
+	if ni.conn.IsLoop() {
 		newLinkLayerType = layers.LayerTypeLoopback
 	} else {
 		newLinkLayerType = layers.LayerTypeEthernet
@@ -738,7 +738,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(hardwareConn.conn.SrcDev.HardwareAddr, hardwareConn.hardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.SrcDev.HardwareAddr, ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
@@ -756,7 +756,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Write packet data
-	n, err := hardwareConn.conn.Write(data)
+	n, err := ni.conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}

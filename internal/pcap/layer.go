@@ -234,18 +234,16 @@ func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 
 // ICMPv4Indicator indicates an ICMPv4 layer
 type ICMPv4Indicator struct {
-	layer                 *layers.ICMPv4
-	embIPv4Layer          *layers.IPv4
-	embTransportLayer     gopacket.Layer
-	embTransportLayerType gopacket.LayerType
+	layer             *layers.ICMPv4
+	embIPv4Layer      *layers.IPv4
+	embTransportLayer gopacket.Layer
 }
 
 // ParseICMPv4Layer parses an ICMPv4 layer and returns an ICMPv4 indicator
 func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 	var (
-		embIPv4Layer          *layers.IPv4
-		embTransportLayer     gopacket.Layer
-		embTransportLayerType gopacket.LayerType
+		embIPv4Layer      *layers.IPv4
+		embTransportLayer gopacket.Layer
 	)
 
 	t := layer.TypeCode.Type()
@@ -287,16 +285,14 @@ func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 		}
 
 		embTransportLayer = packet.Layers()[1]
-		embTransportLayerType = embTransportLayer.LayerType()
 	default:
 		return nil, fmt.Errorf("icmpv4 type %d not support", t)
 	}
 
 	return &ICMPv4Indicator{
-		layer:                 layer,
-		embIPv4Layer:          embIPv4Layer,
-		embTransportLayer:     embTransportLayer,
-		embTransportLayerType: embTransportLayerType,
+		layer:             layer,
+		embIPv4Layer:      embIPv4Layer,
+		embTransportLayer: embTransportLayer,
 	}, nil
 }
 
@@ -307,6 +303,11 @@ func (indicator *ICMPv4Indicator) NewPureICMPv4Layer() *layers.ICMPv4 {
 		Id:       indicator.layer.Id,
 		Seq:      indicator.layer.Seq,
 	}
+}
+
+// ICMPv4Layer returns the ICMPv4 layer
+func (indicator *ICMPv4Indicator) ICMPv4Layer() *layers.ICMPv4 {
+	return indicator.layer
 }
 
 // IsQuery returns if the ICMPv4 layer is a query
@@ -340,72 +341,98 @@ func (indicator *ICMPv4Indicator) Id() uint16 {
 	return indicator.layer.Id
 }
 
-func (indicator *ICMPv4Indicator) embSrcIP() net.IP {
+// EmbIPv4Layer returns the embedded IPv4 layer
+func (indicator *ICMPv4Indicator) EmbIPv4Layer() *layers.IPv4 {
+	return indicator.embIPv4Layer
+}
+
+// EmbSrcIP returns the embedded source IP
+func (indicator *ICMPv4Indicator) EmbSrcIP() net.IP {
 	return indicator.embIPv4Layer.SrcIP
 }
 
-func (indicator *ICMPv4Indicator) embDstIP() net.IP {
+// EmbDstIP returns the embedded destination IP
+func (indicator *ICMPv4Indicator) EmbDstIP() net.IP {
 	return indicator.embIPv4Layer.DstIP
 }
 
-func (indicator *ICMPv4Indicator) embTCPLayer() *layers.TCP {
-	if indicator.embTransportLayerType == layers.LayerTypeTCP {
+// EmbTransportLayer returns the embedded transport layer
+func (indicator *ICMPv4Indicator) EmbTransportLayer() gopacket.Layer {
+	return indicator.embTransportLayer
+}
+
+// EmbTransportLayerType returns the type of the embedded transport layer
+func (indicator *ICMPv4Indicator) EmbTransportLayerType() gopacket.LayerType {
+	return indicator.embTransportLayer.LayerType()
+}
+
+// EmbTCPLayer returns the embedded TCP layer
+func (indicator *ICMPv4Indicator) EmbTCPLayer() *layers.TCP {
+	if indicator.EmbTransportLayerType() == layers.LayerTypeTCP {
 		return indicator.embTransportLayer.(*layers.TCP)
 	}
 
 	return nil
 }
 
-func (indicator *ICMPv4Indicator) embUDPLayer() *layers.UDP {
-	if indicator.embTransportLayerType == layers.LayerTypeUDP {
+// EmbUDPLayer returns the embedded UDP layer
+func (indicator *ICMPv4Indicator) EmbUDPLayer() *layers.UDP {
+	if indicator.EmbTransportLayerType() == layers.LayerTypeUDP {
 		return indicator.embTransportLayer.(*layers.UDP)
 	}
 
 	return nil
 }
 
-func (indicator *ICMPv4Indicator) embICMPv4Layer() *layers.ICMPv4 {
-	if indicator.embTransportLayerType == layers.LayerTypeICMPv4 {
+// EmbICMPv4Layer returns the embedded ICMPv4 layer
+func (indicator *ICMPv4Indicator) EmbICMPv4Layer() *layers.ICMPv4 {
+	if indicator.EmbTransportLayerType() == layers.LayerTypeICMPv4 {
 		return indicator.embTransportLayer.(*layers.ICMPv4)
 	}
 
 	return nil
 }
 
-func (indicator *ICMPv4Indicator) embId() uint16 {
-	switch indicator.embTransportLayerType {
+// EmbId returns the embedded ICMPv4 Id
+func (indicator *ICMPv4Indicator) EmbId() uint16 {
+	t := indicator.EmbTransportLayerType()
+	switch t {
 	case layers.LayerTypeICMPv4:
-		return uint16(indicator.embICMPv4Layer().Id)
+		return indicator.EmbICMPv4Layer().Id
 	default:
-		panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
+		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
 }
 
-func (indicator *ICMPv4Indicator) embSrcPort() uint16 {
-	switch indicator.embTransportLayerType {
+// EmbSrcPort returns the embedded source port
+func (indicator *ICMPv4Indicator) EmbSrcPort() uint16 {
+	t := indicator.EmbTransportLayerType()
+	switch t {
 	case layers.LayerTypeTCP:
-		return uint16(indicator.embTCPLayer().SrcPort)
+		return uint16(indicator.EmbTCPLayer().SrcPort)
 	case layers.LayerTypeUDP:
-		return uint16(indicator.embUDPLayer().SrcPort)
+		return uint16(indicator.EmbUDPLayer().SrcPort)
 	default:
-		panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
+		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
 }
 
-func (indicator *ICMPv4Indicator) embDstPort() uint16 {
-	switch indicator.embTransportLayerType {
+// EmbDstPort returns the embedded destination port
+func (indicator *ICMPv4Indicator) EmbDstPort() uint16 {
+	t := indicator.EmbTransportLayerType()
+	switch t {
 	case layers.LayerTypeTCP:
-		return uint16(indicator.embTCPLayer().DstPort)
+		return uint16(indicator.EmbTCPLayer().DstPort)
 	case layers.LayerTypeUDP:
-		return uint16(indicator.embUDPLayer().DstPort)
+		return uint16(indicator.EmbUDPLayer().DstPort)
 	default:
-		panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
+		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
 }
 
 // IsEmbQuery returns if the embedded ICMPv4 layer is a query
 func (indicator *ICMPv4Indicator) IsEmbQuery() bool {
-	t := indicator.embICMPv4Layer().TypeCode.Type()
+	t := indicator.EmbICMPv4Layer().TypeCode.Type()
 	switch t {
 	case layers.ICMPv4TypeEchoReply,
 		layers.ICMPv4TypeEchoRequest,
@@ -435,30 +462,31 @@ func (indicator *ICMPv4Indicator) NATSrc() net.Addr {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
-		switch indicator.embTransportLayerType {
+		t := indicator.EmbTransportLayerType()
+		switch t {
 		case layers.LayerTypeTCP:
 			return &net.TCPAddr{
-				IP:   indicator.embDstIP(),
-				Port: int(indicator.embDstPort()),
+				IP:   indicator.EmbDstIP(),
+				Port: int(indicator.EmbDstPort()),
 			}
 		case layers.LayerTypeUDP:
 			return &net.UDPAddr{
-				IP:   indicator.embDstIP(),
-				Port: int(indicator.embDstPort()),
+				IP:   indicator.EmbDstIP(),
+				Port: int(indicator.EmbDstPort()),
 			}
 		case layers.LayerTypeICMPv4:
 			if indicator.IsEmbQuery() {
 				return &addr.ICMPQueryAddr{
-					IP: indicator.embDstIP(),
-					Id: indicator.embId(),
+					IP: indicator.EmbDstIP(),
+					Id: indicator.EmbId(),
 				}
 			} else {
 				return &net.IPAddr{
-					IP: indicator.embDstIP(),
+					IP: indicator.EmbDstIP(),
 				}
 			}
 		default:
-			panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
+			panic(fmt.Errorf("transport layer type %s not support", t))
 		}
 	}
 }
@@ -469,30 +497,31 @@ func (indicator *ICMPv4Indicator) NATDst() net.Addr {
 		panic(errors.New("icmpv4 query not support"))
 	} else {
 		// Flip source and destination
-		switch indicator.embTransportLayerType {
+		t := indicator.EmbTransportLayerType()
+		switch t {
 		case layers.LayerTypeTCP:
 			return &net.TCPAddr{
-				IP:   indicator.embSrcIP(),
-				Port: int(indicator.embSrcPort()),
+				IP:   indicator.EmbSrcIP(),
+				Port: int(indicator.EmbSrcPort()),
 			}
 		case layers.LayerTypeUDP:
 			return &net.UDPAddr{
-				IP:   indicator.embSrcIP(),
-				Port: int(indicator.embSrcPort()),
+				IP:   indicator.EmbSrcIP(),
+				Port: int(indicator.EmbSrcPort()),
 			}
 		case layers.LayerTypeICMPv4:
 			if indicator.IsEmbQuery() {
 				return &addr.ICMPQueryAddr{
-					IP: indicator.embSrcIP(),
-					Id: indicator.embId(),
+					IP: indicator.EmbSrcIP(),
+					Id: indicator.EmbId(),
 				}
 			} else {
 				return &net.IPAddr{
-					IP: indicator.embSrcIP(),
+					IP: indicator.EmbSrcIP(),
 				}
 			}
 		default:
-			panic(fmt.Errorf("transport layer type %s not support", indicator.embTransportLayerType))
+			panic(fmt.Errorf("transport layer type %s not support", t))
 		}
 	}
 }

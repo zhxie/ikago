@@ -55,7 +55,7 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-pretend address`: (Optional) Address pretended to be. If this value is set, IkaGo will reply ARP request as it owns the address pretended to be.
+`-pretend address`: (Optional) Address pretended to be. If this value is set, IkaGo will reply ARP request as it owns the address.
 
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
@@ -87,7 +87,6 @@ go run ./cmd/ikago-server -p [port]
 
 - [ ] Retransmission and out of order packets detection
 - [ ] Bypass filters
-- [ ] Handle ARP
 - [ ] Support KCP
 
 ## License
