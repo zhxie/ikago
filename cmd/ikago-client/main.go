@@ -35,14 +35,14 @@ var (
 	argMethod     = flag.String("method", "plain", "Method of encryption.")
 	argPassword   = flag.String("password", "", "Password of encryption.")
 	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
-	argPretend    = flag.String("pretend", "", "Address pretended to be.")
+	argPublish    = flag.String("publish", "", "ARP publishing address.")
 	argUpPort     = flag.Int("p", 0, "Port for routing upstream.")
 	argFilters    = flag.String("f", "", "Filters.")
 	argServer     = flag.String("s", "", "Server.")
 )
 
 var (
-	pretendIP  net.IP
+	publishIP  net.IP
 	filters    []net.Addr
 	upPort     uint16
 	serverIP   net.IP
@@ -101,7 +101,7 @@ func main() {
 			Method:     *argMethod,
 			Password:   *argPassword,
 			Verbose:    *argVerbose,
-			Pretend:    *argPretend,
+			Publish:    *argPublish,
 			UpPort:     *argUpPort,
 			Filters:    splitArg(*argFilters),
 			Server:     *argServer,
@@ -141,11 +141,11 @@ func main() {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
 	}
 
-	// Pretend
-	if cfg.Pretend != "" {
-		pretendIP = net.ParseIP(cfg.Pretend)
-		if pretendIP == nil {
-			log.Fatalln(fmt.Errorf("invalid pretend %s", cfg.Pretend))
+	// Publish
+	if cfg.Publish != "" {
+		publishIP = net.ParseIP(cfg.Publish)
+		if publishIP == nil {
+			log.Fatalln(fmt.Errorf("invalid publish %s", cfg.Publish))
 		}
 	}
 
@@ -279,8 +279,8 @@ func open() error {
 	} else {
 		log.Infof("Route upstream in %s\n", upDev)
 	}
-	if pretendIP != nil {
-		log.Infof("Pretend to be %s\n", pretendIP)
+	if publishIP != nil {
+		log.Infof("Publish %s\n", publishIP)
 	}
 
 	// Handshake
@@ -302,8 +302,8 @@ func open() error {
 	f := strings.Join(fs, " || ")
 	filter := fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",
 		f, serverIP, serverPort, f, serverIP)
-	if pretendIP != nil {
-		filter = filter + fmt.Sprintf(" || ((arp[6:2] = 1) && dst host %s)", pretendIP)
+	if publishIP != nil {
+		filter = filter + fmt.Sprintf(" || ((arp[6:2] = 1) && dst host %s)", publishIP)
 	}
 
 	// Handles for listening
@@ -548,7 +548,7 @@ func handshakeACK(packet gopacket.Packet, conn *pcap.Conn) error {
 	return nil
 }
 
-func pretend(packet gopacket.Packet, conn *pcap.Conn) error {
+func publish(packet gopacket.Packet, conn *pcap.Conn) error {
 	var (
 		indicator     *pcap.PacketIndicator
 		arpLayer      *layers.ARP
@@ -630,9 +630,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 
 	// ARP
 	if indicator.NetworkLayerType() == layers.LayerTypeARP {
-		err := pretend(packet, conn)
+		err := publish(packet, conn)
 		if err != nil {
-			return fmt.Errorf("pretend: %w", err)
+			return fmt.Errorf("publish: %w", err)
 		}
 
 		return nil
