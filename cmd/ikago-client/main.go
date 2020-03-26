@@ -23,7 +23,7 @@ import (
 
 type natIndicator struct {
 	srcHardwareAddr net.HardwareAddr
-	conn            *pcap.Conn
+	conn            *pcap.RawConn
 }
 
 var (
@@ -55,8 +55,8 @@ var (
 
 var (
 	isClosed    bool
-	listenConns []*pcap.Conn
-	upConn      *pcap.Conn
+	listenConns []*pcap.RawConn
+	upConn      *pcap.RawConn
 	c           chan pcap.ConnPacket
 	seq         uint32
 	ack         uint32
@@ -72,7 +72,7 @@ func init() {
 	filters = make([]net.Addr, 0)
 	listenDevs = make([]*pcap.Device, 0)
 
-	listenConns = make([]*pcap.Conn, 0)
+	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	seq = 0
 	ack = 0
@@ -310,13 +310,13 @@ func open() error {
 	for _, dev := range listenDevs {
 		var (
 			err  error
-			conn *pcap.Conn
+			conn *pcap.RawConn
 		)
 
 		if dev.IsLoop {
-			conn, err = pcap.Dial(dev, dev, filter)
+			conn, err = pcap.CreateRawConn(dev, dev, filter)
 		} else {
-			conn, err = pcap.Dial(dev, gatewayDev, filter)
+			conn, err = pcap.CreateRawConn(dev, gatewayDev, filter)
 		}
 		if err != nil {
 			return fmt.Errorf("open listen device %s: %w", dev.Alias, err)
@@ -326,7 +326,7 @@ func open() error {
 	}
 
 	// Handle for routing upstream
-	upConn, err = pcap.Dial(upDev, gatewayDev, fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d))",
+	upConn, err = pcap.CreateRawConn(upDev, gatewayDev, fmt.Sprintf("(tcp && dst port %d && (src host %s && src port %d))",
 		upPort, serverIP, serverPort))
 	if err != nil {
 		return fmt.Errorf("open upstream device %s: %w", upDev.Alias, err)
@@ -342,7 +342,7 @@ func open() error {
 					if isClosed {
 						return
 					}
-					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.SrcDev.Alias, err))
+					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.LocalDev().Alias, err))
 					continue
 				}
 
@@ -355,7 +355,7 @@ func open() error {
 		for cp := range c {
 			err := handleListen(cp.Packet, cp.Conn)
 			if err != nil {
-				log.Errorln(fmt.Errorf("handle listen in device %s: %w", cp.Conn.SrcDev.Alias, err))
+				log.Errorln(fmt.Errorf("handle listen in device %s: %w", cp.Conn.LocalDev().Alias, err))
 				log.Verboseln(cp.Packet)
 				continue
 			}
@@ -368,13 +368,13 @@ func open() error {
 			if isClosed {
 				return nil
 			}
-			log.Errorln("read upstream device %s: %w", upConn.SrcDev.Alias, err)
+			log.Errorln("read upstream device %s: %w", upConn.LocalDev().Alias, err)
 			continue
 		}
 
 		err = handleUpstream(packet)
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.SrcDev.Alias, err))
+			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.LocalDev().Alias, err))
 			log.Verboseln(packet)
 			continue
 		}
@@ -395,7 +395,7 @@ func closeAll() {
 
 func handshake() error {
 	// Handle for handshaking
-	conn, err := pcap.Dial(upDev, gatewayDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
+	conn, err := pcap.CreateRawConn(upDev, gatewayDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
 		upPort, serverIP, serverPort))
 	if err != nil {
 		return fmt.Errorf("open device %s: %w", upDev.Name, err)
@@ -413,19 +413,33 @@ func handshake() error {
 	log.Infof("Connect to server %s\n", serverAddrStr)
 
 	// Latency test
-	t := time.Now()
+	start := time.Now()
 
-	err = conn.SetReadDeadline(t.Add(3 * time.Second))
-	if err != nil {
+	type tuple struct {
+		packet gopacket.Packet
+		err    error
+	}
+	ct := make(chan tuple)
+
+	go func() {
+		packet, err := conn.ReadPacket()
+		if err != nil {
+			ct <- tuple{err: fmt.Errorf("read handshake device %s: %w", conn.LocalDev().Alias, err)}
+		}
+
+		ct <- tuple{packet: packet}
+	}()
+	go func() {
+		time.Sleep(3 * time.Second)
+		ct <- tuple{err: errors.New("timeout")}
+	}()
+
+	t := <-ct
+	if t.err != nil {
 		return err
 	}
 
-	packet, err := conn.ReadPacket()
-	if err != nil {
-		return err
-	}
-
-	transportLayer := packet.TransportLayer()
+	transportLayer := t.packet.TransportLayer()
 	if transportLayer == nil {
 		return errors.New("missing transport layer")
 	}
@@ -444,20 +458,20 @@ func handshake() error {
 	}
 
 	// Latency test
-	d := time.Now().Sub(t)
+	duration := time.Now().Sub(start)
 
 	// Handshaking with server (ACK)
-	err = handshakeACK(packet, conn)
+	err = handshakeACK(t.packet, conn)
 	if err != nil {
 		return fmt.Errorf("acknowledge: %w", err)
 	}
 
-	log.Infof("Connected to server %s in %.3f ms (two-way)\n", serverAddrStr, float64(d.Microseconds())/1000)
+	log.Infof("Connected to server %s in %.3f ms (two-way)\n", serverAddrStr, float64(duration.Microseconds())/1000)
 
 	return nil
 }
 
-func handshakeSYN(conn *pcap.Conn) error {
+func handshakeSYN(conn *pcap.RawConn) error {
 	var (
 		transportLayer gopacket.SerializableLayer
 		networkLayer   gopacket.SerializableLayer
@@ -465,7 +479,7 @@ func handshakeSYN(conn *pcap.Conn) error {
 	)
 
 	// Create layers
-	transportLayer, networkLayer, linkLayer, err := pcap.CreateLayers(upPort, serverPort, seq, 0, conn, serverIP, id, 128, conn.DstDev.HardwareAddr)
+	transportLayer, networkLayer, linkLayer, err := pcap.CreateLayers(upPort, serverPort, seq, 0, conn, serverIP, id, 128, conn.RemoteDev().HardwareAddr)
 	if err != nil {
 		return err
 	}
@@ -496,7 +510,7 @@ func handshakeSYN(conn *pcap.Conn) error {
 	return nil
 }
 
-func handshakeACK(packet gopacket.Packet, conn *pcap.Conn) error {
+func handshakeACK(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
 		indicator          *pcap.PacketIndicator
 		transportLayerType gopacket.LayerType
@@ -548,7 +562,7 @@ func handshakeACK(packet gopacket.Packet, conn *pcap.Conn) error {
 	return nil
 }
 
-func publish(packet gopacket.Packet, conn *pcap.Conn) error {
+func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
 		indicator     *pcap.PacketIndicator
 		arpLayer      *layers.ARP
@@ -577,7 +591,7 @@ func publish(packet gopacket.Packet, conn *pcap.Conn) error {
 		HwAddressSize:     arpLayer.HwAddressSize,
 		ProtAddressSize:   arpLayer.ProtAddressSize,
 		Operation:         layers.ARPReply,
-		SourceHwAddress:   conn.SrcDev.HardwareAddr,
+		SourceHwAddress:   conn.LocalDev().HardwareAddr,
 		SourceProtAddress: arpLayer.DstProtAddress,
 		DstHwAddress:      arpLayer.SourceHwAddress,
 		DstProtAddress:    arpLayer.SourceProtAddress,
@@ -589,7 +603,7 @@ func publish(packet gopacket.Packet, conn *pcap.Conn) error {
 	switch linkLayerType {
 	case layers.LayerTypeEthernet:
 		newLinkLayer = &layers.Ethernet{
-			SrcMAC:       conn.SrcDev.HardwareAddr,
+			SrcMAC:       conn.LocalDev().HardwareAddr,
 			DstMAC:       linkLayer.(*layers.Ethernet).SrcMAC,
 			EthernetType: linkLayer.(*layers.Ethernet).EthernetType,
 		}
@@ -614,7 +628,7 @@ func publish(packet gopacket.Packet, conn *pcap.Conn) error {
 	return nil
 }
 
-func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
+func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
 		indicator         *pcap.PacketIndicator
 		newTransportLayer gopacket.SerializableLayer
@@ -647,7 +661,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 	}
 
 	// Wrap
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(upPort, serverPort, seq, ack, conn, serverIP, id, indicator.Hop()-1, conn.DstDev.HardwareAddr)
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = pcap.CreateLayers(upPort, serverPort, seq, ack, conn, serverIP, id, indicator.Hop()-1, conn.RemoteDev().HardwareAddr)
 	if err != nil {
 		return fmt.Errorf("wrap: %w", err)
 	}
@@ -738,7 +752,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.SrcDev.HardwareAddr, ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr, ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}

@@ -180,7 +180,7 @@ func SerializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 }
 
 // CreateLayers return layers of transferring between client and server
-func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP net.IP, id uint16, hop uint8, dstHardwareAddr net.HardwareAddr) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
+func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *RawConn, dstIP net.IP, id uint16, hop uint8, dstHardwareAddr net.HardwareAddr) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
 		networkLayerType gopacket.LayerType
 		linkLayerType    gopacket.LayerType
@@ -199,9 +199,9 @@ func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 	// Create new network layer
 	switch networkLayerType {
 	case layers.LayerTypeIPv4:
-		networkLayer, err = CreateIPv4Layer(conn.LocalAddr().(*addr.MultiIPAddr).IPv4(), dstIP, id, hop-1, transportLayer.(gopacket.TransportLayer))
+		networkLayer, err = CreateIPv4Layer(conn.LocalDev().IPv4Addr().IP, dstIP, id, hop-1, transportLayer.(gopacket.TransportLayer))
 	case layers.LayerTypeIPv6:
-		networkLayer, err = CreateIPv6Layer(conn.LocalAddr().(*addr.MultiIPAddr).IPv6(), dstIP, hop-1, transportLayer.(gopacket.TransportLayer))
+		networkLayer, err = CreateIPv6Layer(conn.LocalDev().IPv6Addr().IP, dstIP, hop-1, transportLayer.(gopacket.TransportLayer))
 	default:
 		return nil, nil, nil, fmt.Errorf("network layer type %s not support", networkLayerType)
 	}
@@ -221,7 +221,7 @@ func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *Conn, dstIP ne
 	case layers.LayerTypeLoopback:
 		linkLayer = CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		linkLayer, err = CreateEthernetLayer(conn.SrcDev.HardwareAddr, dstHardwareAddr, networkLayer.(gopacket.NetworkLayer))
+		linkLayer, err = CreateEthernetLayer(conn.srcDev.HardwareAddr, dstHardwareAddr, networkLayer.(gopacket.NetworkLayer))
 	default:
 		return nil, nil, nil, fmt.Errorf("link layer type %s not support", linkLayerType)
 	}

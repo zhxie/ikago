@@ -37,7 +37,7 @@ type natIndicator struct {
 	srcHardwareAddr net.HardwareAddr
 	dst             net.Addr
 	embSrc          net.Addr
-	conn            *pcap.Conn
+	conn            *pcap.RawConn
 }
 
 func (indicator *natIndicator) embSrcIP() net.IP {
@@ -79,8 +79,8 @@ var (
 
 var (
 	isClosed     bool
-	listenConns  []*pcap.Conn
-	upConn       *pcap.Conn
+	listenConns  []*pcap.RawConn
+	upConn       *pcap.RawConn
 	c            chan pcap.ConnPacket
 	clientLock   sync.RWMutex
 	clients      map[string]*clientIndicator
@@ -102,7 +102,7 @@ func init() {
 
 	listenDevs = make([]*pcap.Device, 0)
 
-	listenConns = make([]*pcap.Conn, 0)
+	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	clients = make(map[string]*clientIndicator)
 	tcpPortPool = make([]time.Time, 16384)
@@ -262,14 +262,14 @@ func open() error {
 	// Handles for listening
 	for _, dev := range listenDevs {
 		var err error
-		var conn *pcap.Conn
+		var conn *pcap.RawConn
 
 		filter := fmt.Sprintf("tcp && dst port %d", port)
 
 		if dev.IsLoop {
-			conn, err = pcap.Dial(dev, dev, filter)
+			conn, err = pcap.CreateRawConn(dev, dev, filter)
 		} else {
-			conn, err = pcap.Dial(dev, gatewayDev, filter)
+			conn, err = pcap.CreateRawConn(dev, gatewayDev, filter)
 		}
 		if err != nil {
 			return fmt.Errorf("open listen device %s: %w", dev.Alias, err)
@@ -279,7 +279,7 @@ func open() error {
 	}
 
 	// Handles for routing upstream
-	upConn, err = pcap.Dial(upDev, gatewayDev, fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", port))
+	upConn, err = pcap.CreateRawConn(upDev, gatewayDev, fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", port))
 	if err != nil {
 		return fmt.Errorf("open upstream device %s: %w", upDev.Alias, err)
 	}
@@ -295,7 +295,7 @@ func open() error {
 					if isClosed {
 						return
 					}
-					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.SrcDev.Alias, err))
+					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.LocalDev().Alias, err))
 					continue
 				}
 
@@ -308,7 +308,7 @@ func open() error {
 		for connPacket := range c {
 			err := handleListen(connPacket.Packet, connPacket.Conn)
 			if err != nil {
-				log.Errorln(fmt.Errorf("handle listen in device %s: %w", connPacket.Conn.SrcDev.Alias, err))
+				log.Errorln(fmt.Errorf("handle listen in device %s: %w", connPacket.Conn.LocalDev().Alias, err))
 				log.Verboseln(connPacket.Packet)
 				continue
 			}
@@ -321,13 +321,13 @@ func open() error {
 			if isClosed {
 				return nil
 			}
-			log.Errorln(fmt.Errorf("read upstream device %s: %w", upConn.SrcDev.Alias, err))
+			log.Errorln(fmt.Errorf("read upstream device %s: %w", upConn.LocalDev().Alias, err))
 			continue
 		}
 
 		err = handleUpstream(packet)
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.SrcDev.Alias, err))
+			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.LocalDev().Alias, err))
 			log.Verboseln(packet)
 			continue
 		}
@@ -346,7 +346,7 @@ func closeAll() {
 	}
 }
 
-func handshake(indicator *pcap.PacketIndicator, conn *pcap.Conn) error {
+func handshake(indicator *pcap.PacketIndicator, conn *pcap.RawConn) error {
 	var (
 		transportLayerType gopacket.LayerType
 		newTransportLayer  gopacket.SerializableLayer
@@ -404,7 +404,7 @@ func handshake(indicator *pcap.PacketIndicator, conn *pcap.Conn) error {
 	return nil
 }
 
-func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
+func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
 		indicator             *pcap.PacketIndicator
 		transportLayerType    gopacket.LayerType
@@ -528,7 +528,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 			temp := *embIndicator.ICMPv4Indicator().EmbIPv4Layer()
 			newEmbIPv4Layer := &temp
 
-			newEmbIPv4Layer.DstIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv4()
+			newEmbIPv4Layer.DstIP = conn.LocalDev().IPv4Addr().IP
 
 			var err error
 			var newEmbTransportLayer gopacket.Layer
@@ -589,7 +589,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 
 		newIPv4Layer := newNetworkLayer.(*layers.IPv4)
 
-		newIPv4Layer.SrcIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv4()
+		newIPv4Layer.SrcIP = conn.LocalDev().IPv4Addr().IP
 		upIP = newIPv4Layer.SrcIP
 	case layers.LayerTypeIPv6:
 		ipv6Layer := embIndicator.NetworkLayer().(*layers.IPv6)
@@ -598,7 +598,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 
 		newIPv6Layer := newNetworkLayer.(*layers.IPv6)
 
-		newIPv6Layer.SrcIP = conn.LocalAddr().(*addr.MultiIPAddr).IPv6()
+		newIPv6Layer.SrcIP = conn.LocalDev().IPv6Addr().IP
 		upIP = newIPv6Layer.SrcIP
 	default:
 		return fmt.Errorf("network layer type %s not support", newNetworkLayerType)
@@ -635,7 +635,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.Conn) error {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(conn.SrcDev.HardwareAddr, conn.DstDev.HardwareAddr, newNetworkLayer)
+		newLinkLayer, err = pcap.CreateEthernetLayer(conn.LocalDev().HardwareAddr, conn.RemoteDev().HardwareAddr, newNetworkLayer)
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}

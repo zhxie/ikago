@@ -14,7 +14,7 @@ type ConnPacket struct {
 	// Packet is a packet
 	Packet gopacket.Packet
 	// Conn is the connection of the packet
-	Conn *Conn
+	Conn *RawConn
 }
 
 // NATGuide describes simplified information about a NAT
