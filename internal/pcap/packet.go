@@ -229,9 +229,9 @@ func (indicator *PacketIndicator) NATSrc() net.Addr {
 				IP: indicator.SrcIP(),
 				Id: indicator.icmpv4Indicator.Id(),
 			}
-		} else {
-			return indicator.icmpv4Indicator.NATSrc()
 		}
+
+		return indicator.icmpv4Indicator.NATSrc()
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
@@ -257,9 +257,9 @@ func (indicator *PacketIndicator) NATDst() net.Addr {
 				IP: indicator.DstIP(),
 				Id: indicator.icmpv4Indicator.Id(),
 			}
-		} else {
-			return indicator.icmpv4Indicator.NATDst()
 		}
+
+		return indicator.icmpv4Indicator.NATDst()
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
@@ -274,9 +274,9 @@ func (indicator *PacketIndicator) NATProto() gopacket.LayerType {
 	case layers.LayerTypeICMPv4:
 		if indicator.icmpv4Indicator.IsQuery() {
 			return t
-		} else {
-			return indicator.icmpv4Indicator.EmbTransportLayerType()
 		}
+
+		return indicator.icmpv4Indicator.EmbTransportLayerType()
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
@@ -302,11 +302,9 @@ func (indicator *PacketIndicator) Src() net.Addr {
 				IP: indicator.SrcIP(),
 				Id: indicator.icmpv4Indicator.Id(),
 			}
-		} else {
-			return &net.IPAddr{
-				IP: indicator.SrcIP(),
-			}
 		}
+
+		return &net.IPAddr{IP: indicator.SrcIP()}
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
@@ -332,11 +330,9 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 				IP: indicator.DstIP(),
 				Id: indicator.icmpv4Indicator.Id(),
 			}
-		} else {
-			return &net.IPAddr{
-				IP: indicator.DstIP(),
-			}
 		}
+
+		return &net.IPAddr{IP: indicator.DstIP()}
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}

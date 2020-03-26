@@ -480,10 +480,10 @@ func (indicator *ICMPv4Indicator) NATSrc() net.Addr {
 					IP: indicator.EmbDstIP(),
 					Id: indicator.EmbId(),
 				}
-			} else {
-				return &net.IPAddr{
-					IP: indicator.EmbDstIP(),
-				}
+			}
+
+			return &net.IPAddr{
+				IP: indicator.EmbDstIP(),
 			}
 		default:
 			panic(fmt.Errorf("transport layer type %s not support", t))
@@ -515,10 +515,10 @@ func (indicator *ICMPv4Indicator) NATDst() net.Addr {
 					IP: indicator.EmbSrcIP(),
 					Id: indicator.EmbId(),
 				}
-			} else {
-				return &net.IPAddr{
-					IP: indicator.EmbSrcIP(),
-				}
+			}
+
+			return &net.IPAddr{
+				IP: indicator.EmbSrcIP(),
 			}
 		default:
 			panic(fmt.Errorf("transport layer type %s not support", t))
