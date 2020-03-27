@@ -3,7 +3,6 @@ package pcap
 import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
-	"net"
 )
 
 type timeoutError struct {
@@ -29,24 +28,12 @@ type RawConn struct {
 func CreateRawConn(srcDev, dstDev *Device, filter string) (*RawConn, error) {
 	handle, err := pcap.OpenLive(srcDev.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
-		return nil, &net.OpError{
-			Op:     "dial",
-			Net:    "pcap",
-			Source: srcDev.IPAddr(),
-			Addr:   dstDev.IPAddr(),
-			Err:    err,
-		}
+		return nil, err
 	}
 
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		return nil, &net.OpError{
-			Op:     "dial",
-			Net:    "pcap",
-			Source: srcDev.IPAddr(),
-			Addr:   dstDev.IPAddr(),
-			Err:    err,
-		}
+		return nil, err
 	}
 
 	return &RawConn{
@@ -58,7 +45,6 @@ func CreateRawConn(srcDev, dstDev *Device, filter string) (*RawConn, error) {
 
 func (c *RawConn) Read(b []byte) (n int, err error) {
 	d, _, err := c.handle.ReadPacketData()
-
 	if err != nil {
 		return 0, err
 	}

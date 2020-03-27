@@ -256,7 +256,7 @@ func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open device %s: %w", dev, err)
 	}
-	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip.String()))
+	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip))
 	if err != nil {
 		return nil, fmt.Errorf("set bpf filter: %w", err)
 	}

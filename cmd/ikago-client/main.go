@@ -407,6 +407,7 @@ func handshake() error {
 	if err != nil {
 		return fmt.Errorf("synchronize: %w", err)
 	}
+
 	serverAddr := net.TCPAddr{IP: serverIP, Port: int(serverPort)}
 	serverAddrStr := serverAddr.String()
 

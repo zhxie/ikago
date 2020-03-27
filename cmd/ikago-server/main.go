@@ -82,7 +82,7 @@ var (
 	listenConns  []*pcap.RawConn
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnPacket
-	clientLock   sync.RWMutex
+	clientsLock  sync.RWMutex
 	clients      map[string]*clientIndicator
 	id           uint16
 	nextTCPPort  uint16
@@ -346,7 +346,7 @@ func closeAll() {
 	}
 }
 
-func handshake(indicator *pcap.PacketIndicator, conn *pcap.RawConn) error {
+func handshakeSYNACK(indicator *pcap.PacketIndicator, conn *pcap.RawConn) error {
 	var (
 		transportLayerType gopacket.LayerType
 		newTransportLayer  gopacket.SerializableLayer
@@ -392,9 +392,9 @@ func handshake(indicator *pcap.PacketIndicator, conn *pcap.RawConn) error {
 	client.seq++
 
 	// Map client
-	clientLock.Lock()
+	clientsLock.Lock()
 	clients[src.String()] = client
-	clientLock.Unlock()
+	clientsLock.Unlock()
 
 	// IPv4 Id
 	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
@@ -435,7 +435,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 	// Handshaking with client (SYN+ACK)
 	if indicator.TCPLayer().SYN {
-		err := handshake(indicator, conn)
+		err := handshakeSYNACK(indicator, conn)
 		if err != nil {
 			return fmt.Errorf("handshake: %w", err)
 		}
@@ -451,9 +451,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// Client
-	clientLock.RLock()
+	clientsLock.RLock()
 	client, ok := clients[src.String()]
-	clientLock.RUnlock()
+	clientsLock.RUnlock()
 	if !ok {
 		return fmt.Errorf("client %s unauthorized", src.String())
 	}
@@ -761,9 +761,12 @@ func handleUpstream(packet gopacket.Packet) error {
 
 	// Client
 	src := ni.src
-	clientLock.RLock()
+	clientsLock.RLock()
 	client, ok := clients[src.String()]
-	clientLock.RUnlock()
+	clientsLock.RUnlock()
+	if !ok {
+		return fmt.Errorf("client %s unrecognized", src.String())
+	}
 
 	// Keep alive
 	proto := indicator.NATProto()
