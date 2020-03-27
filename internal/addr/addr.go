@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 )
 
 // ICMPQueryAddr represents the address of a ICMP query end point.
@@ -19,6 +20,24 @@ func (addr ICMPQueryAddr) String() string {
 
 func (addr ICMPQueryAddr) Network() string {
 	return "icmp query"
+}
+
+type MultiTCPAddr struct {
+	Addrs []*net.TCPAddr
+}
+
+func (addr MultiTCPAddr) String() string {
+	s := make([]string, 0)
+
+	for _, addr := range addr.Addrs {
+		s = append(s, addr.String())
+	}
+
+	return strings.Join(s, ",")
+}
+
+func (addr MultiTCPAddr) Network() string {
+	return "tcp"
 }
 
 // ParseTCPAddr returns an TCPAddr by the given address
