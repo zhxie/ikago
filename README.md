@@ -12,7 +12,7 @@
 ## Features
 
 <p align="center">
-  <img src="/assets/diagram.png" alt="diagram">
+  <img src="/assets/diagram.jpg" alt="diagram">
 </p>
 
 - **FakeTCP** All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
@@ -52,7 +52,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
 
-`-kcp`: (Optional) Enable KCP. *Attention, using KCP may consume more protocol layer header bytes, make sure the MTU is set to a reasonable value.*
+`-kcp`: (Optional) Enable KCP. *Attention, using KCP may consume (at least 24) bytes for protocol header, make sure your MTU is set to a reasonable value.*
 
 `-v`: (Optional) Print verbose messages.
 
