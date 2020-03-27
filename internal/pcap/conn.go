@@ -195,8 +195,6 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 					})
 					continue
 				}
-
-				log.Infof("Connect from client %s\n", indicator.Src().String())
 			}
 		}
 	}()

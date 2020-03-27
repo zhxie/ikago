@@ -303,6 +303,8 @@ func open() error {
 					continue
 				}
 
+				log.Infof("Connect from client %s", conn.RemoteAddr().String())
+
 				go func() {
 					for {
 						b := make([]byte, 1600)
