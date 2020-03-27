@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -29,7 +30,7 @@ type quintuple struct {
 type natIndicator struct {
 	src    net.Addr
 	embSrc net.Addr
-	conn   *pcap.Conn
+	conn   net.Conn
 }
 
 func (indicator *natIndicator) embSrcIP() net.IP {
@@ -71,9 +72,9 @@ var (
 
 var (
 	isClosed     bool
-	listenConns  []*pcap.Conn
+	listeners    []*kcp.Listener
 	upConn       *pcap.RawConn
-	c            chan pcap.ConnAddrBytes
+	c            chan pcap.ConnBytes
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -91,8 +92,8 @@ func init() {
 
 	listenDevs = make([]*pcap.Device, 0)
 
-	listenConns = make([]*pcap.Conn, 0)
-	c = make(chan pcap.ConnAddrBytes, 1000)
+	listeners = make([]*kcp.Listener, 0)
+	c = make(chan pcap.ConnBytes, 1000)
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
@@ -250,18 +251,18 @@ func open() error {
 	// Handles for listening
 	for _, dev := range listenDevs {
 		var err error
-		var conn *pcap.Conn
+		var listener *kcp.Listener
 
 		if dev.IsLoop {
-			conn, err = pcap.Listen(dev, dev, port, crypt)
+			listener, err = pcap.ListenWithKCP(dev, dev, port, crypt)
 		} else {
-			conn, err = pcap.Listen(dev, gatewayDev, port, crypt)
+			listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt)
 		}
 		if err != nil {
-			return fmt.Errorf("open listen connection in device %s: %w", dev.Alias, err)
+			return fmt.Errorf("listen in listen device %s: %w", dev.Alias, err)
 		}
 
-		listenConns = append(listenConns, conn)
+		listeners = append(listeners, listener)
 	}
 
 	// Handles for routing upstream
@@ -271,37 +272,47 @@ func open() error {
 	}
 
 	// Start handling
-	for i := 0; i < len(listenConns); i++ {
-		conn := listenConns[i]
-
+	for _, listener := range listeners {
 		go func() {
 			for {
-				b := make([]byte, 1600)
-
-				n, a, err := conn.ReadFrom(b)
+				sess, err := listener.AcceptKCP()
 				if err != nil {
 					if isClosed {
 						return
 					}
-					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.LocalDev().Alias, err))
+					log.Errorln(fmt.Errorf("accept: %w", err))
 					continue
 				}
 
-				c <- pcap.ConnAddrBytes{
-					Bytes: b[:n],
-					Addr:  a,
-					Conn:  conn,
-				}
+				go func() {
+					for {
+						b := make([]byte, 1600)
+
+						n, err := sess.Read(b)
+						if err != nil {
+							if isClosed {
+								return
+							}
+							log.Errorln(fmt.Errorf("read listen device: %w", err))
+							continue
+						}
+
+						c <- pcap.ConnBytes{
+							Bytes: b[:n],
+							Conn:  sess,
+						}
+					}
+				}()
 			}
 		}()
 	}
 
 	go func() {
 		for cab := range c {
-			err := handleListen(cab.Bytes, cab.Addr, cab.Conn)
+			err := handleListen(cab.Bytes, cab.Conn)
 			if err != nil {
-				log.Errorln(fmt.Errorf("handle listen in device %s: %w", cab.Conn.LocalDev().Alias, err))
-				log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", cab.Addr.String(), len(cab.Bytes), cab.Bytes)
+				log.Errorln(fmt.Errorf("handle listen: %w", err))
+				log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", cab.Conn.RemoteAddr().String(), len(cab.Bytes), cab.Bytes)
 				continue
 			}
 		}
@@ -328,7 +339,7 @@ func open() error {
 
 func closeAll() {
 	isClosed = true
-	for _, handle := range listenConns {
+	for _, handle := range listeners {
 		if handle != nil {
 			handle.Close()
 		}
@@ -338,7 +349,7 @@ func closeAll() {
 	}
 }
 
-func handleListen(contents []byte, a net.Addr, conn *pcap.Conn) error {
+func handleListen(contents []byte, conn net.Conn) error {
 	var (
 		embIndicator          *pcap.PacketIndicator
 		upValue               uint16
@@ -367,7 +378,7 @@ func handleListen(contents []byte, a net.Addr, conn *pcap.Conn) error {
 	// Distribute port/Id by source and client address and protocol
 	q := quintuple{
 		src:   embIndicator.NATSrc().String(),
-		dst:   a.String(),
+		dst:   conn.RemoteAddr().String(),
 		proto: embIndicator.NATProto(),
 	}
 	upValue, ok := valueMap[q]
@@ -588,7 +599,7 @@ func handleListen(contents []byte, a net.Addr, conn *pcap.Conn) error {
 	}
 	if addNAT {
 		ni = &natIndicator{
-			src:    a,
+			src:    conn.RemoteAddr(),
 			embSrc: embIndicator.NATSrc(),
 			conn:   conn,
 		}
@@ -611,7 +622,7 @@ func handleListen(contents []byte, a net.Addr, conn *pcap.Conn) error {
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
-		embIndicator.TransportLayerType(), embIndicator.Src().String(), a.String(), embIndicator.Dst().String(), n)
+		embIndicator.TransportLayerType(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), n)
 
 	return nil
 }
@@ -796,7 +807,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Write packet data
-	n, err := ni.conn.WriteTo(contents, ni.src)
+	n, err := ni.conn.Write(contents)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}

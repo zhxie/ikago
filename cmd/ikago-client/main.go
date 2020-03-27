@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -56,7 +57,7 @@ var (
 var (
 	isClosed    bool
 	listenConns []*pcap.RawConn
-	upConn      *pcap.Conn
+	sess        *kcp.UDPSession
 	c           chan pcap.ConnPacket
 	natLock     sync.RWMutex
 	nat         map[pcap.NATGuide]*natIndicator
@@ -314,9 +315,9 @@ func open() error {
 	}
 
 	// Handle for routing upstream
-	upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+	sess, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
 	if err != nil {
-		return fmt.Errorf("open upstream connection in device %s: %w", upDev.Alias, err)
+		return fmt.Errorf("dial in upstream device %s: %w", upDev.Alias, err)
 	}
 
 	for i := 0; i < len(listenConns); i++ {
@@ -352,19 +353,19 @@ func open() error {
 	for {
 		b := make([]byte, 1600)
 
-		n, err := upConn.Read(b)
+		n, err := sess.Read(b)
 		if err != nil {
 			if isClosed {
 				return nil
 			}
-			log.Errorln("read upstream device %s: %w", upConn.LocalDev().Alias, err)
+			log.Errorln("read upstream device: %w", err)
 			continue
 		}
 
 		err = handleUpstream(b[:n])
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.LocalDev().Alias, err))
-			log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", upConn.RemoteAddr().String(), n, b[:n])
+			log.Errorln(fmt.Errorf("handle upstream: %w", err))
+			log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", sess.RemoteAddr().String(), n, b[:n])
 			continue
 		}
 	}
@@ -377,8 +378,8 @@ func closeAll() {
 			handle.Close()
 		}
 	}
-	if upConn != nil {
-		upConn.Close()
+	if sess != nil {
+		sess.Close()
 	}
 }
 
@@ -469,7 +470,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 		indicator.TransportLayer().(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.Payload()))
 
-	n, err := upConn.Write(contents)
+	n, err := sess.Write(contents)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
