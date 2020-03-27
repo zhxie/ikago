@@ -20,12 +20,6 @@ import (
 	"time"
 )
 
-type clientIndicator struct {
-	crypt crypto.Crypt
-	seq   uint32
-	ack   uint32
-}
-
 type quintuple struct {
 	src   string
 	dst   string
@@ -33,9 +27,9 @@ type quintuple struct {
 }
 
 type natIndicator struct {
-	src             net.Addr
-	embSrc          net.Addr
-	conn            *pcap.Conn
+	src    net.Addr
+	embSrc net.Addr
+	conn   *pcap.Conn
 }
 
 func (indicator *natIndicator) embSrcIP() net.IP {
@@ -284,7 +278,7 @@ func open() error {
 			for {
 				b := make([]byte, 1600)
 
-				n, addr, err := conn.ReadFrom(b)
+				n, a, err := conn.ReadFrom(b)
 				if err != nil {
 					if isClosed {
 						return
@@ -295,7 +289,7 @@ func open() error {
 
 				c <- pcap.ConnAddrBytes{
 					Bytes: b[:n],
-					Addr:  addr,
+					Addr:  a,
 					Conn:  conn,
 				}
 			}

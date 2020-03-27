@@ -423,33 +423,33 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.dstAddr)
 }
 
-func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	packet, addr, err := c.readPacketFrom()
+func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
+	packet, a, err := c.readPacketFrom()
 	if err != nil {
-		return 0, addr, &net.OpError{
+		return 0, a, &net.OpError{
 			Op:     "read",
 			Net:    "pcap",
-			Source: c.corLocalAddr(addr),
-			Addr:   addr,
+			Source: c.corLocalAddr(a),
+			Addr:   a,
 			Err:    err,
 		}
 	}
 
 	if packet.ApplicationLayer() == nil {
-		return 0, addr, nil
+		return 0, a, nil
 	}
 
 	// Client
 	c.clientsLock.RLock()
-	client, ok := c.clients[addr.String()]
+	client, ok := c.clients[a.String()]
 	c.clientsLock.RUnlock()
 	if !ok {
-		return 0, addr, &net.OpError{
+		return 0, a, &net.OpError{
 			Op:     "read",
 			Net:    "pcap",
-			Source: c.corLocalAddr(addr),
-			Addr:   addr,
-			Err:    fmt.Errorf("client %s unauthorized", addr.String()),
+			Source: c.corLocalAddr(a),
+			Addr:   a,
+			Err:    fmt.Errorf("client %s unauthorized", a.String()),
 		}
 	}
 
@@ -459,18 +459,18 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	// Decrypt
 	contents, err := client.crypt.Decrypt(packet.ApplicationLayer().LayerContents())
 	if err != nil {
-		return 0, addr, &net.OpError{
+		return 0, a, &net.OpError{
 			Op:     "read",
 			Net:    "pcap",
-			Source: c.corLocalAddr(addr),
-			Addr:   addr,
+			Source: c.corLocalAddr(a),
+			Addr:   a,
 			Err:    fmt.Errorf("decrypt: %w", err),
 		}
 	}
 
 	copy(p, contents)
 
-	return len(contents), addr, err
+	return len(contents), a, err
 }
 
 func (c *Conn) readPacketFrom() (packet gopacket.Packet, addr net.Addr, err error) {
@@ -551,9 +551,9 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	go func() {
 		var (
-			transportLayer   gopacket.SerializableLayer
-			networkLayer     gopacket.SerializableLayer
-			linkLayer        gopacket.SerializableLayer
+			transportLayer gopacket.SerializableLayer
+			networkLayer   gopacket.SerializableLayer
+			linkLayer      gopacket.SerializableLayer
 		)
 
 		// Client
