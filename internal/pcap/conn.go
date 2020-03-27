@@ -164,7 +164,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 				log.Errorln(&net.OpError{
 					Op:     "listen",
 					Net:    "pcap",
-					Source: srcAddrs,
+					Addr:   srcAddrs,
 					Err:    fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err),
 				})
 				continue
@@ -176,7 +176,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 				log.Errorln(&net.OpError{
 					Op:     "handshake",
 					Net:    "pcap",
-					Source: srcAddrs,
+					Addr:   srcAddrs,
 					Err:    fmt.Errorf("parse packet: %w", err),
 				})
 				continue
@@ -187,11 +187,11 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 				err := conn.handshakeSYNACK(indicator)
 				if err != nil {
 					log.Errorln(&net.OpError{
-						Op:     "listen",
+						Op:     "handshake",
 						Net:    "pcap",
 						Source: conn.corLocalAddr(indicator.Src()),
 						Addr:   indicator.Src(),
-						Err:    fmt.Errorf("handshake: %w", err),
+						Err:    err,
 					})
 					continue
 				}
@@ -321,7 +321,7 @@ func (c *Conn) handshakeSYN(conn *RawConn) error {
 
 	// Map client
 	c.clientsLock.Lock()
-	c.clients[c.dstAddr.String()] = client
+	c.clients[c.RemoteAddr().String()] = client
 	c.clientsLock.Unlock()
 
 	// IPv4 Id
@@ -448,7 +448,7 @@ func (c *Conn) handshakeACK(packet gopacket.Packet, conn *RawConn) error {
 }
 
 func (c *Conn) Write(b []byte) (n int, err error) {
-	return c.WriteTo(b, c.dstAddr)
+	return c.WriteTo(b, c.RemoteAddr())
 }
 
 func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
@@ -665,8 +665,7 @@ func (c *Conn) Close() error {
 		return &net.OpError{
 			Op:     "close",
 			Net:    "pcap",
-			Source: c.corLocalAddr(c.dstAddr),
-			Addr:   c.dstAddr,
+			Addr:   c.corLocalAddr(c.RemoteAddr()),
 			Err:    err,
 		}
 	}
@@ -799,8 +798,8 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:     "accept",
 			Net:    "pcap",
-			Source: l.corAddr(nil),
-			Err:    fmt.Errorf("read device %s: %w", l.conn.LocalDev().alias, err),
+			Addr:   l.corAddr(nil),
+			Err:    fmt.Errorf("read device %s: %w", l.Dev().alias, err),
 		}
 	}
 
@@ -810,15 +809,15 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:     "accept",
 			Net:    "pcap",
-			Source: l.corAddr(nil),
+			Addr:   l.corAddr(nil),
 			Err:    fmt.Errorf("parse packet: %w", err),
 		}
 	}
 
-	conn, err := dialPassive(l.conn.LocalDev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt)
+	conn, err := dialPassive(l.Dev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt)
 	if err != nil {
 		return nil, &net.OpError{
-			Op:     "accept",
+			Op:     "dial",
 			Net:    "pcap",
 			Source: l.corAddr(indicator.Src()),
 			Addr:   indicator.Src(),
@@ -853,7 +852,7 @@ func (l *Listener) Close() error {
 		return &net.OpError{
 			Op:     "close",
 			Net:    "pcap",
-			Source: l.corAddr(nil),
+			Addr:   l.corAddr(nil),
 			Err:    err,
 		}
 	}

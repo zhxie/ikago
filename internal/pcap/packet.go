@@ -351,6 +351,7 @@ func (indicator *PacketIndicator) Payload() []byte {
 	if indicator.applicationLayer == nil {
 		return nil
 	}
+
 	return indicator.applicationLayer.LayerContents()
 }
 
@@ -441,8 +442,7 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 	if networkLayer.LayerType() != layers.LayerTypeIPv4 {
 		return nil, errors.New("network layer type not support")
 	}
-	ipVersion := networkLayer.(*layers.IPv4).Version
-	switch ipVersion {
+	switch networkLayer.(*layers.IPv4).Version {
 	case 4:
 		break
 	case 6:
@@ -456,7 +456,7 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 			return nil, errors.New("network layer type not support")
 		}
 	default:
-		return nil, fmt.Errorf("ip version %d not support", ipVersion)
+		return nil, fmt.Errorf("ip version %d not support", networkLayer.(*layers.IPv4).Version)
 	}
 
 	// Parse packet

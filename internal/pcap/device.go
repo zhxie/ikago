@@ -52,6 +52,7 @@ func (dev *Device) IPAddr() *net.IPNet {
 	if len(dev.ipAddrs) > 0 {
 		return dev.ipAddrs[0]
 	}
+
 	return nil
 }
 
@@ -62,6 +63,7 @@ func (dev *Device) IPv4Addr() *net.IPNet {
 			return addr
 		}
 	}
+
 	return nil
 }
 
@@ -72,12 +74,14 @@ func (dev *Device) IPv6Addr() *net.IPNet {
 			return addr
 		}
 	}
+
 	return nil
 }
 
 // To4 returns the device with IPv4 addresses only.
 func (dev *Device) To4() *Device {
 	addrs := make([]*net.IPNet, 0)
+
 	for _, addr := range dev.ipAddrs {
 		if addr.IP.To4() != nil {
 			addrs = append(addrs, addr)
@@ -86,6 +90,7 @@ func (dev *Device) To4() *Device {
 	if len(addrs) <= 0 {
 		return nil
 	}
+
 	return &Device{
 		name:         dev.name,
 		alias:        dev.alias,
@@ -98,6 +103,7 @@ func (dev *Device) To4() *Device {
 // To16Only returns the device with IPv6 addresses only.
 func (dev *Device) To16Only() *Device {
 	addrs := make([]*net.IPNet, 0)
+
 	for _, addr := range dev.ipAddrs {
 		if addr.IP.To4() == nil {
 			addrs = append(addrs, addr)
@@ -106,6 +112,7 @@ func (dev *Device) To16Only() *Device {
 	if len(addrs) <= 0 {
 		return nil
 	}
+
 	return &Device{
 		name:         dev.name,
 		alias:        dev.alias,
@@ -117,19 +124,23 @@ func (dev *Device) To16Only() *Device {
 
 func (dev Device) String() string {
 	var result string
+
 	if dev.hardwareAddr != nil {
 		result = dev.alias + " [" + dev.hardwareAddr.String() + "]: "
 	} else {
 		result = dev.alias + ": "
 	}
+
 	addrs := make([]string, 0)
 	for _, addr := range dev.ipAddrs {
 		addrs = append(addrs, addr.IP.String())
 	}
 	result = result + strings.Join(addrs, ", ")
+
 	if dev.isLoop {
 		result = result + " (Loopback)"
 	}
+
 	return result
 }
 
@@ -249,6 +260,7 @@ func FindLoopDev(devs []*Device) *Device {
 			return dev
 		}
 	}
+
 	return nil
 }
 
@@ -261,6 +273,7 @@ func FindDev(devs []*Device, ip net.IP) *Device {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -281,11 +294,14 @@ func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open device %s: %w", dev, err)
 	}
+
 	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip))
 	if err != nil {
 		return nil, fmt.Errorf("set bpf filter: %w", err)
 	}
+
 	localPacketSrc := gopacket.NewPacketSource(handle, handle.LinkType())
+
 	c := make(chan gopacket.Packet, 1)
 	go func() {
 		for packet := range localPacketSrc.Packets() {
@@ -317,7 +333,9 @@ func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
 	if !ok {
 		return nil, errors.New("invalid packet")
 	}
+	
 	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP: ip})
+
 	return &Device{alias: "Gateway", ipAddrs: addrs, hardwareAddr: ethernetPacket.DstMAC}, nil
 }
 

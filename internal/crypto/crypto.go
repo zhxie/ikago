@@ -33,8 +33,10 @@ type Crypt interface {
 
 // ParseCrypt returns a crypt by given method and password.
 func ParseCrypt(method, password string) (Crypt, error) {
-	var err error
-	var c Crypt
+	var (
+		err error
+		c Crypt
+	)
 
 	switch strings.ToLower(method) {
 	case "plain":
