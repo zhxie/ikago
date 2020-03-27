@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -35,6 +34,7 @@ var (
 	argGateway    = flag.String("gateway", "", "Gateway address.")
 	argMethod     = flag.String("method", "plain", "Method of encryption.")
 	argPassword   = flag.String("password", "", "Password of encryption.")
+	argKCP        = flag.Bool("kcp", false, "Enable KCP.")
 	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
 	argPublish    = flag.String("publish", "", "ARP publishing address.")
 	argUpPort     = flag.Int("p", 0, "Port for routing upstream.")
@@ -52,12 +52,13 @@ var (
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
 	crypt      crypto.Crypt
+	kcp        bool
 )
 
 var (
 	isClosed    bool
 	listenConns []*pcap.RawConn
-	sess        *kcp.UDPSession
+	upConn      net.Conn
 	c           chan pcap.ConnPacket
 	natLock     sync.RWMutex
 	nat         map[pcap.NATGuide]*natIndicator
@@ -95,6 +96,7 @@ func main() {
 			Gateway:    *argGateway,
 			Method:     *argMethod,
 			Password:   *argPassword,
+			KCP:        *argKCP,
 			Verbose:    *argVerbose,
 			Publish:    *argPublish,
 			UpPort:     *argUpPort,
@@ -194,6 +196,16 @@ func main() {
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
+	}
+	method := crypt.Method()
+	if method != crypto.MethodPlain {
+		log.Infof("Encrypt with %s\n", method)
+	}
+
+	// KCP
+	kcp = cfg.KCP
+	if kcp {
+		log.Infoln("Enable KCP")
 	}
 
 	if len(filters) == 1 {
@@ -315,7 +327,11 @@ func open() error {
 	}
 
 	// Handle for routing upstream
-	sess, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+	if kcp {
+		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+	} else {
+		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+	}
 	if err != nil {
 		return fmt.Errorf("dial in upstream device %s: %w", upDev.Alias, err)
 	}
@@ -353,7 +369,7 @@ func open() error {
 	for {
 		b := make([]byte, 1600)
 
-		n, err := sess.Read(b)
+		n, err := upConn.Read(b)
 		if err != nil {
 			if isClosed {
 				return nil
@@ -365,7 +381,7 @@ func open() error {
 		err = handleUpstream(b[:n])
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle upstream: %w", err))
-			log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", sess.RemoteAddr().String(), n, b[:n])
+			log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", upConn.RemoteAddr().String(), n, b[:n])
 			continue
 		}
 	}
@@ -378,8 +394,8 @@ func closeAll() {
 			handle.Close()
 		}
 	}
-	if sess != nil {
-		sess.Close()
+	if upConn != nil {
+		upConn.Close()
 	}
 }
 
@@ -470,7 +486,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 		indicator.TransportLayer().(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.Payload()))
 
-	n, err := sess.Write(contents)
+	n, err := upConn.Write(contents)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}

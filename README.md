@@ -20,6 +20,7 @@
 - **Cross platform** Works well with Windows and Linux, and macOS and others in theory.
 - **NAT support** Performs a full cone NAT.
 - **Encryption** Traffic can be encrypted.
+- **KCP** Integrates the support of KCP.
 
 ## Dependencies
 
@@ -50,6 +51,8 @@ go run ./cmd/ikago-server -p [port]
 `-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`.
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
+
+`-kcp`: (Optional) Enable KCP. *Attention, using KCP may consume more protocol layer header bytes, make sure the MTU is set to a reasonable value.*
 
 `-v`: (Optional) Print verbose messages.
 
@@ -87,7 +90,6 @@ go run ./cmd/ikago-server -p [port]
 
 - [ ] Retransmission and out of order packets detection
 - [ ] Bypass filters
-- [ ] Support KCP
 
 ## License
 

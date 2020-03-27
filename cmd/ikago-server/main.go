@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -58,6 +57,7 @@ var (
 	argGateway    = flag.String("gateway", "", "Gateway address.")
 	argMethod     = flag.String("method", "plain", "Method of encryption.")
 	argPassword   = flag.String("password", "", "Password of encryption.")
+	argKCP        = flag.Bool("kcp", false, "Enable KCP.")
 	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
 	argPort       = flag.Int("p", 0, "Port for listening.")
 )
@@ -68,11 +68,12 @@ var (
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
 	crypt      crypto.Crypt
+	kcp        bool
 )
 
 var (
 	isClosed     bool
-	listeners    []*kcp.Listener
+	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
 	nextTCPPort  uint16
@@ -92,7 +93,7 @@ func init() {
 
 	listenDevs = make([]*pcap.Device, 0)
 
-	listeners = make([]*kcp.Listener, 0)
+	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
@@ -121,6 +122,7 @@ func main() {
 			Gateway:    *argGateway,
 			Method:     *argMethod,
 			Password:   *argPassword,
+			KCP:        *argKCP,
 			Verbose:    *argVerbose,
 			Port:       *argPort,
 		}
@@ -161,6 +163,16 @@ func main() {
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse crypt: %w", err))
+	}
+	method := crypt.Method()
+	if method != crypto.MethodPlain {
+		log.Infof("Encrypt with %s\n", method)
+	}
+
+	// KCP
+	kcp = cfg.KCP
+	if kcp {
+		log.Infoln("Enable KCP")
 	}
 
 	log.Infof("Proxy from :%d\n", cfg.Port)
@@ -248,15 +260,22 @@ func open() error {
 		log.Infof("Route upstream in %s\n", upDev)
 	}
 
-	// Handles for listening
 	for _, dev := range listenDevs {
 		var err error
-		var listener *kcp.Listener
+		var listener net.Listener
 
 		if dev.IsLoop {
-			listener, err = pcap.ListenWithKCP(dev, dev, port, crypt)
+			if kcp {
+				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt)
+			} else {
+				listener, err = pcap.Listen(dev, dev, port, crypt)
+			}
 		} else {
-			listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt)
+			if kcp {
+				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt)
+			} else {
+				listener, err = pcap.Listen(dev, gatewayDev, port, crypt)
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("listen in listen device %s: %w", dev.Alias, err)
@@ -275,7 +294,7 @@ func open() error {
 	for _, listener := range listeners {
 		go func() {
 			for {
-				sess, err := listener.AcceptKCP()
+				conn, err := listener.Accept()
 				if err != nil {
 					if isClosed {
 						return
@@ -288,7 +307,7 @@ func open() error {
 					for {
 						b := make([]byte, 1600)
 
-						n, err := sess.Read(b)
+						n, err := conn.Read(b)
 						if err != nil {
 							if isClosed {
 								return
@@ -299,7 +318,7 @@ func open() error {
 
 						c <- pcap.ConnBytes{
 							Bytes: b[:n],
-							Conn:  sess,
+							Conn:  conn,
 						}
 					}
 				}()

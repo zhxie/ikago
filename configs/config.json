@@ -4,6 +4,7 @@
   "gateway": "",
   "method": "plain",
   "password": "",
+  "kcp": false,
   "verbose": false,
 
   "publish": "",

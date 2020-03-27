@@ -16,6 +16,7 @@ type Config struct {
 	Gateway    string   `json:"gateway"`
 	Method     string   `json:"method"`
 	Password   string   `json:"password"`
+	KCP        bool     `json:"kcp"`
 	Verbose    bool     `json:"verbose"`
 	Publish    string   `json:"publish"`
 	UpPort     int      `json:"upstream-port"`
