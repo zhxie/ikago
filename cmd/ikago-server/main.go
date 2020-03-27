@@ -187,7 +187,7 @@ func main() {
 		result := make([]*pcap.Device, 0)
 
 		for _, dev := range listenDevs {
-			if dev.IsLoop {
+			if dev.IsLoop() {
 				continue
 			}
 			result = append(result, dev)
@@ -254,7 +254,7 @@ func open() error {
 			log.Infof("  %s\n", dev)
 		}
 	}
-	if !gatewayDev.IsLoop {
+	if !gatewayDev.IsLoop() {
 		log.Infof("Route upstream from %s to %s\n", upDev, gatewayDev)
 	} else {
 		log.Infof("Route upstream in %s\n", upDev)
@@ -264,7 +264,7 @@ func open() error {
 		var err error
 		var listener net.Listener
 
-		if dev.IsLoop {
+		if dev.IsLoop() {
 			if kcp {
 				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt)
 			} else {
@@ -278,7 +278,7 @@ func open() error {
 			}
 		}
 		if err != nil {
-			return fmt.Errorf("listen in listen device %s: %w", dev.Alias, err)
+			return fmt.Errorf("listen in listen device %s: %w", dev.Alias(), err)
 		}
 
 		listeners = append(listeners, listener)
@@ -287,7 +287,7 @@ func open() error {
 	// Handles for routing upstream
 	upConn, err = pcap.CreateRawConn(upDev, gatewayDev, fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", port))
 	if err != nil {
-		return fmt.Errorf("open upstream device %s: %w", upDev.Alias, err)
+		return fmt.Errorf("open upstream device %s: %w", upDev.Alias(), err)
 	}
 
 	// Start handling
@@ -343,13 +343,13 @@ func open() error {
 			if isClosed {
 				return nil
 			}
-			log.Errorln(fmt.Errorf("read upstream device %s: %w", upConn.LocalDev().Alias, err))
+			log.Errorln(fmt.Errorf("read upstream device %s: %w", upConn.LocalDev().Alias(), err))
 			continue
 		}
 
 		err = handleUpstream(packet)
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.LocalDev().Alias, err))
+			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.LocalDev().Alias(), err))
 			log.Verboseln(packet)
 			continue
 		}
@@ -556,7 +556,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(upConn.LocalDev().HardwareAddr, upConn.RemoteDev().HardwareAddr, newNetworkLayer)
+		newLinkLayer, err = pcap.CreateEthernetLayer(upConn.LocalDev().HardwareAddr(), upConn.RemoteDev().HardwareAddr(), newNetworkLayer)
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
@@ -894,15 +894,15 @@ func convertFromPort(port uint16) uint16 {
 func splitArg(s string) []string {
 	if s == "" {
 		return nil
-	} else {
-		result := make([]string, 0)
-
-		strs := strings.Split(s, ",")
-
-		for _, str := range strs {
-			result = append(result, strings.Trim(str, " "))
-		}
-
-		return result
 	}
+
+	result := make([]string, 0)
+
+	strs := strings.Split(s, ",")
+
+	for _, str := range strs {
+		result = append(result, strings.Trim(str, " "))
+	}
+
+	return result
 }

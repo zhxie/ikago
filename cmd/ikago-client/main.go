@@ -228,7 +228,7 @@ func main() {
 		result := make([]*pcap.Device, 0)
 
 		for _, dev := range listenDevs {
-			if dev.IsLoop {
+			if dev.IsLoop() {
 				continue
 			}
 			result = append(result, dev)
@@ -281,7 +281,7 @@ func open() error {
 			log.Infof("  %s\n", dev)
 		}
 	}
-	if !gatewayDev.IsLoop {
+	if !gatewayDev.IsLoop() {
 		log.Infof("Route upstream from %s to %s\n", upDev, gatewayDev)
 	} else {
 		log.Infof("Route upstream in %s\n", upDev)
@@ -314,13 +314,13 @@ func open() error {
 			conn *pcap.RawConn
 		)
 
-		if dev.IsLoop {
+		if dev.IsLoop() {
 			conn, err = pcap.CreateRawConn(dev, dev, filter)
 		} else {
 			conn, err = pcap.CreateRawConn(dev, gatewayDev, filter)
 		}
 		if err != nil {
-			return fmt.Errorf("open listen device %s: %w", dev.Alias, err)
+			return fmt.Errorf("open listen device %s: %w", dev.Alias(), err)
 		}
 
 		listenConns = append(listenConns, conn)
@@ -333,7 +333,7 @@ func open() error {
 		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
 	}
 	if err != nil {
-		return fmt.Errorf("dial in upstream device %s: %w", upDev.Alias, err)
+		return fmt.Errorf("dial in upstream device %s: %w", upDev.Alias(), err)
 	}
 
 	for i := 0; i < len(listenConns); i++ {
@@ -346,7 +346,7 @@ func open() error {
 					if isClosed {
 						return
 					}
-					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.LocalDev().Alias, err))
+					log.Errorln(fmt.Errorf("read listen device %s: %w", conn.LocalDev().Alias(), err))
 					continue
 				}
 
@@ -359,7 +359,7 @@ func open() error {
 		for cp := range c {
 			err := handleListen(cp.Packet, cp.Conn)
 			if err != nil {
-				log.Errorln(fmt.Errorf("handle listen in device %s: %w", cp.Conn.LocalDev().Alias, err))
+				log.Errorln(fmt.Errorf("handle listen in device %s: %w", cp.Conn.LocalDev().Alias(), err))
 				log.Verboseln(cp.Packet)
 				continue
 			}
@@ -428,7 +428,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 		HwAddressSize:     arpLayer.HwAddressSize,
 		ProtAddressSize:   arpLayer.ProtAddressSize,
 		Operation:         layers.ARPReply,
-		SourceHwAddress:   conn.LocalDev().HardwareAddr,
+		SourceHwAddress:   conn.LocalDev().HardwareAddr(),
 		SourceProtAddress: arpLayer.DstProtAddress,
 		DstHwAddress:      arpLayer.SourceHwAddress,
 		DstProtAddress:    arpLayer.SourceProtAddress,
@@ -440,7 +440,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 	switch linkLayerType {
 	case layers.LayerTypeEthernet:
 		newLinkLayer = &layers.Ethernet{
-			SrcMAC:       conn.LocalDev().HardwareAddr,
+			SrcMAC:       conn.LocalDev().HardwareAddr(),
 			DstMAC:       linkLayer.(*layers.Ethernet).SrcMAC,
 			EthernetType: linkLayer.(*layers.Ethernet).EthernetType,
 		}
@@ -539,7 +539,7 @@ func handleUpstream(contents []byte) error {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
 	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr, ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr(), ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
@@ -570,15 +570,15 @@ func handleUpstream(contents []byte) error {
 func splitArg(s string) []string {
 	if s == "" {
 		return nil
-	} else {
-		result := make([]string, 0)
-
-		strs := strings.Split(s, ",")
-
-		for _, str := range strs {
-			result = append(result, strings.Trim(str, " "))
-		}
-
-		return result
 	}
+
+	result := make([]string, 0)
+
+	strs := strings.Split(s, ",")
+
+	for _, str := range strs {
+		result = append(result, strings.Trim(str, " "))
+	}
+
+	return result
 }

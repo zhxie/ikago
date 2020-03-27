@@ -9,31 +9,31 @@ import (
 	"net"
 )
 
-// ConnPacket describes a packet and its connection
+// ConnPacket describes a packet and its connection.
 type ConnPacket struct {
-	// Packet is a packet
+	// Packet is a packet.
 	Packet gopacket.Packet
-	// Conn is the connection of the packet
+	// Conn is the connection of the packet.
 	Conn *RawConn
 }
 
-// ConnBytes describes an array of bytes and its connection
+// ConnBytes describes an array of bytes and its connection.
 type ConnBytes struct {
-	// Bytes is an array of byte
+	// Bytes is an array of byte.
 	Bytes []byte
-	// Conn is the connection of the bytes
+	// Conn is the connection of the bytes.
 	Conn net.Conn
 }
 
-// NATGuide describes simplified information about a NAT
+// NATGuide describes simplified information about a NAT.
 type NATGuide struct {
-	// Src is the source in NAT
+	// Src is the source in NAT.
 	Src string
-	// Proto is the protocol in NAT
+	// Proto is the protocol in NAT.
 	Proto gopacket.LayerType
 }
 
-// PacketIndicator indicates a packet
+// PacketIndicator indicates a packet.
 type PacketIndicator struct {
 	linkLayer        gopacket.Layer
 	networkLayer     gopacket.Layer
@@ -42,17 +42,17 @@ type PacketIndicator struct {
 	applicationLayer gopacket.ApplicationLayer
 }
 
-// LinkLayer returns the link layer
+// LinkLayer returns the link layer.
 func (indicator *PacketIndicator) LinkLayer() gopacket.Layer {
 	return indicator.linkLayer
 }
 
-// LinkLayerType returns the type of the link layer
+// LinkLayerType returns the type of the link layer.
 func (indicator *PacketIndicator) LinkLayerType() gopacket.LayerType {
 	return indicator.linkLayer.LayerType()
 }
 
-// SrcHardwareAddr returns the source hardware address
+// SrcHardwareAddr returns the source hardware address.
 func (indicator *PacketIndicator) SrcHardwareAddr() net.HardwareAddr {
 	t := indicator.LinkLayerType()
 	switch t {
@@ -65,7 +65,7 @@ func (indicator *PacketIndicator) SrcHardwareAddr() net.HardwareAddr {
 	}
 }
 
-// DstHardwareAddr returns the destination hardware address
+// DstHardwareAddr returns the destination hardware address.
 func (indicator *PacketIndicator) DstHardwareAddr() net.HardwareAddr {
 	t := indicator.LinkLayerType()
 	switch t {
@@ -78,17 +78,17 @@ func (indicator *PacketIndicator) DstHardwareAddr() net.HardwareAddr {
 	}
 }
 
-// NetworkLayer returns the network layer
+// NetworkLayer returns the network layer.
 func (indicator *PacketIndicator) NetworkLayer() gopacket.Layer {
 	return indicator.networkLayer
 }
 
-// NetworkLayerType returns the type of the network layer
+// NetworkLayerType returns the type of the network layer.
 func (indicator *PacketIndicator) NetworkLayerType() gopacket.LayerType {
 	return indicator.networkLayer.LayerType()
 }
 
-// IPv4Layer returns the IPv4 layer
+// IPv4Layer returns the IPv4 layer.
 func (indicator *PacketIndicator) IPv4Layer() *layers.IPv4 {
 	if indicator.NetworkLayerType() == layers.LayerTypeIPv4 {
 		return indicator.networkLayer.(*layers.IPv4)
@@ -97,7 +97,7 @@ func (indicator *PacketIndicator) IPv4Layer() *layers.IPv4 {
 	return nil
 }
 
-// IPv6Layer returns the IPv6 layer
+// IPv6Layer returns the IPv6 layer.
 func (indicator *PacketIndicator) IPv6Layer() *layers.IPv6 {
 	if indicator.NetworkLayerType() == layers.LayerTypeIPv6 {
 		return indicator.networkLayer.(*layers.IPv6)
@@ -106,7 +106,7 @@ func (indicator *PacketIndicator) IPv6Layer() *layers.IPv6 {
 	return nil
 }
 
-// ARPLayer returns the ARP layer
+// ARPLayer returns the ARP layer.
 func (indicator *PacketIndicator) ARPLayer() *layers.ARP {
 	if indicator.NetworkLayerType() == layers.LayerTypeARP {
 		return indicator.networkLayer.(*layers.ARP)
@@ -115,7 +115,7 @@ func (indicator *PacketIndicator) ARPLayer() *layers.ARP {
 	return nil
 }
 
-// SrcIP returns the source IP
+// SrcIP returns the source IP.
 func (indicator *PacketIndicator) SrcIP() net.IP {
 	t := indicator.NetworkLayerType()
 	switch t {
@@ -130,7 +130,7 @@ func (indicator *PacketIndicator) SrcIP() net.IP {
 	}
 }
 
-// DstIP returns the destination IP
+// DstIP returns the destination IP.
 func (indicator *PacketIndicator) DstIP() net.IP {
 	t := indicator.NetworkLayerType()
 	switch t {
@@ -145,7 +145,7 @@ func (indicator *PacketIndicator) DstIP() net.IP {
 	}
 }
 
-// Hop returns the TTL in IPv4 layer or hop limit in IPv6 layer
+// Hop returns the TTL in IPv4 layer or hop limit in IPv6 layer.
 func (indicator *PacketIndicator) Hop() uint8 {
 	t := indicator.NetworkLayerType()
 	switch t {
@@ -158,17 +158,17 @@ func (indicator *PacketIndicator) Hop() uint8 {
 	}
 }
 
-// TransportLayer returns the transport layer
+// TransportLayer returns the transport layer.
 func (indicator *PacketIndicator) TransportLayer() gopacket.Layer {
 	return indicator.transportLayer
 }
 
-// TransportLayerType returns the type of the transport layer
+// TransportLayerType returns the type of the transport layer.
 func (indicator *PacketIndicator) TransportLayerType() gopacket.LayerType {
 	return indicator.transportLayer.LayerType()
 }
 
-// TCPLayer returns the TCP layer
+// TCPLayer returns the TCP layer.
 func (indicator *PacketIndicator) TCPLayer() *layers.TCP {
 	if indicator.TransportLayerType() == layers.LayerTypeTCP {
 		return indicator.transportLayer.(*layers.TCP)
@@ -177,7 +177,7 @@ func (indicator *PacketIndicator) TCPLayer() *layers.TCP {
 	return nil
 }
 
-// UDPLayer returns the UDP layer
+// UDPLayer returns the UDP layer.
 func (indicator *PacketIndicator) UDPLayer() *layers.UDP {
 	if indicator.TransportLayerType() == layers.LayerTypeUDP {
 		return indicator.transportLayer.(*layers.UDP)
@@ -186,12 +186,12 @@ func (indicator *PacketIndicator) UDPLayer() *layers.UDP {
 	return nil
 }
 
-// ICMPv4Indicator returns the ICMPv4 indicator
+// ICMPv4Indicator returns the ICMPv4 indicator.
 func (indicator *PacketIndicator) ICMPv4Indicator() *ICMPv4Indicator {
 	return indicator.icmpv4Indicator
 }
 
-// SrcPort returns the source port
+// SrcPort returns the source port.
 func (indicator *PacketIndicator) SrcPort() uint16 {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -204,7 +204,7 @@ func (indicator *PacketIndicator) SrcPort() uint16 {
 	}
 }
 
-// DstPort returns the destination port
+// DstPort returns the destination port.
 func (indicator *PacketIndicator) DstPort() uint16 {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -217,7 +217,7 @@ func (indicator *PacketIndicator) DstPort() uint16 {
 	}
 }
 
-// NATSrc returns the source used in NAT
+// NATSrc returns the source used in NAT.
 func (indicator *PacketIndicator) NATSrc() net.Addr {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -245,7 +245,7 @@ func (indicator *PacketIndicator) NATSrc() net.Addr {
 	}
 }
 
-// NATDst returns the destination used in NAT
+// NATDst returns the destination used in NAT.
 func (indicator *PacketIndicator) NATDst() net.Addr {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -273,7 +273,7 @@ func (indicator *PacketIndicator) NATDst() net.Addr {
 	}
 }
 
-// NATProto returns the protocol used in NAT
+// NATProto returns the protocol used in NAT.
 func (indicator *PacketIndicator) NATProto() gopacket.LayerType {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -290,7 +290,7 @@ func (indicator *PacketIndicator) NATProto() gopacket.LayerType {
 	}
 }
 
-// Src returns the source
+// Src returns the source.
 func (indicator *PacketIndicator) Src() net.Addr {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -318,7 +318,7 @@ func (indicator *PacketIndicator) Src() net.Addr {
 	}
 }
 
-// Dst returns the destination
+// Dst returns the destination.
 func (indicator *PacketIndicator) Dst() net.Addr {
 	t := indicator.TransportLayerType()
 	switch t {
@@ -346,7 +346,7 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 	}
 }
 
-// Payload returns the payload, or layer contents in application layer
+// Payload returns the payload, or layer contents in application layer.
 func (indicator *PacketIndicator) Payload() []byte {
 	if indicator.applicationLayer == nil {
 		return nil
@@ -354,7 +354,7 @@ func (indicator *PacketIndicator) Payload() []byte {
 	return indicator.applicationLayer.LayerContents()
 }
 
-// ParsePacket parses a packet and returns a packet indicator
+// ParsePacket parses a packet and returns a packet indicator.
 func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	var (
 		linkLayer          gopacket.Layer
@@ -430,7 +430,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}, nil
 }
 
-// ParseEmbPacket parses an embedded packet used in transferring between client and server without link layer
+// ParseEmbPacket parses an embedded packet used in transferring between client and server without link layer.
 func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 	// Guess network layer type
 	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
@@ -467,7 +467,7 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 	return indicator, nil
 }
 
-// ParseRawPacket parses an array of byte as a packet and returns a packet indicator
+// ParseRawPacket parses an array of byte as a packet and returns a packet indicator.
 func ParseRawPacket(contents []byte) (*gopacket.Packet, error) {
 	// Guess link layer type, and here we regard Ethernet layer as a link layer
 	packet := gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
@@ -496,7 +496,7 @@ func ParseRawPacket(contents []byte) (*gopacket.Packet, error) {
 	return &packet, nil
 }
 
-// SendTCPPacket opens a temporary TCP connection and sends a packet
+// SendTCPPacket opens a temporary TCP connection and sends a packet.
 func SendTCPPacket(addr string, data []byte) error {
 	// Create connection
 	conn, err := net.Dial("tcp", addr)
@@ -513,7 +513,7 @@ func SendTCPPacket(addr string, data []byte) error {
 	return nil
 }
 
-// SendUDPPacket opens a temporary UDP connection and sends a packet
+// SendUDPPacket opens a temporary UDP connection and sends a packet.
 func SendUDPPacket(addr string, data []byte) error {
 	// Create connection
 	conn, err := net.Dial("udp", addr)

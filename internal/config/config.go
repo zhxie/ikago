@@ -9,7 +9,7 @@ import (
 	"regexp"
 )
 
-// Config describes the configuration of IkaGo
+// Config describes the configuration of IkaGo.
 type Config struct {
 	ListenDevs []string `json:"listen-devices"`
 	UpDev      string   `json:"upstream-device"`
@@ -25,14 +25,14 @@ type Config struct {
 	Port       int      `json:"port"`
 }
 
-// New returns a new config
+// New returns a new config.
 func New() *Config {
 	return &Config{
 		Method: "plain",
 	}
 }
 
-// ParseFile returns the config parsed from file
+// ParseFile returns the config parsed from file.
 func ParseFile(path string) (*Config, error) {
 	config := New()
 

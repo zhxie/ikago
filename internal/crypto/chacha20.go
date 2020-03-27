@@ -7,12 +7,12 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// ChaCha20Poly1305Crypt describes an ChaCha20-Poly1305 crypt
+// ChaCha20Poly1305Crypt describes an ChaCha20-Poly1305 crypt.
 type ChaCha20Poly1305Crypt struct {
 	aead cipher.AEAD
 }
 
-// CreateChaCha20Poly1305Crypt returns an ChaCha20-Poly1305 crypt by given key
+// CreateChaCha20Poly1305Crypt returns an ChaCha20-Poly1305 crypt by given key.
 func CreateChaCha20Poly1305Crypt(key []byte) (*ChaCha20Poly1305Crypt, error) {
 	// AEAD
 	aead, err := chacha20poly1305.New(key)
@@ -54,12 +54,12 @@ func (c *ChaCha20Poly1305Crypt) Method() Method {
 	return MethodChaCha20Poly1305
 }
 
-// XChaCha20Poly1305Crypt describes an XChaCha20-Poly1305 crypt
+// XChaCha20Poly1305Crypt describes an XChaCha20-Poly1305 crypt.
 type XChaCha20Poly1305Crypt struct {
 	aead cipher.AEAD
 }
 
-// CreateXChaCha20Poly1305Crypt returns an XChaCha20-Poly1305 crypt by given key
+// CreateXChaCha20Poly1305Crypt returns an XChaCha20-Poly1305 crypt by given key.
 func CreateXChaCha20Poly1305Crypt(key []byte) (*XChaCha20Poly1305Crypt, error) {
 	// AEAD
 	aead, err := chacha20poly1305.NewX(key)

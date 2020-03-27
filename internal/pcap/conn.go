@@ -20,7 +20,7 @@ type clientIndicator struct {
 	ack   uint32
 }
 
-// Conn is a packet pcap network connection add fake TCP header to all traffic
+// Conn is a packet pcap network connection add fake TCP header to all traffic.
 type Conn struct {
 	conn          *RawConn
 	srcPort       uint16
@@ -34,14 +34,14 @@ type Conn struct {
 	writeDeadline time.Time
 }
 
-// New returns a new Conn
+// New returns a new Conn.
 func New() *Conn {
 	return &Conn{
 		clients: make(map[string]*clientIndicator),
 	}
 }
 
-// Dial acts like Dial for pcap networks
+// Dial acts like Dial for pcap networks.
 func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*Conn, error) {
 	var srcAddr *net.TCPAddr
 
@@ -123,7 +123,7 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 
 func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Conn, error) {
 	addrs := make([]*net.TCPAddr, 0)
-	for _, ip := range srcDev.IPAddrs {
+	for _, ip := range srcDev.ipAddrs {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
@@ -165,7 +165,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 					Op:     "listen",
 					Net:    "pcap",
 					Source: srcAddrs,
-					Err:    fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().Alias, err),
+					Err:    fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err),
 				})
 				continue
 			}
@@ -232,7 +232,7 @@ func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TC
 	go func() {
 		packet, err := handshakeConn.ReadPacket()
 		if err != nil {
-			ct <- tuple{err: fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().Alias, err)}
+			ct <- tuple{err: fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err)}
 		}
 
 		ct <- tuple{packet: packet}
@@ -296,7 +296,7 @@ func (c *Conn) handshakeSYN(conn *RawConn) error {
 	client := &clientIndicator{crypt: c.crypt}
 
 	// Create layers
-	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, conn, c.dstAddr.IP, c.id, 128, conn.RemoteDev().HardwareAddr)
+	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, conn, c.dstAddr.IP, c.id, 128, conn.RemoteDev().hardwareAddr)
 	if err != nil {
 		return err
 	}
@@ -594,7 +594,7 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		}
 
 		// Create layers
-		transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, dstPort, client.seq, client.ack, c.conn, dstIP, c.id, 128, c.conn.dstDev.HardwareAddr)
+		transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, dstPort, client.seq, client.ack, c.conn, dstIP, c.id, 128, c.conn.dstDev.hardwareAddr)
 		if err != nil {
 			ch <- fmt.Errorf("create layers: %w", err)
 			return
@@ -674,7 +674,7 @@ func (c *Conn) Close() error {
 	return nil
 }
 
-// LocalDev returns the local device
+// LocalDev returns the local device.
 func (c *Conn) LocalDev() *Device {
 	return c.conn.LocalDev()
 }
@@ -687,7 +687,7 @@ func (c *Conn) corLocalAddr(dstAddr net.Addr) net.Addr {
 	if dstAddr == nil {
 		addrs := make([]*net.TCPAddr, 0)
 
-		for _, ip := range c.LocalDev().IPAddrs {
+		for _, ip := range c.LocalDev().ipAddrs {
 			addrs = append(addrs, &net.TCPAddr{
 				IP:   ip.IP,
 				Port: int(c.srcPort),
@@ -721,7 +721,7 @@ func (c *Conn) corLocalAddr(dstAddr net.Addr) net.Addr {
 	}
 }
 
-// RemoteDev returns the remote device
+// RemoteDev returns the remote device.
 func (c *Conn) RemoteDev() *Device {
 	return c.conn.RemoteDev()
 }
@@ -759,16 +759,17 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+// Listener is a pcap network listener.
 type Listener struct {
 	conn     *RawConn
 	srcPort  uint16
 	crypt    crypto.Crypt
 }
 
-// Listen acts like Listen for pcap networks
+// Listen acts like Listen for pcap networks.
 func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Listener, error) {
 	addrs := make([]*net.TCPAddr, 0)
-	for _, ip := range srcDev.IPAddrs {
+	for _, ip := range srcDev.ipAddrs {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
@@ -799,7 +800,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			Op:     "accept",
 			Net:    "pcap",
 			Source: l.corAddr(nil),
-			Err:    fmt.Errorf("read device %s: %w", l.conn.LocalDev().Alias, err),
+			Err:    fmt.Errorf("read device %s: %w", l.conn.LocalDev().alias, err),
 		}
 	}
 
@@ -860,7 +861,7 @@ func (l *Listener) Close() error {
 	return nil
 }
 
-// Dev returns the device
+// Dev returns the device.
 func (l *Listener) Dev() *Device {
 	return l.conn.LocalDev()
 }
@@ -876,7 +877,7 @@ func (l *Listener) corAddr(dstAddr net.Addr) net.Addr {
 	if dstAddr == nil {
 		addrs := make([]*net.TCPAddr, 0)
 
-		for _, ip := range l.Dev().IPAddrs {
+		for _, ip := range l.Dev().ipAddrs {
 			addrs = append(addrs, &net.TCPAddr{
 				IP:   ip.IP,
 				Port: int(l.srcPort),
@@ -910,7 +911,7 @@ func (l *Listener) corAddr(dstAddr net.Addr) net.Addr {
 	}
 }
 
-// DialWithKCP connects to the remote address in the pcap connection with KCP support
+// DialWithKCP connects to the remote address in the pcap connection with KCP support.
 func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*kcp.UDPSession, error) {
 	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt)
 	if err != nil {
@@ -930,7 +931,7 @@ func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 	return session, nil
 }
 
-// ListenWithKCP listens for incoming packets addressed to the local address in the pcap connection with KCP support
+// ListenWithKCP listens for incoming packets addressed to the local address in the pcap connection with KCP support.
 func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*kcp.Listener, error) {
 	conn, err := listenMulticast(srcDev, dstDev, srcPort, crypt)
 	if err != nil {

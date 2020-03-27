@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// DeriveKey derives a key from a string of password
+// DeriveKey derives a key from a string of password.
 func DeriveKey(password string, length int) []byte {
 	var key, prev []byte
 
@@ -23,7 +23,7 @@ func DeriveKey(password string, length int) []byte {
 	return key[:length]
 }
 
-// GenerateIV generates a random IV of the given size
+// GenerateIV generates a random IV of the given size.
 func GenerateIV(size int) ([]byte, error) {
 	iv := make([]byte, size)
 
@@ -34,7 +34,7 @@ func GenerateIV(size int) ([]byte, error) {
 	return iv, nil
 }
 
-// GenerateNonce generates a random nonce of the given size
+// GenerateNonce generates a random nonce of the given size.
 func GenerateNonce(size int) ([]byte, error) {
 	nonce := make([]byte, size)
 

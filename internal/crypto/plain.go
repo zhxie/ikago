@@ -1,6 +1,6 @@
 package crypto
 
-// PlainCrypt describes a plain crypt which will not encrypt the data
+// PlainCrypt describes a plain crypt which will not encrypt the data.
 type PlainCrypt struct {
 }
 

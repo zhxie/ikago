@@ -22,6 +22,7 @@ func (addr ICMPQueryAddr) Network() string {
 	return "icmp query"
 }
 
+// MultiTCPAddr represents multiple TCP addresses.
 type MultiTCPAddr struct {
 	Addrs []*net.TCPAddr
 }
@@ -40,7 +41,7 @@ func (addr MultiTCPAddr) Network() string {
 	return "tcp"
 }
 
-// ParseTCPAddr returns an TCPAddr by the given address
+// ParseTCPAddr returns an TCPAddr by the given address.
 func ParseTCPAddr(s string) (*net.TCPAddr, error) {
 	ipStr, portStr, err := net.SplitHostPort(s)
 	if err != nil {
@@ -60,7 +61,7 @@ func ParseTCPAddr(s string) (*net.TCPAddr, error) {
 	return &net.TCPAddr{IP: ip, Port: int(port)}, nil
 }
 
-// ParseAddr returns an Addr by the given address
+// ParseAddr returns an Addr by the given address.
 func ParseAddr(s string) (net.Addr, error) {
 	// Guess port
 	if s[0] == ':' {
@@ -95,9 +96,9 @@ func formatIP(ip net.IP) string {
 
 	if ip.To4() != nil {
 		return ip.String()
-	} else {
-		return fmt.Sprintf("[%s]", ip)
 	}
+
+	return fmt.Sprintf("[%s]", ip)
 }
 
 func fullString(ip net.IP) string {
@@ -125,20 +126,20 @@ func bpfFilter(prefix string, addr net.Addr) (string, error) {
 
 		if tcpAddr.IP == nil {
 			return fmt.Sprintf("(%s port %d)", prefix, tcpAddr.Port), nil
-		} else {
-			return fmt.Sprintf("(%s host %s && %s port %d)", prefix, fullString(tcpAddr.IP), prefix, tcpAddr.Port), nil
 		}
+
+		return fmt.Sprintf("(%s host %s && %s port %d)", prefix, fullString(tcpAddr.IP), prefix, tcpAddr.Port), nil
 	default:
 		panic(fmt.Errorf("type %T not support", t))
 	}
 }
 
-// SrcBPFFilter returns a source BPF filter by the giver address
+// SrcBPFFilter returns a source BPF filter by the giver address.
 func SrcBPFFilter(addr net.Addr) (string, error) {
 	return bpfFilter("src", addr)
 }
 
-// DstBPFFilter returns a destination BPF filter by the giver address
+// DstBPFFilter returns a destination BPF filter by the giver address.
 func DstBPFFilter(addr net.Addr) (string, error) {
 	return bpfFilter("dst", addr)
 }

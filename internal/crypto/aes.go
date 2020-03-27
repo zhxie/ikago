@@ -7,14 +7,14 @@ import (
 	"fmt"
 )
 
-// AESCFBCrypt describes an AES-CFB crypt
+// AESCFBCrypt describes an AES-CFB crypt.
 type AESCFBCrypt struct {
 	block     cipher.Block
 	encrypter cipher.Stream
 	decrypter cipher.Stream
 }
 
-// CreateAESCFBCrypt returns an AES-CFB crypt by given key and IV
+// CreateAESCFBCrypt returns an AES-CFB crypt by given key and IV.
 func CreateAESCFBCrypt(key, iv []byte) (*AESCFBCrypt, error) {
 	// Cipher
 	block, err := aes.NewCipher(key)
@@ -52,13 +52,13 @@ func (c *AESCFBCrypt) Method() Method {
 	return MethodAESCFB
 }
 
-// AESGCMCrypt describes an AES-GCM crypt
+// AESGCMCrypt describes an AES-GCM crypt.
 type AESGCMCrypt struct {
 	block cipher.Block
 	aead  cipher.AEAD
 }
 
-// CreateAESGCMCrypt returns an AES-GCM crypt by given key
+// CreateAESGCMCrypt returns an AES-GCM crypt by given key.
 func CreateAESGCMCrypt(key []byte) (*AESGCMCrypt, error) {
 	// Cipher
 	block, err := aes.NewCipher(key)

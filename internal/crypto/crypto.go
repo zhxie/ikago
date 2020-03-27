@@ -5,33 +5,33 @@ import (
 	"strings"
 )
 
-// Method describes the method of the encryption
+// Method describes the method of the encryption.
 type Method int
 
 const (
-	// MethodPlain describes the encryption is in plain which will not encrypt the data
+	// MethodPlain describes the encryption is in plain which will not encrypt the data.
 	MethodPlain Method = iota
-	// MethodAESCFB describes the encryption is in AES-CFB
+	// MethodAESCFB describes the encryption is in AES-CFB.
 	MethodAESCFB
-	// MethodAESGCM describes the encryption is in AES-GCM
+	// MethodAESGCM describes the encryption is in AES-GCM.
 	MethodAESGCM
-	// MethodChaCha20Poly1305 describes the encryption is in ChaCha20-Poly1305
+	// MethodChaCha20Poly1305 describes the encryption is in ChaCha20-Poly1305.
 	MethodChaCha20Poly1305
-	// MethodXChaCha20Poly1305 describes the encryption is in XChaCha20-Poly1305
+	// MethodXChaCha20Poly1305 describes the encryption is in XChaCha20-Poly1305.
 	MethodXChaCha20Poly1305
 )
 
-// Crypt describes crypt of encryption
+// Crypt describes crypt of encryption.
 type Crypt interface {
-	// Encrypt returns the encrypted data
+	// Encrypt returns the encrypted data.
 	Encrypt([]byte) ([]byte, error)
-	// Decrypt returns the decrypted data
+	// Decrypt returns the decrypted data.
 	Decrypt([]byte) ([]byte, error)
-	// Method returns the method of crypt
+	// Method returns the method of crypt.
 	Method() Method
 }
 
-// ParseCrypt returns a crypt by given method and password
+// ParseCrypt returns a crypt by given method and password.
 func ParseCrypt(method, password string) (Crypt, error) {
 	var err error
 	var c Crypt
