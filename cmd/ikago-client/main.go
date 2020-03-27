@@ -316,7 +316,7 @@ func open() error {
 	// Handle for routing upstream
 	upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
 	if err != nil {
-		return fmt.Errorf("open upstream connection: %w", err)
+		return fmt.Errorf("open upstream connection in device %s: %w", upDev.Alias, err)
 	}
 
 	for i := 0; i < len(listenConns); i++ {
@@ -364,6 +364,7 @@ func open() error {
 		err = handleUpstream(b[:n])
 		if err != nil {
 			log.Errorln(fmt.Errorf("handle upstream in device %s: %w", upConn.LocalDev().Alias, err))
+			log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", upConn.RemoteAddr().String(), n, b[:n])
 			continue
 		}
 	}
@@ -489,6 +490,11 @@ func handleUpstream(contents []byte) error {
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
 	)
+
+	// Empty payload
+	if len(contents) <= 0 {
+		return errors.New("empty payload")
+	}
 
 	// Parse embedded packet
 	embIndicator, err := pcap.ParseEmbPacket(contents)

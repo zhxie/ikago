@@ -17,6 +17,16 @@ type ConnPacket struct {
 	Conn *RawConn
 }
 
+// ConnAddrBytes describes an array of bytes and its source address and connection
+type ConnAddrBytes struct {
+	// Bytes is an array of byte
+	Bytes []byte
+	// Addr is the source address of the bytes
+	Addr  net.Addr
+	// Conn is the connection of the bytes
+	Conn *Conn
+}
+
 // NATGuide describes simplified information about a NAT
 type NATGuide struct {
 	// Src is the source in NAT
