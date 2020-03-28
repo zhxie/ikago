@@ -19,9 +19,9 @@ func (err *timeoutError) Timeout() bool {
 
 // RawConn is a raw network connection.
 type RawConn struct {
-	srcDev        *Device
-	dstDev        *Device
-	handle        *pcap.Handle
+	srcDev *Device
+	dstDev *Device
+	handle *pcap.Handle
 }
 
 // CreateRawConn creates a raw connection between devices with BPF filter.

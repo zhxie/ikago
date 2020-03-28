@@ -35,7 +35,7 @@ type Crypt interface {
 func ParseCrypt(method, password string) (Crypt, error) {
 	var (
 		err error
-		c Crypt
+		c   Crypt
 	)
 
 	switch strings.ToLower(method) {

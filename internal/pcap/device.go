@@ -333,7 +333,7 @@ func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
 	if !ok {
 		return nil, errors.New("invalid packet")
 	}
-	
+
 	addrs := append(make([]*net.IPNet, 0), &net.IPNet{IP: ip})
 
 	return &Device{alias: "Gateway", ipAddrs: addrs, hardwareAddr: ethernetPacket.DstMAC}, nil
