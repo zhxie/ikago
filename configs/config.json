@@ -5,6 +5,18 @@
   "method": "plain",
   "password": "",
   "kcp": false,
+  "kcp-tuning": {
+    "mtu": 1400,
+    "sndwnd": 32,
+    "rcvwnd": 32,
+    "datashard": 10,
+    "parityshard": 3,
+    "acknodelay": false,
+    "nodelay": false,
+    "interval": 10,
+    "resend": 0,
+    "nc": 0
+  },
   "verbose": false,
 
   "publish": "",

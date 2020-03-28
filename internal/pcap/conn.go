@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
+	"ikago/internal/config"
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"net"
@@ -162,10 +163,10 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 					return
 				}
 				log.Errorln(&net.OpError{
-					Op:     "listen",
-					Net:    "pcap",
-					Addr:   srcAddrs,
-					Err:    fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err),
+					Op:   "listen",
+					Net:  "pcap",
+					Addr: srcAddrs,
+					Err:  fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err),
 				})
 				continue
 			}
@@ -174,10 +175,10 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 			indicator, err := ParsePacket(packet)
 			if err != nil {
 				log.Errorln(&net.OpError{
-					Op:     "handshake",
-					Net:    "pcap",
-					Addr:   srcAddrs,
-					Err:    fmt.Errorf("parse packet: %w", err),
+					Op:   "handshake",
+					Net:  "pcap",
+					Addr: srcAddrs,
+					Err:  fmt.Errorf("parse packet: %w", err),
 				})
 				continue
 			}
@@ -661,10 +662,10 @@ func (c *Conn) Close() error {
 	err := c.conn.Close()
 	if err != nil {
 		return &net.OpError{
-			Op:     "close",
-			Net:    "pcap",
-			Addr:   c.corLocalAddr(c.RemoteAddr()),
-			Err:    err,
+			Op:   "close",
+			Net:  "pcap",
+			Addr: c.corLocalAddr(c.RemoteAddr()),
+			Err:  err,
 		}
 	}
 
@@ -758,9 +759,9 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 
 // Listener is a pcap network listener.
 type Listener struct {
-	conn     *RawConn
-	srcPort  uint16
-	crypt    crypto.Crypt
+	conn    *RawConn
+	srcPort uint16
+	crypt   crypto.Crypt
 }
 
 // Listen acts like Listen for pcap networks.
@@ -794,10 +795,10 @@ func (l *Listener) Accept() (net.Conn, error) {
 	packet, err := l.conn.ReadPacket()
 	if err != nil {
 		return nil, &net.OpError{
-			Op:     "accept",
-			Net:    "pcap",
-			Addr:   l.corAddr(nil),
-			Err:    fmt.Errorf("read device %s: %w", l.Dev().alias, err),
+			Op:   "accept",
+			Net:  "pcap",
+			Addr: l.corAddr(nil),
+			Err:  fmt.Errorf("read device %s: %w", l.Dev().alias, err),
 		}
 	}
 
@@ -805,10 +806,10 @@ func (l *Listener) Accept() (net.Conn, error) {
 	indicator, err := ParsePacket(packet)
 	if err != nil {
 		return nil, &net.OpError{
-			Op:     "accept",
-			Net:    "pcap",
-			Addr:   l.corAddr(nil),
-			Err:    fmt.Errorf("parse packet: %w", err),
+			Op:   "accept",
+			Net:  "pcap",
+			Addr: l.corAddr(nil),
+			Err:  fmt.Errorf("parse packet: %w", err),
 		}
 	}
 
@@ -848,10 +849,10 @@ func (l *Listener) Close() error {
 	err := l.conn.Close()
 	if err != nil {
 		return &net.OpError{
-			Op:     "close",
-			Net:    "pcap",
-			Addr:   l.corAddr(nil),
-			Err:    err,
+			Op:   "close",
+			Net:  "pcap",
+			Addr: l.corAddr(nil),
+			Err:  err,
 		}
 	}
 
@@ -909,41 +910,115 @@ func (l *Listener) corAddr(dstAddr net.Addr) net.Addr {
 }
 
 // DialWithKCP connects to the remote address in the pcap connection with KCP support.
-func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*kcp.UDPSession, error) {
+func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, config *config.KCPConfig) (*kcp.UDPSession, error) {
 	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt)
 	if err != nil {
-		return nil, fmt.Errorf("dial: %w", err)
+		return nil, err
 	}
 
 	block, err := kcp.NewNoneBlockCrypt(nil)
 	if err != nil {
-		return nil, fmt.Errorf("crypt: %w", err)
+		return nil, &net.OpError{
+			Op:     "dial",
+			Net:    "pcap",
+			Source: conn.LocalAddr(),
+			Addr:   conn.RemoteAddr(),
+			Err:    fmt.Errorf("crypt: %w", err),
+		}
 	}
 
-	session, err := kcp.NewConn(dstAddr.String(), block, 10, 3, conn)
+	sess, err := kcp.NewConn(dstAddr.String(), block, config.DataShard, config.ParityShard, conn)
 	if err != nil {
-		return nil, fmt.Errorf("new: %w", err)
+		return nil, &net.OpError{
+			Op:     "dial",
+			Net:    "pcap",
+			Source: conn.LocalAddr(),
+			Addr:   conn.RemoteAddr(),
+			Err:    fmt.Errorf("kcp: %w", err),
+		}
 	}
 
-	return session, nil
+	// Tuning
+	err = tuneKCP(sess, config)
+	if err != nil {
+		sess.Close()
+		return nil, &net.OpError{
+			Op:     "dial",
+			Net:    "pcap",
+			Source: conn.LocalAddr(),
+			Addr:   conn.RemoteAddr(),
+			Err:    fmt.Errorf("tune: %w", err),
+		}
+	}
+
+	return sess, nil
 }
 
 // ListenWithKCP listens for incoming packets addressed to the local address in the pcap connection with KCP support.
-func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*kcp.Listener, error) {
+func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, dataShards, parityShards int) (*kcp.Listener, error) {
 	conn, err := listenMulticast(srcDev, dstDev, srcPort, crypt)
 	if err != nil {
-		return nil, fmt.Errorf("listen: %w", err)
+		return nil, err
 	}
 
 	block, err := kcp.NewNoneBlockCrypt(nil)
 	if err != nil {
-		return nil, fmt.Errorf("crypt: %w", err)
+		return nil, &net.OpError{
+			Op:     "listen",
+			Net:    "pcap",
+			Source: conn.LocalAddr(),
+			Err:    fmt.Errorf("crypt: %w", err),
+		}
 	}
 
-	listener, err := kcp.ServeConn(block, 10, 3, conn)
+	listener, err := kcp.ServeConn(block, dataShards, parityShards, conn)
 	if err != nil {
-		return nil, fmt.Errorf("serve: %w", err)
+		return nil, &net.OpError{
+			Op:     "listen",
+			Net:    "pcap",
+			Source: conn.LocalAddr(),
+			Err:    fmt.Errorf("kcp: %w", err),
+		}
 	}
 
 	return listener, err
+}
+
+func tuneKCP(sess *kcp.UDPSession, config *config.KCPConfig) error {
+	ok := sess.SetMtu(config.MTU)
+	if !ok {
+		return fmt.Errorf("cannot set mtu")
+	}
+
+	sess.SetWindowSize(config.SendWindow, config.RecvWindow)
+
+	sess.SetACKNoDelay(config.ACKNoDelay)
+
+	sess.SetNoDelay(btoi(config.NoDelay), config.Interval, config.Resend, config.NC)
+
+	return nil
+}
+
+// TuneKCP tunes a KCP connection.
+func TuneKCP(sess *kcp.UDPSession, config *config.KCPConfig) error {
+	err := tuneKCP(sess, config)
+	if err != nil {
+		return &net.OpError{
+			Op:     "tune",
+			Net:    "pcap",
+			Source: sess.LocalAddr(),
+			Addr:   sess.RemoteAddr(),
+			Err:    err,
+		}
+	}
+
+	return nil
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+
+	return 0
 }

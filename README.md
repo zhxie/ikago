@@ -15,12 +15,12 @@
   <img src="/assets/diagram.jpg" alt="diagram">
 </p>
 
-- **FakeTCP** All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
-- **Multiplexing** One client can handle multiple connections from different devices. And one server can serve multiple clients.
-- **Cross platform** Works well with Windows and Linux, and macOS and others in theory.
-- **NAT support** Performs a full cone NAT.
-- **Encryption** Traffic can be encrypted.
-- **KCP** Integrates the support of KCP.
+- **FakeTCP**: All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
+- **Multiplexing and Multiple**: One client can handle multiple connections from different devices. And one server can serve multiple clients.
+- **Cross Platform**: Works well with Windows and Linux, and macOS and others in theory.
+- **Full Cone NAT**
+- **Encryption**
+- **KCP Support**
 
 ## Dependencies
 
@@ -52,7 +52,11 @@ go run ./cmd/ikago-server -p [port]
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
 
-`-kcp`: (Optional) Enable KCP. *Attention, using KCP may consume (at least 24) bytes for protocol header, make sure your MTU is set to a reasonable value.*
+`-kcp`: (Optional) Enable KCP.
+
+`-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
+
+`-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
 
 `-v`: (Optional) Print verbose messages.
 
@@ -89,7 +93,7 @@ go run ./cmd/ikago-server -p [port]
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
-- [ ] Bypass filters
+- [ ] Statistics
 
 ## License
 

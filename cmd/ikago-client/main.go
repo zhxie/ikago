@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -27,19 +28,29 @@ type natIndicator struct {
 }
 
 var (
-	argListDevs   = flag.Bool("list-devices", false, "List all valid devices in current computer.")
-	argConfig     = flag.String("c", "", "Configuration file.")
-	argListenDevs = flag.String("listen-devices", "", "Devices for listening.")
-	argUpDev      = flag.String("upstream-device", "", "Device for routing upstream to.")
-	argGateway    = flag.String("gateway", "", "Gateway address.")
-	argMethod     = flag.String("method", "plain", "Method of encryption.")
-	argPassword   = flag.String("password", "", "Password of encryption.")
-	argKCP        = flag.Bool("kcp", false, "Enable KCP.")
-	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
-	argPublish    = flag.String("publish", "", "ARP publishing address.")
-	argUpPort     = flag.Int("p", 0, "Port for routing upstream.")
-	argFilters    = flag.String("f", "", "Filters.")
-	argServer     = flag.String("s", "", "Server.")
+	argListDevs       = flag.Bool("list-devices", false, "List all valid devices in current computer.")
+	argConfig         = flag.String("c", "", "Configuration file.")
+	argListenDevs     = flag.String("listen-devices", "", "Devices for listening.")
+	argUpDev          = flag.String("upstream-device", "", "Device for routing upstream to.")
+	argGateway        = flag.String("gateway", "", "Gateway address.")
+	argMethod         = flag.String("method", "plain", "Method of encryption.")
+	argPassword       = flag.String("password", "", "Password of encryption.")
+	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
+	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
+	argKCPSendWindow  = flag.Int("kcp-sndwnd", kcp.IKCP_WND_SND, "KCP tuning option sndwnd.")
+	argKCPRecvWindow  = flag.Int("kcp-rcvwnd", kcp.IKCP_WND_RCV, "KCP tuning option rcvwnd.")
+	argKCPDataShard   = flag.Int("kcp-datashard", 10, "KCP tuning option datashard.")
+	argKCPParityShard = flag.Int("kcp-parityshard", 3, "KCP tuning option parityshard.")
+	argKCPACKNoDelay  = flag.Bool("kcp-acknodelay", false, "KCP tuning option acknodelay.")
+	argKCPNoDelay     = flag.Bool("kcp-nodelay", false, "KCP tuning option nodelay.")
+	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
+	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
+	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
+	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
+	argPublish        = flag.String("publish", "", "ARP publishing address.")
+	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
+	argFilters        = flag.String("f", "", "Filters.")
+	argServer         = flag.String("s", "", "Server.")
 )
 
 var (
@@ -52,7 +63,8 @@ var (
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
 	crypt      crypto.Crypt
-	kcp        bool
+	isKCP      bool
+	kcpConfig  *config.KCPConfig
 )
 
 var (
@@ -97,11 +109,23 @@ func main() {
 			Method:     *argMethod,
 			Password:   *argPassword,
 			KCP:        *argKCP,
-			Verbose:    *argVerbose,
-			Publish:    *argPublish,
-			UpPort:     *argUpPort,
-			Filters:    splitArg(*argFilters),
-			Server:     *argServer,
+			KCPConfig: config.KCPConfig{
+				MTU:         *argKCPMTU,
+				SendWindow:  *argKCPSendWindow,
+				RecvWindow:  *argKCPRecvWindow,
+				DataShard:   *argKCPDataShard,
+				ParityShard: *argKCPParityShard,
+				ACKNoDelay:  *argKCPACKNoDelay,
+				NoDelay:     *argKCPNoDelay,
+				Interval:    *argKCPInterval,
+				Resend:      *argKCPResend,
+				NC:          *argKCPNC,
+			},
+			Verbose: *argVerbose,
+			Publish: *argPublish,
+			UpPort:  *argUpPort,
+			Filters: splitArg(*argFilters),
+			Server:  *argServer,
 		}
 	}
 
@@ -133,6 +157,30 @@ func main() {
 		if gateway == nil {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
+	}
+	if cfg.KCPConfig.MTU > 1500 {
+		log.Fatalln(fmt.Errorf("kcp mtu %d out of range", cfg.KCPConfig.MTU))
+	}
+	if cfg.KCPConfig.SendWindow <= 0 || cfg.KCPConfig.SendWindow > 4294967295 {
+		log.Fatalln(fmt.Errorf("kcp send window %d out of range", cfg.KCPConfig.SendWindow))
+	}
+	if cfg.KCPConfig.RecvWindow <= 0 || cfg.KCPConfig.RecvWindow > 4294967295 {
+		log.Fatalln(fmt.Errorf("kcp receive window %d out of range", cfg.KCPConfig.RecvWindow))
+	}
+	if cfg.KCPConfig.DataShard < 0 {
+		log.Fatalln(fmt.Errorf("kcp data shard %d out of range", cfg.KCPConfig.DataShard))
+	}
+	if cfg.KCPConfig.ParityShard < 0 {
+		log.Fatalln(fmt.Errorf("kcp parity shard %d out of range", cfg.KCPConfig.ParityShard))
+	}
+	if cfg.KCPConfig.Interval < 0 {
+		log.Fatalln(fmt.Errorf("kcp interval %d out of range", cfg.KCPConfig.Interval))
+	}
+	if cfg.KCPConfig.Resend < 0 {
+		log.Fatalln(fmt.Errorf("kcp resend %d out of range", cfg.KCPConfig.Resend))
+	}
+	if cfg.KCPConfig.NC < 0 {
+		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
 	}
 	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
@@ -203,8 +251,9 @@ func main() {
 	}
 
 	// KCP
-	kcp = cfg.KCP
-	if kcp {
+	isKCP = cfg.KCP
+	kcpConfig = &cfg.KCPConfig
+	if isKCP {
 		log.Infoln("Enable KCP")
 	}
 
@@ -320,22 +369,23 @@ func open() error {
 			conn, err = pcap.CreateRawConn(dev, gatewayDev, filter)
 		}
 		if err != nil {
-			return fmt.Errorf("open listen device %s: %w", dev.Alias(), err)
+			return fmt.Errorf("open listen device %s: %w", conn.LocalDev().Alias(), err)
 		}
 
 		listenConns = append(listenConns, conn)
 	}
 
 	// Handle for routing upstream
-	if kcp {
-		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+	if isKCP {
+		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, kcpConfig)
 	} else {
 		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
 	}
 	if err != nil {
-		return fmt.Errorf("dial in upstream device %s: %w", upDev.Alias(), err)
+		return fmt.Errorf("open upstream: %w", err)
 	}
 
+	// Start handling
 	for i := 0; i < len(listenConns); i++ {
 		conn := listenConns[i]
 
@@ -374,14 +424,14 @@ func open() error {
 			if isClosed {
 				return nil
 			}
-			log.Errorln("read upstream device: %w", err)
+			log.Errorln(fmt.Errorf("read upstream: %w", err))
 			continue
 		}
 
 		err = handleUpstream(b[:n])
 		if err != nil {
-			log.Errorln(fmt.Errorf("handle upstream: %w", err))
-			log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", upConn.RemoteAddr().String(), n, b[:n])
+			log.Errorln(fmt.Errorf("handle upstream in address %s: %w", upConn.LocalAddr().String(), err))
+			log.Verbosef("Source: %s\nSize: %d Bytes\n\n", upConn.RemoteAddr().String(), n)
 			continue
 		}
 	}
@@ -485,6 +535,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	contents, err := pcap.SerializeRaw(indicator.NetworkLayer().(gopacket.SerializableLayer),
 		indicator.TransportLayer().(gopacket.SerializableLayer),
 		gopacket.Payload(indicator.Payload()))
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
 
 	n, err := upConn.Write(contents)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
@@ -50,16 +51,26 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 const keepAlive float64 = 30 // seconds
 
 var (
-	argListDevs   = flag.Bool("list-devices", false, "List all valid devices in current computer.")
-	argConfig     = flag.String("c", "", "Configuration file.")
-	argListenDevs = flag.String("listen-devices", "", "Devices for listening.")
-	argUpDev      = flag.String("upstream-device", "", "Device for routing upstream to.")
-	argGateway    = flag.String("gateway", "", "Gateway address.")
-	argMethod     = flag.String("method", "plain", "Method of encryption.")
-	argPassword   = flag.String("password", "", "Password of encryption.")
-	argKCP        = flag.Bool("kcp", false, "Enable KCP.")
-	argVerbose    = flag.Bool("v", false, "Print verbose messages.")
-	argPort       = flag.Int("p", 0, "Port for listening.")
+	argListDevs       = flag.Bool("list-devices", false, "List all valid devices in current computer.")
+	argConfig         = flag.String("c", "", "Configuration file.")
+	argListenDevs     = flag.String("listen-devices", "", "Devices for listening.")
+	argUpDev          = flag.String("upstream-device", "", "Device for routing upstream to.")
+	argGateway        = flag.String("gateway", "", "Gateway address.")
+	argMethod         = flag.String("method", "plain", "Method of encryption.")
+	argPassword       = flag.String("password", "", "Password of encryption.")
+	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
+	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
+	argKCPSendWindow  = flag.Int("kcp-sndwnd", kcp.IKCP_WND_SND, "KCP tuning option sndwnd.")
+	argKCPRecvWindow  = flag.Int("kcp-rcvwnd", kcp.IKCP_WND_RCV, "KCP tuning option rcvwnd.")
+	argKCPDataShard   = flag.Int("kcp-datashard", 10, "KCP tuning option datashard.")
+	argKCPParityShard = flag.Int("kcp-parityshard", 3, "KCP tuning option parityshard.")
+	argKCPACKNoDelay  = flag.Bool("kcp-acknodelay", false, "KCP tuning option acknodelay.")
+	argKCPNoDelay     = flag.Bool("kcp-nodelay", false, "KCP tuning option nodelay.")
+	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
+	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
+	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
+	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
+	argPort           = flag.Int("p", 0, "Port for listening.")
 )
 
 var (
@@ -68,7 +79,8 @@ var (
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
 	crypt      crypto.Crypt
-	kcp        bool
+	isKCP      bool
+	kcpConfig  *config.KCPConfig
 )
 
 var (
@@ -123,8 +135,20 @@ func main() {
 			Method:     *argMethod,
 			Password:   *argPassword,
 			KCP:        *argKCP,
-			Verbose:    *argVerbose,
-			Port:       *argPort,
+			KCPConfig: config.KCPConfig{
+				MTU:         *argKCPMTU,
+				SendWindow:  *argKCPSendWindow,
+				RecvWindow:  *argKCPRecvWindow,
+				DataShard:   *argKCPDataShard,
+				ParityShard: *argKCPParityShard,
+				ACKNoDelay:  *argKCPACKNoDelay,
+				NoDelay:     *argKCPNoDelay,
+				Interval:    *argKCPInterval,
+				Resend:      *argKCPResend,
+				NC:          *argKCPNC,
+			},
+			Verbose: *argVerbose,
+			Port:    *argPort,
 		}
 	}
 
@@ -154,6 +178,30 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
+	if cfg.KCPConfig.MTU > 1500 {
+		log.Fatalln(fmt.Errorf("kcp mtu %d out of range", cfg.KCPConfig.MTU))
+	}
+	if cfg.KCPConfig.SendWindow <= 0 || cfg.KCPConfig.SendWindow > 4294967295 {
+		log.Fatalln(fmt.Errorf("kcp send window %d out of range", cfg.KCPConfig.SendWindow))
+	}
+	if cfg.KCPConfig.RecvWindow <= 0 || cfg.KCPConfig.RecvWindow > 4294967295 {
+		log.Fatalln(fmt.Errorf("kcp receive window %d out of range", cfg.KCPConfig.RecvWindow))
+	}
+	if cfg.KCPConfig.DataShard < 0 {
+		log.Fatalln(fmt.Errorf("kcp data shard %d out of range", cfg.KCPConfig.DataShard))
+	}
+	if cfg.KCPConfig.ParityShard < 0 {
+		log.Fatalln(fmt.Errorf("kcp parity shard %d out of range", cfg.KCPConfig.ParityShard))
+	}
+	if cfg.KCPConfig.Interval < 0 {
+		log.Fatalln(fmt.Errorf("kcp interval %d out of range", cfg.KCPConfig.Interval))
+	}
+	if cfg.KCPConfig.Resend < 0 {
+		log.Fatalln(fmt.Errorf("kcp resend %d out of range", cfg.KCPConfig.Resend))
+	}
+	if cfg.KCPConfig.NC < 0 {
+		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
+	}
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.Port))
 	}
@@ -170,8 +218,9 @@ func main() {
 	}
 
 	// KCP
-	kcp = cfg.KCP
-	if kcp {
+	isKCP = cfg.KCP
+	kcpConfig = &cfg.KCPConfig
+	if isKCP {
 		log.Infoln("Enable KCP")
 	}
 
@@ -265,20 +314,20 @@ func open() error {
 		var listener net.Listener
 
 		if dev.IsLoop() {
-			if kcp {
-				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt)
+			if isKCP {
+				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt, kcpConfig.DataShard, kcpConfig.ParityShard)
 			} else {
 				listener, err = pcap.Listen(dev, dev, port, crypt)
 			}
 		} else {
-			if kcp {
-				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt)
+			if isKCP {
+				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt, kcpConfig.DataShard, kcpConfig.ParityShard)
 			} else {
 				listener, err = pcap.Listen(dev, gatewayDev, port, crypt)
 			}
 		}
 		if err != nil {
-			return fmt.Errorf("listen in listen device %s: %w", dev.Alias(), err)
+			return fmt.Errorf("open listen device %s: %w", dev.Alias(), err)
 		}
 
 		listeners = append(listeners, listener)
@@ -303,7 +352,20 @@ func open() error {
 					continue
 				}
 
-				log.Infof("Connect from client %s", conn.RemoteAddr().String())
+				// Tune
+				switch conn.(type) {
+				case *kcp.UDPSession:
+					err := pcap.TuneKCP(conn.(*kcp.UDPSession), kcpConfig)
+					if err != nil {
+						conn.Close()
+						log.Errorln(fmt.Errorf("tune: %w", err))
+						continue
+					}
+				default:
+					break
+				}
+
+				log.Infof("Connect from client %s\n", conn.RemoteAddr().String())
 
 				go func() {
 					for {
@@ -314,7 +376,7 @@ func open() error {
 							if isClosed {
 								return
 							}
-							log.Errorln(fmt.Errorf("read listen device: %w", err))
+							log.Errorln(fmt.Errorf("read listen: %w", err))
 							continue
 						}
 
@@ -332,8 +394,8 @@ func open() error {
 		for cab := range c {
 			err := handleListen(cab.Bytes, cab.Conn)
 			if err != nil {
-				log.Errorln(fmt.Errorf("handle listen: %w", err))
-				log.Verbosef("Source: %s\nSize: %d Bytes\nContents: %s\n\n", cab.Conn.RemoteAddr().String(), len(cab.Bytes), cab.Bytes)
+				log.Errorln(fmt.Errorf("handle listen in address %s: %w", cab.Conn.LocalAddr().String(), err))
+				log.Verbosef("Source: %s\nSize: %d Bytes\n\n", cab.Conn.RemoteAddr().String(), len(cab.Bytes))
 				continue
 			}
 		}
@@ -345,7 +407,7 @@ func open() error {
 			if isClosed {
 				return nil
 			}
-			log.Errorln(fmt.Errorf("read upstream device %s: %w", upConn.LocalDev().Alias(), err))
+			log.Errorln(fmt.Errorf("read upstream in device %s: %w", upConn.LocalDev().Alias(), err))
 			continue
 		}
 

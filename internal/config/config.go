@@ -11,30 +11,32 @@ import (
 
 // Config describes the configuration of IkaGo.
 type Config struct {
-	ListenDevs []string `json:"listen-devices"`
-	UpDev      string   `json:"upstream-device"`
-	Gateway    string   `json:"gateway"`
-	Method     string   `json:"method"`
-	Password   string   `json:"password"`
-	KCP        bool     `json:"kcp"`
-	Verbose    bool     `json:"verbose"`
-	Publish    string   `json:"publish"`
-	UpPort     int      `json:"upstream-port"`
-	Filters    []string `json:"filters"`
-	Server     string   `json:"server"`
-	Port       int      `json:"port"`
+	ListenDevs []string  `json:"listen-devices"`
+	UpDev      string    `json:"upstream-device"`
+	Gateway    string    `json:"gateway"`
+	Method     string    `json:"method"`
+	Password   string    `json:"password"`
+	KCP        bool      `json:"kcp"`
+	KCPConfig  KCPConfig `json:"kcp-tuning"`
+	Verbose    bool      `json:"verbose"`
+	Publish    string    `json:"publish"`
+	UpPort     int       `json:"upstream-port"`
+	Filters    []string  `json:"filters"`
+	Server     string    `json:"server"`
+	Port       int       `json:"port"`
 }
 
-// New returns a new config.
-func New() *Config {
+// NewConfig returns a new config.
+func NewConfig() *Config {
 	return &Config{
-		Method: "plain",
+		Method:    "plain",
+		KCPConfig: *NewKCPConfig(),
 	}
 }
 
 // ParseFile returns the config parsed from file.
 func ParseFile(path string) (*Config, error) {
-	config := New()
+	config := NewConfig()
 
 	// Open file
 	file, err := os.Open(path)
@@ -56,6 +58,9 @@ func ParseFile(path string) (*Config, error) {
 	// Read file
 	buffer := make([]byte, size)
 	_, err = file.Read(buffer)
+	if err != nil {
+		return nil, fmt.Errorf("read: %w", err)
+	}
 
 	// Trim comments
 	buffer, err = trimComments(buffer)
