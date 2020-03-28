@@ -16,6 +16,7 @@
 </p>
 
 - **FakeTCP**: All TCP, UDP and ICMPv4 packets will be sent with a TCP header to bypass UDP blocking and UDP QoS. Inspired by [Udp2raw-tunnel](https://github.com/wangyu-/udp2raw-tunnel). The handshaking of TCP is also simulated.
+- **Proxy ARP**: Reply ARP request as it owns the specified address which is not on the network.
 - **Multiplexing and Multiple**: One client can handle multiple connections from different devices. And one server can serve multiple clients.
 - **Cross Platform**: Works well with Windows and Linux, and macOS and others in theory.
 - **Full Cone NAT**
@@ -62,7 +63,7 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-publish address`: (Optional) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the address which is not on the network, also called proxy ARP.
+`-publish address`: (Optional) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
 
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
