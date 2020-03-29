@@ -124,7 +124,7 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 
 func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Conn, error) {
 	addrs := make([]*net.TCPAddr, 0)
-	for _, ip := range srcDev.ipAddrs {
+	for _, ip := range srcDev.IPAddrs() {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
@@ -166,7 +166,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 					Op:   "listen",
 					Net:  "pcap",
 					Addr: srcAddrs,
-					Err:  fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err),
+					Err:  fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().Alias(), err),
 				})
 				continue
 			}
@@ -231,7 +231,7 @@ func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TC
 	go func() {
 		packet, err := handshakeConn.ReadPacket()
 		if err != nil {
-			ct <- tuple{err: fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().alias, err)}
+			ct <- tuple{err: fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().Alias(), err)}
 		}
 
 		ct <- tuple{packet: packet}
@@ -250,8 +250,7 @@ func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TC
 	if transportLayer == nil {
 		return errors.New("missing transport layer")
 	}
-	transportLayerType := transportLayer.LayerType()
-	switch transportLayerType {
+	switch t := transportLayer.LayerType(); t {
 	case layers.LayerTypeTCP:
 		tcpLayer := transportLayer.(*layers.TCP)
 		if tcpLayer.RST {
@@ -261,7 +260,7 @@ func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TC
 			return errors.New("invalid packet")
 		}
 	default:
-		return fmt.Errorf("transport layer type %s not support", transportLayerType)
+		return fmt.Errorf("transport layer type %s not support", t)
 	}
 
 	// Latency test
@@ -295,7 +294,7 @@ func (c *Conn) handshakeSYN(conn *RawConn) error {
 	client := &clientIndicator{crypt: c.crypt}
 
 	// Create layers
-	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, conn, c.dstAddr.IP, c.id, 128, conn.RemoteDev().hardwareAddr)
+	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, conn, c.dstAddr.IP, c.id, 128, conn.RemoteDev().HardwareAddr())
 	if err != nil {
 		return err
 	}
@@ -333,15 +332,13 @@ func (c *Conn) handshakeSYN(conn *RawConn) error {
 
 func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 	var (
-		transportLayerType gopacket.LayerType
-		newTransportLayer  gopacket.SerializableLayer
-		newNetworkLayer    gopacket.SerializableLayer
-		newLinkLayer       gopacket.SerializableLayer
+		newTransportLayer gopacket.SerializableLayer
+		newNetworkLayer   gopacket.SerializableLayer
+		newLinkLayer      gopacket.SerializableLayer
 	)
 
-	transportLayerType = indicator.TransportLayerType()
-	if transportLayerType != layers.LayerTypeTCP {
-		return fmt.Errorf("transport layer type %s not support", transportLayerType)
+	if t := indicator.TransportLayer().LayerType(); t != layers.LayerTypeTCP {
+		return fmt.Errorf("transport layer type %s not support", t)
 	}
 
 	// Initial TCP Seq
@@ -391,11 +388,10 @@ func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 
 func (c *Conn) handshakeACK(packet gopacket.Packet, conn *RawConn) error {
 	var (
-		indicator          *PacketIndicator
-		transportLayerType gopacket.LayerType
-		newTransportLayer  gopacket.SerializableLayer
-		newNetworkLayer    gopacket.SerializableLayer
-		newLinkLayer       gopacket.SerializableLayer
+		indicator         *PacketIndicator
+		newTransportLayer gopacket.SerializableLayer
+		newNetworkLayer   gopacket.SerializableLayer
+		newLinkLayer      gopacket.SerializableLayer
 	)
 
 	// Parse packet
@@ -404,9 +400,8 @@ func (c *Conn) handshakeACK(packet gopacket.Packet, conn *RawConn) error {
 		return fmt.Errorf("parse packet: %w", err)
 	}
 
-	transportLayerType = indicator.TransportLayerType()
-	if transportLayerType != layers.LayerTypeTCP {
-		return fmt.Errorf("transport layer type %s not support", transportLayerType)
+	if t := indicator.TransportLayer().LayerType(); t != layers.LayerTypeTCP {
+		return fmt.Errorf("transport layer type %s not support", t)
 	}
 
 	// Client
@@ -526,28 +521,27 @@ func (c *Conn) readPacketFrom() (packet gopacket.Packet, addr net.Addr, err erro
 		}()
 	}
 
-	t := <-ch
-	if t.err != nil {
-		return nil, nil, t.err
+	tu := <-ch
+	if tu.err != nil {
+		return nil, nil, tu.err
 	}
 
 	// Parse packet
-	indicator, err := ParsePacket(t.packet)
+	indicator, err := ParsePacket(tu.packet)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse: %w", err)
 	}
 
-	transportLayerType := indicator.TransportLayerType()
-	switch transportLayerType {
+	switch t := indicator.TransportLayer().LayerType(); t {
 	case layers.LayerTypeTCP:
-		return t.packet, &net.UDPAddr{
+		return tu.packet, &net.UDPAddr{
 			IP:   indicator.SrcIP(),
 			Port: int(indicator.SrcPort()),
 		}, nil
 	case layers.LayerTypeUDP:
-		return t.packet, indicator.Src(), nil
+		return tu.packet, indicator.Src(), nil
 	default:
-		return nil, indicator.Src(), fmt.Errorf("transport layer type %s not support", transportLayerType)
+		return nil, indicator.Src(), fmt.Errorf("transport layer type %s not support", t)
 	}
 }
 
@@ -593,7 +587,7 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		}
 
 		// Create layers
-		transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, dstPort, client.seq, client.ack, c.conn, dstIP, c.id, 128, c.conn.dstDev.hardwareAddr)
+		transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, dstPort, client.seq, client.ack, c.conn, dstIP, c.id, 128, c.conn.RemoteDev().HardwareAddr())
 		if err != nil {
 			ch <- fmt.Errorf("create layers: %w", err)
 			return
@@ -685,7 +679,7 @@ func (c *Conn) corLocalAddr(dstAddr net.Addr) net.Addr {
 	if dstAddr == nil {
 		addrs := make([]*net.TCPAddr, 0)
 
-		for _, ip := range c.LocalDev().ipAddrs {
+		for _, ip := range c.LocalDev().IPAddrs() {
 			addrs = append(addrs, &net.TCPAddr{
 				IP:   ip.IP,
 				Port: int(c.srcPort),
@@ -767,7 +761,7 @@ type Listener struct {
 // Listen acts like Listen for pcap networks.
 func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Listener, error) {
 	addrs := make([]*net.TCPAddr, 0)
-	for _, ip := range srcDev.ipAddrs {
+	for _, ip := range srcDev.IPAddrs() {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
@@ -798,7 +792,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			Op:   "accept",
 			Net:  "pcap",
 			Addr: l.corAddr(nil),
-			Err:  fmt.Errorf("read device %s: %w", l.Dev().alias, err),
+			Err:  fmt.Errorf("read device %s: %w", l.Dev().Alias(), err),
 		}
 	}
 
@@ -875,7 +869,7 @@ func (l *Listener) corAddr(dstAddr net.Addr) net.Addr {
 	if dstAddr == nil {
 		addrs := make([]*net.TCPAddr, 0)
 
-		for _, ip := range l.Dev().ipAddrs {
+		for _, ip := range l.Dev().IPAddrs() {
 			addrs = append(addrs, &net.TCPAddr{
 				IP:   ip.IP,
 				Port: int(l.srcPort),

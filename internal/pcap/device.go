@@ -289,25 +289,15 @@ func FindGatewayAddr() (net.IP, error) {
 
 // FindGatewayDev returns the gateway device.
 func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
-	// Create a packet capture for testing
-	handle, err := pcap.OpenLive(dev, 1600, true, pcap.BlockForever)
-	if err != nil {
-		return nil, fmt.Errorf("open device %s: %w", dev, err)
-	}
-
-	err = handle.SetBPFFilter(fmt.Sprintf("udp and dst %s and dst port 65535", ip))
-	if err != nil {
-		return nil, fmt.Errorf("set bpf filter: %w", err)
-	}
-
-	localPacketSrc := gopacket.NewPacketSource(handle, handle.LinkType())
+	conn, err := createPureRawConn(dev, fmt.Sprintf("udp and dst %s and dst port 65535", ip))
 
 	c := make(chan gopacket.Packet, 1)
 	go func() {
-		for packet := range localPacketSrc.Packets() {
-			c <- packet
-			break
+		packet, err := conn.ReadPacket()
+		if err != nil {
+			c <- nil
 		}
+		c <- packet
 	}()
 	go func() {
 		time.Sleep(3 * time.Second)

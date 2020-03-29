@@ -17,6 +17,9 @@ func (err *timeoutError) Timeout() bool {
 	return true
 }
 
+// MaxMTU is the max transmission and receive unit in pcap raw conn.
+const MaxMTU = 1600
+
 // RawConn is a raw network connection.
 type RawConn struct {
 	srcDev *Device
@@ -24,9 +27,8 @@ type RawConn struct {
 	handle *pcap.Handle
 }
 
-// CreateRawConn creates a raw connection between devices with BPF filter.
-func CreateRawConn(srcDev, dstDev *Device, filter string) (*RawConn, error) {
-	handle, err := pcap.OpenLive(srcDev.name, 1600, true, pcap.BlockForever)
+func createPureRawConn(dev, filter string) (*RawConn, error) {
+	handle, err := pcap.OpenLive(dev, MaxMTU, true, pcap.BlockForever)
 	if err != nil {
 		return nil, err
 	}
@@ -37,10 +39,21 @@ func CreateRawConn(srcDev, dstDev *Device, filter string) (*RawConn, error) {
 	}
 
 	return &RawConn{
-		srcDev: srcDev,
-		dstDev: dstDev,
 		handle: handle,
 	}, nil
+}
+
+// CreateRawConn creates a raw connection between devices with BPF filter.
+func CreateRawConn(srcDev, dstDev *Device, filter string) (*RawConn, error) {
+	conn, err := createPureRawConn(srcDev.Name(), filter)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.srcDev = srcDev
+	conn.dstDev = dstDev
+
+	return conn, nil
 }
 
 func (c *RawConn) Read(b []byte) (n int, err error) {
@@ -56,7 +69,7 @@ func (c *RawConn) Read(b []byte) (n int, err error) {
 
 // ReadPacket reads packet from the connection.
 func (c *RawConn) ReadPacket() (packet gopacket.Packet, err error) {
-	b := make([]byte, 1600)
+	b := make([]byte, MaxMTU)
 
 	_, err = c.Read(b)
 	if err != nil {
@@ -95,5 +108,5 @@ func (c *RawConn) RemoteDev() *Device {
 
 // IsLoop returns if the connection is to a loopback device.
 func (c *RawConn) IsLoop() bool {
-	return c.dstDev.isLoop
+	return c.dstDev.IsLoop()
 }

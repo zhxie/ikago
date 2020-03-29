@@ -91,6 +91,8 @@ go run ./cmd/ikago-server -p [port]
    pfctl -e
    ```
 
+2. IkaGo prepend packets with TCP header, so an extra IPv4/IPv6 and TCP header will be added to the packet. As a consequence, an extra 40/60 Bytes will be added to the total packet size. For encryption, another extra 8 Bytes, and for KCP support, another 24 Bytes. IkaGo will never do IP fragmentation, so please make sure the MTU in your device was set to a reasonable value. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable encryption and KCP support, you should set the device's MTU value to no more than 1328 Bytes.
+
 ## Todo
 
 - [ ] Retransmission and out of order packets detection

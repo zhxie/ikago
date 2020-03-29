@@ -73,7 +73,7 @@ var (
 	upConn      net.Conn
 	c           chan pcap.ConnPacket
 	natLock     sync.RWMutex
-	nat         map[pcap.NATGuide]*natIndicator
+	nat         map[string]*natIndicator
 )
 
 func init() {
@@ -85,7 +85,7 @@ func init() {
 
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
-	nat = make(map[pcap.NATGuide]*natIndicator)
+	nat = make(map[string]*natIndicator)
 }
 
 func main() {
@@ -417,7 +417,7 @@ func open() error {
 	}()
 
 	for {
-		b := make([]byte, 1600)
+		b := make([]byte, pcap.MaxMTU)
 
 		n, err := upConn.Read(b)
 		if err != nil {
@@ -451,12 +451,11 @@ func closeAll() {
 
 func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
-		indicator     *pcap.PacketIndicator
-		arpLayer      *layers.ARP
-		newARPLayer   *layers.ARP
-		linkLayer     gopacket.Layer
-		linkLayerType gopacket.LayerType
-		newLinkLayer  *layers.Ethernet
+		indicator    *pcap.PacketIndicator
+		arpLayer     *layers.ARP
+		newARPLayer  *layers.ARP
+		linkLayer    gopacket.Layer
+		newLinkLayer *layers.Ethernet
 	)
 
 	// Parse packet
@@ -465,8 +464,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 		return fmt.Errorf("parse packet: %w", err)
 	}
 
-	t := indicator.NetworkLayerType()
-	if t != layers.LayerTypeARP {
+	if t := indicator.NetworkLayer().LayerType(); t != layers.LayerTypeARP {
 		return fmt.Errorf("network layer type %s not support", t)
 	}
 
@@ -486,8 +484,8 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 	// Create new link layer
 	linkLayer = packet.LinkLayer()
-	linkLayerType = linkLayer.LayerType()
-	switch linkLayerType {
+
+	switch t := linkLayer.LayerType(); t {
 	case layers.LayerTypeEthernet:
 		newLinkLayer = &layers.Ethernet{
 			SrcMAC:       conn.LocalDev().HardwareAddr(),
@@ -495,7 +493,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 			EthernetType: linkLayer.(*layers.Ethernet).EthernetType,
 		}
 	default:
-		return fmt.Errorf("link layer type %s not support", linkLayerType)
+		return fmt.Errorf("link layer type %s not support", t)
 	}
 
 	// Serialize layers
@@ -510,7 +508,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 		return fmt.Errorf("write: %w", err)
 	}
 
-	log.Verbosef("Reply an %s request: %s -> %s (%d Bytes)\n", indicator.NetworkLayerType(), indicator.SrcIP(), indicator.DstIP(), n)
+	log.Verbosef("Reply an %s request: %s -> %s (%d Bytes)\n", indicator.NetworkLayer().LayerType(), indicator.SrcIP(), indicator.DstIP(), n)
 
 	return nil
 }
@@ -523,7 +521,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// ARP
-	if indicator.NetworkLayerType() == layers.LayerTypeARP {
+	if indicator.NetworkLayer().LayerType() == layers.LayerTypeARP {
 		err := publish(packet, conn)
 		if err != nil {
 			return fmt.Errorf("publish: %w", err)
@@ -545,11 +543,14 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// Record the connection of the packet
-	natLock.Lock()
-	nat[pcap.NATGuide{Src: indicator.NATSrc().String(), Proto: indicator.NATProto()}] = &natIndicator{srcHardwareAddr: indicator.SrcHardwareAddr(), conn: conn}
-	natLock.Unlock()
+	ni, ok := nat[indicator.SrcIP().String()]
+	if !ok || ni.srcHardwareAddr.String() != indicator.SrcHardwareAddr().String() {
+		natLock.Lock()
+		nat[indicator.SrcIP().String()] = &natIndicator{srcHardwareAddr: indicator.SrcHardwareAddr(), conn: conn}
+		natLock.Unlock()
+	}
 
-	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.TransportLayerType(), indicator.Src().String(), indicator.Dst().String(), n)
+	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.Protocol(), indicator.Src().String(), indicator.Dst().String(), n)
 
 	return nil
 }
@@ -574,10 +575,10 @@ func handleUpstream(contents []byte) error {
 
 	// Check map
 	natLock.RLock()
-	ni, ok := nat[pcap.NATGuide{Src: embIndicator.NATDst().String(), Proto: embIndicator.NATProto()}]
+	ni, ok := nat[embIndicator.DstIP().String()]
 	natLock.RUnlock()
 	if !ok {
-		return fmt.Errorf("missing %s nat to %s", embIndicator.NATProto(), embIndicator.NATDst())
+		return fmt.Errorf("missing nat to %s", embIndicator.DstIP())
 	}
 
 	// Decide Loopback or Ethernet
@@ -615,7 +616,7 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("write: %w", err)
 	}
 
-	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportLayerType(), embIndicator.Dst().String(), embIndicator.Src().String(), n)
+	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.Protocol(), embIndicator.Dst().String(), embIndicator.Src().String(), n)
 
 	return nil
 }
