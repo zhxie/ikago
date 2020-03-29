@@ -186,6 +186,12 @@ func FindAllDevs() ([]*Device, error) {
 				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, errors.New("invalid address")))
 				continue
 			}
+
+			// HACK: block IPv6 addresses
+			if ipnet.IP.To4() == nil {
+				continue
+			}
+
 			as = append(as, ipnet)
 		}
 
