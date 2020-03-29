@@ -149,13 +149,48 @@ func (indicator *PacketIndicator) Hop() uint8 {
 	}
 }
 
+// Id returns the Id in the network layer.
+func (indicator *PacketIndicator) NetworkId() uint16 {
+	switch t := indicator.NetworkLayer().LayerType(); t {
+	case layers.LayerTypeIPv4:
+		return indicator.IPv4Layer().Id
+	default:
+		panic(fmt.Errorf("network layer type %s not support", t))
+	}
+}
+
+// IsFrag returns if the packet is a fragment.
+func (indicator *PacketIndicator) IsFrag() bool {
+	switch t := indicator.NetworkLayer().LayerType(); t {
+	case layers.LayerTypeIPv4:
+		ipv4Layer := indicator.IPv4Layer()
+
+		if ipv4Layer.Flags&layers.IPv4MoreFragments != 0 {
+			return true
+		}
+
+		return ipv4Layer.FragOffset != 0
+	default:
+		panic(fmt.Errorf("network layer type %s not support", t))
+	}
+}
+
+// FragOffset returns the fragment offset.
+func (indicator *PacketIndicator) FragOffset() uint16 {
+	switch t := indicator.NetworkLayer().LayerType(); t {
+	case layers.LayerTypeIPv4:
+		return indicator.IPv4Layer().FragOffset
+	default:
+		panic(fmt.Errorf("network layer type %s not support", t))
+	}
+}
+
 // TransportProtocol returns the protocol of the transport layer.
 func (indicator *PacketIndicator) TransportProtocol() gopacket.LayerType {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return ptot(indicator.IPv4Layer().Protocol)
 	case layers.LayerTypeIPv6:
-		// TODO: IPv6 headers may have extensions
 		return ptot(indicator.IPv6Layer().NextHeader)
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
@@ -286,6 +321,12 @@ func (indicator *PacketIndicator) NATProtocol() gopacket.LayerType {
 
 // Src returns the source.
 func (indicator *PacketIndicator) Src() net.Addr {
+	if indicator.TransportLayer() == nil {
+		return &net.IPAddr{
+			IP: indicator.SrcIP(),
+		}
+	}
+
 	switch t := indicator.TransportLayer().LayerType(); t {
 	case layers.LayerTypeTCP:
 		return &net.TCPAddr{
@@ -306,10 +347,6 @@ func (indicator *PacketIndicator) Src() net.Addr {
 		}
 
 		return &net.IPAddr{IP: indicator.SrcIP()}
-	case gopacket.LayerTypeFragment:
-		return &net.IPAddr{
-			IP: indicator.SrcIP(),
-		}
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
@@ -317,6 +354,12 @@ func (indicator *PacketIndicator) Src() net.Addr {
 
 // Dst returns the destination.
 func (indicator *PacketIndicator) Dst() net.Addr {
+	if indicator.TransportLayer() == nil {
+		return &net.IPAddr{
+			IP: indicator.DstIP(),
+		}
+	}
+
 	switch t := indicator.TransportLayer().LayerType(); t {
 	case layers.LayerTypeTCP:
 		return &net.TCPAddr{
@@ -337,24 +380,9 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 		}
 
 		return &net.IPAddr{IP: indicator.DstIP()}
-	case gopacket.LayerTypeFragment:
-		return &net.IPAddr{
-			IP: indicator.DstIP(),
-		}
 	default:
 		panic(fmt.Errorf("transport layer type %s not support", t))
 	}
-}
-
-// Protocol returns the protocol.
-func (indicator *PacketIndicator) Protocol() string {
-	p := indicator.TransportProtocol()
-	t := indicator.TransportLayer().LayerType()
-	if p == t {
-		return t.String()
-	}
-
-	return fmt.Sprintf("%s (%s)", p, t)
 }
 
 // Payload returns the payload, or layer contents in application layer.
@@ -403,8 +431,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		transportLayer = packet.Layer(layers.LayerTypeICMPv4)
 		if transportLayer == nil {
 			// Guess fragment
-			transportLayer = packet.Layer(gopacket.LayerTypeFragment)
-			if transportLayer == nil {
+			if packet.Layer(gopacket.LayerTypeFragment) == nil {
 				return nil, errors.New("missing transport layer")
 			}
 		}
@@ -422,17 +449,19 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}
 
 	// Parse transport layer
-	switch t := transportLayer.LayerType(); t {
-	case layers.LayerTypeTCP, layers.LayerTypeUDP, gopacket.LayerTypeFragment:
-		break
-	case layers.LayerTypeICMPv4:
-		var err error
-		icmpv4Indicator, err = ParseICMPv4Layer(transportLayer.(*layers.ICMPv4))
-		if err != nil {
-			return nil, fmt.Errorf("parse icmpv4 layer: %w", err)
+	if transportLayer != nil {
+		switch t := transportLayer.LayerType(); t {
+		case layers.LayerTypeTCP, layers.LayerTypeUDP:
+			break
+		case layers.LayerTypeICMPv4:
+			var err error
+			icmpv4Indicator, err = ParseICMPv4Layer(transportLayer.(*layers.ICMPv4))
+			if err != nil {
+				return nil, fmt.Errorf("parse icmpv4 layer: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("transport layer type %s not support", t)
 		}
-	default:
-		return nil, fmt.Errorf("transport layer type %s not support", t)
 	}
 
 	return &PacketIndicator{

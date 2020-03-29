@@ -514,6 +514,8 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 }
 
 func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
+	var contents []byte
+
 	// Parse packet
 	indicator, err := pcap.ParsePacket(packet)
 	if err != nil {
@@ -530,9 +532,15 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 		return nil
 	}
 
-	contents, err := pcap.SerializeRaw(indicator.NetworkLayer().(gopacket.SerializableLayer),
-		indicator.TransportLayer().(gopacket.SerializableLayer),
-		gopacket.Payload(indicator.Payload()))
+	// Serialize layers
+	if indicator.TransportLayer() == nil {
+		contents, err = pcap.SerializeRaw(indicator.NetworkLayer().(gopacket.SerializableLayer),
+			gopacket.Payload(indicator.Payload()))
+	} else {
+		contents, err = pcap.SerializeRaw(indicator.NetworkLayer().(gopacket.SerializableLayer),
+			indicator.TransportLayer().(gopacket.SerializableLayer),
+			gopacket.Payload(indicator.Payload()))
+	}
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -550,7 +558,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 		natLock.Unlock()
 	}
 
-	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.Protocol(), indicator.Src().String(), indicator.Dst().String(), n)
+	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.TransportProtocol(), indicator.Src().String(), indicator.Dst().String(), n)
 
 	return nil
 }
@@ -560,6 +568,7 @@ func handleUpstream(contents []byte) error {
 		embIndicator     *pcap.PacketIndicator
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
+		data             []byte
 	)
 
 	// Empty payload
@@ -602,10 +611,16 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Serialize layers
-	data, err := pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
-		embIndicator.NetworkLayer().(gopacket.SerializableLayer),
-		embIndicator.TransportLayer().(gopacket.SerializableLayer),
-		gopacket.Payload(embIndicator.Payload()))
+	if embIndicator.TransportLayer() == nil {
+		data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+			embIndicator.NetworkLayer().(gopacket.SerializableLayer),
+			gopacket.Payload(embIndicator.Payload()))
+	} else {
+		data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+			embIndicator.NetworkLayer().(gopacket.SerializableLayer),
+			embIndicator.TransportLayer().(gopacket.SerializableLayer),
+			gopacket.Payload(embIndicator.Payload()))
+	}
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
 	}
@@ -616,7 +631,7 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("write: %w", err)
 	}
 
-	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.Protocol(), embIndicator.Dst().String(), embIndicator.Src().String(), n)
+	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), n)
 
 	return nil
 }

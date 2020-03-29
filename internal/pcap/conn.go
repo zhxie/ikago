@@ -35,8 +35,7 @@ type Conn struct {
 	writeDeadline time.Time
 }
 
-// New returns a new Conn.
-func New() *Conn {
+func newConn() *Conn {
 	return &Conn{
 		clients: make(map[string]*clientIndicator),
 	}
@@ -59,7 +58,7 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 		}
 	}
 
-	conn := New()
+	conn := newConn()
 	conn.srcPort = srcPort
 	conn.dstAddr = dstAddr
 	conn.crypt = crypt
@@ -113,7 +112,7 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 		return nil, fmt.Errorf("create raw connection: %w", err)
 	}
 
-	conn := New()
+	conn := newConn()
 	conn.srcPort = srcPort
 	conn.dstAddr = dstAddr
 	conn.crypt = crypt
@@ -149,7 +148,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 		}
 	}
 
-	conn := New()
+	conn := newConn()
 	conn.conn = rawConn
 	conn.srcPort = srcPort
 	conn.crypt = crypt

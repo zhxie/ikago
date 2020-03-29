@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -46,6 +47,48 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 	default:
 		panic(fmt.Errorf("type %T not support", t))
 	}
+}
+
+type fragIndicator struct {
+	length uint16
+	offset uint16
+	frags  []*pcap.PacketIndicator
+}
+
+func newFragIndicator() *fragIndicator {
+	return &fragIndicator{
+		frags: make([]*pcap.PacketIndicator, 0),
+	}
+}
+
+func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
+	indicator.frags = append(indicator.frags, ind)
+
+	switch t := ind.NetworkLayer().LayerType(); t {
+	case layers.LayerTypeIPv4:
+		ipv4Layer := ind.IPv4Layer()
+
+		if ipv4Layer.Flags&layers.IPv4MoreFragments != 0 {
+			indicator.length = indicator.length + uint16(len(ipv4Layer.LayerPayload()))
+		} else {
+			// Final fragment
+			indicator.offset = ipv4Layer.FragOffset
+		}
+	default:
+		panic(fmt.Errorf("network layer type %s not support", t))
+	}
+
+	// Sort
+	if len(indicator.frags) <= 1 {
+		return
+	}
+	sort.Slice(indicator.frags, func(i, j int) bool {
+		return indicator.frags[i].FragOffset() < indicator.frags[j].FragOffset()
+	})
+}
+
+func (indicator *fragIndicator) isCompleted() bool {
+	return indicator.length == indicator.offset
 }
 
 const keepAlive float64 = 30 // seconds
@@ -88,6 +131,8 @@ var (
 	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
+	listenFrags  map[uint16]*fragIndicator
+	upFrags      map[uint16]*fragIndicator
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -107,6 +152,8 @@ func init() {
 
 	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
+	listenFrags = make(map[uint16]*fragIndicator)
+	upFrags = make(map[uint16]*fragIndicator)
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
@@ -434,15 +481,10 @@ func closeAll() {
 
 func handleListen(contents []byte, conn net.Conn) error {
 	var (
-		embIndicator          *pcap.PacketIndicator
-		upValue               uint16
-		newTransportLayer     gopacket.Layer
-		newNetworkLayer       gopacket.NetworkLayer
-		upIP                  net.IP
-		newLinkLayerType      gopacket.LayerType
-		newLinkLayer          gopacket.Layer
-		guide                 pcap.NATGuide
-		ni                    *natIndicator
+		err          error
+		embIndicator *pcap.PacketIndicator
+		upValue      uint16
+		indicators   []*pcap.PacketIndicator
 	)
 
 	// Empty payload
@@ -451,267 +493,306 @@ func handleListen(contents []byte, conn net.Conn) error {
 	}
 
 	// Parse embedded packet
-	embIndicator, err := pcap.ParseEmbPacket(contents)
+	embIndicator, err = pcap.ParseEmbPacket(contents)
 	if err != nil {
 		return fmt.Errorf("parse embedded packet: %w", err)
 	}
 
-	// TODO: Fragment?
+	indicators = make([]*pcap.PacketIndicator, 0)
 
-	// Distribute port/Id by source and client address and protocol
-	q := quintuple{
-		src:      embIndicator.NATSrc().String(),
-		dst:      conn.RemoteAddr().String(),
-		protocol: embIndicator.NATProtocol(),
-	}
-	upValue, ok := patMap[q]
-	if !ok {
-		// if ICMPv4 error is not in NAT, drop it
-		if t := embIndicator.TransportLayer().LayerType(); t == layers.LayerTypeICMPv4 && !embIndicator.ICMPv4Indicator().IsQuery() {
-			return errors.New("missing nat")
+	// Fragment
+	if embIndicator.IsFrag() {
+		fragIndicator, ok := listenFrags[embIndicator.NetworkId()]
+		if !ok || fragIndicator == nil {
+			fragIndicator = newFragIndicator()
+			listenFrags[embIndicator.NetworkId()] = fragIndicator
 		}
-		upValue, err = dist(embIndicator.TransportLayer().LayerType())
+
+		fragIndicator.append(embIndicator)
+
+		if !fragIndicator.isCompleted() {
+			return nil
+		}
+
+		// Distribute port/Id by source and client address and protocol
+		upValue, err = lookUp(fragIndicator.frags[0], conn)
 		if err != nil {
-			return fmt.Errorf("distribute: %w", err)
+			return fmt.Errorf("look up: %w", err)
 		}
-		patMap[q] = upValue
+
+		indicators = append(indicators, fragIndicator.frags...)
+		listenFrags[embIndicator.NetworkId()] = nil
+	} else {
+		// Distribute port/Id by source and client address and protocol
+		upValue, err = lookUp(embIndicator, conn)
+		if err != nil {
+			return fmt.Errorf("look up: %w", err)
+		}
+
+		indicators = append(indicators, embIndicator)
 	}
 
-	// Create new transport layer
-	switch t := embIndicator.TransportLayer().LayerType(); t {
-	case layers.LayerTypeTCP:
-		tcpLayer := embIndicator.TCPLayer()
-		temp := *tcpLayer
-		newTransportLayer = &temp
+	// For packet or each fragments
+	for _, indicator := range indicators {
+		var (
+			newTransportLayer gopacket.Layer
+			newNetworkLayer   gopacket.NetworkLayer
+			upIP              net.IP
+			newLinkLayerType  gopacket.LayerType
+			newLinkLayer      gopacket.Layer
+			data              []byte
+			guide             pcap.NATGuide
+			ni                *natIndicator
+		)
 
-		newTCPLayer := newTransportLayer.(*layers.TCP)
-
-		newTCPLayer.SrcPort = layers.TCPPort(upValue)
-	case layers.LayerTypeUDP:
-		udpLayer := embIndicator.UDPLayer()
-		temp := *udpLayer
-		newTransportLayer = &temp
-
-		newUDPLayer := newTransportLayer.(*layers.UDP)
-
-		newUDPLayer.SrcPort = layers.UDPPort(upValue)
-	case layers.LayerTypeICMPv4:
-		if embIndicator.ICMPv4Indicator().IsQuery() {
-			temp := *embIndicator.ICMPv4Indicator().ICMPv4Layer()
-			newTransportLayer = &temp
-
-			newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
-
-			newICMPv4Layer.Id = upValue
-		} else {
-			newTransportLayer = embIndicator.ICMPv4Indicator().NewPureICMPv4Layer()
-
-			newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
-
-			temp := *embIndicator.ICMPv4Indicator().EmbIPv4Layer()
-			newEmbIPv4Layer := &temp
-
-			newEmbIPv4Layer.DstIP = upConn.LocalDev().IPv4Addr().IP
-
-			var err error
-			var newEmbTransportLayer gopacket.Layer
-			embTransportLayerType := embIndicator.ICMPv4Indicator().EmbTransportLayer().LayerType()
-			switch embTransportLayerType {
+		// Create new transport layer
+		if indicator.TransportLayer() != nil {
+			switch t := indicator.TransportLayer().LayerType(); t {
 			case layers.LayerTypeTCP:
-				temp := *embIndicator.ICMPv4Indicator().EmbTCPLayer()
-				newEmbTransportLayer = &temp
+				tcpLayer := indicator.TCPLayer()
+				temp := *tcpLayer
+				newTransportLayer = &temp
 
-				newEmbTCPLayer := newEmbTransportLayer.(*layers.TCP)
+				newTCPLayer := newTransportLayer.(*layers.TCP)
 
-				newEmbTCPLayer.DstPort = layers.TCPPort(upValue)
-
-				err = newEmbTCPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
+				newTCPLayer.SrcPort = layers.TCPPort(upValue)
 			case layers.LayerTypeUDP:
-				temp := *embIndicator.ICMPv4Indicator().EmbUDPLayer()
-				newEmbTransportLayer = &temp
+				udpLayer := indicator.UDPLayer()
+				temp := *udpLayer
+				newTransportLayer = &temp
 
-				newEmbUDPLayer := newEmbTransportLayer.(*layers.UDP)
+				newUDPLayer := newTransportLayer.(*layers.UDP)
 
-				newEmbUDPLayer.DstPort = layers.UDPPort(upValue)
-
-				err = newEmbUDPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
+				newUDPLayer.SrcPort = layers.UDPPort(upValue)
 			case layers.LayerTypeICMPv4:
-				temp := *embIndicator.ICMPv4Indicator().EmbICMPv4Layer()
-				newEmbTransportLayer = &temp
+				if indicator.ICMPv4Indicator().IsQuery() {
+					temp := *indicator.ICMPv4Indicator().ICMPv4Layer()
+					newTransportLayer = &temp
 
-				if embIndicator.ICMPv4Indicator().IsEmbQuery() {
-					newEmbICMPv4Layer := newEmbTransportLayer.(*layers.ICMPv4)
+					newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
 
-					newEmbICMPv4Layer.Id = upValue
+					newICMPv4Layer.Id = upValue
+				} else {
+					newTransportLayer = indicator.ICMPv4Indicator().NewPureICMPv4Layer()
+
+					newICMPv4Layer := newTransportLayer.(*layers.ICMPv4)
+
+					temp := *indicator.ICMPv4Indicator().EmbIPv4Layer()
+					newEmbIPv4Layer := &temp
+
+					newEmbIPv4Layer.DstIP = upConn.LocalDev().IPv4Addr().IP
+
+					var err error
+					var newEmbTransportLayer gopacket.Layer
+					embTransportLayerType := indicator.ICMPv4Indicator().EmbTransportLayer().LayerType()
+					switch embTransportLayerType {
+					case layers.LayerTypeTCP:
+						temp := *indicator.ICMPv4Indicator().EmbTCPLayer()
+						newEmbTransportLayer = &temp
+
+						newEmbTCPLayer := newEmbTransportLayer.(*layers.TCP)
+
+						newEmbTCPLayer.DstPort = layers.TCPPort(upValue)
+
+						err = newEmbTCPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
+					case layers.LayerTypeUDP:
+						temp := *indicator.ICMPv4Indicator().EmbUDPLayer()
+						newEmbTransportLayer = &temp
+
+						newEmbUDPLayer := newEmbTransportLayer.(*layers.UDP)
+
+						newEmbUDPLayer.DstPort = layers.UDPPort(upValue)
+
+						err = newEmbUDPLayer.SetNetworkLayerForChecksum(newEmbIPv4Layer)
+					case layers.LayerTypeICMPv4:
+						temp := *indicator.ICMPv4Indicator().EmbICMPv4Layer()
+						newEmbTransportLayer = &temp
+
+						if indicator.ICMPv4Indicator().IsEmbQuery() {
+							newEmbICMPv4Layer := newEmbTransportLayer.(*layers.ICMPv4)
+
+							newEmbICMPv4Layer.Id = upValue
+						}
+					default:
+						return fmt.Errorf("create transport layer: %w", fmt.Errorf("transport layer type %s not support", embTransportLayerType))
+					}
+					if err != nil {
+						return fmt.Errorf("create transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
+					}
+
+					payload, err := pcap.Serialize(newEmbIPv4Layer, newEmbTransportLayer.(gopacket.SerializableLayer))
+					if err != nil {
+						return fmt.Errorf("create transport layer: %w", fmt.Errorf("serialize: %w", err))
+					}
+
+					newICMPv4Layer.Payload = payload
 				}
 			default:
-				return fmt.Errorf("create transport layer: %w", fmt.Errorf("transport layer type %s not support", embTransportLayerType))
+				return fmt.Errorf("transport layer type %s not support", t)
+			}
+		}
+
+		// Create new network layer
+		switch t := indicator.NetworkLayer().LayerType(); t {
+		case layers.LayerTypeIPv4:
+			ipv4Layer := indicator.NetworkLayer().(*layers.IPv4)
+			temp := *ipv4Layer
+			newNetworkLayer = &temp
+
+			newIPv4Layer := newNetworkLayer.(*layers.IPv4)
+
+			newIPv4Layer.SrcIP = upConn.LocalDev().IPv4Addr().IP
+			upIP = newIPv4Layer.SrcIP
+		case layers.LayerTypeIPv6:
+			ipv6Layer := indicator.NetworkLayer().(*layers.IPv6)
+			temp := *ipv6Layer
+			newNetworkLayer = &temp
+
+			newIPv6Layer := newNetworkLayer.(*layers.IPv6)
+
+			newIPv6Layer.SrcIP = upConn.LocalDev().IPv6Addr().IP
+			upIP = newIPv6Layer.SrcIP
+		default:
+			return fmt.Errorf("network layer type %s not support", t)
+		}
+
+		// Set network layer for transport layer
+		if newTransportLayer != nil {
+			switch t := newTransportLayer.LayerType(); t {
+			case layers.LayerTypeTCP:
+				tcpLayer := newTransportLayer.(*layers.TCP)
+
+				err = tcpLayer.SetNetworkLayerForChecksum(newNetworkLayer)
+			case layers.LayerTypeUDP:
+				udpLayer := newTransportLayer.(*layers.UDP)
+
+				err = udpLayer.SetNetworkLayerForChecksum(newNetworkLayer)
+			case layers.LayerTypeICMPv4, gopacket.LayerTypeFragment:
+				break
+			default:
+				return fmt.Errorf("transport layer type %s not support", t)
 			}
 			if err != nil {
-				return fmt.Errorf("create transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
+				return fmt.Errorf("set network layer for checksum: %w", err)
+			}
+		}
+
+		// Decide Loopback or Ethernet
+		if upConn.IsLoop() {
+			newLinkLayerType = layers.LayerTypeLoopback
+		} else {
+			newLinkLayerType = layers.LayerTypeEthernet
+		}
+
+		// Create new link layer
+		switch newLinkLayerType {
+		case layers.LayerTypeLoopback:
+			newLinkLayer = pcap.CreateLoopbackLayer()
+		case layers.LayerTypeEthernet:
+			newLinkLayer, err = pcap.CreateEthernetLayer(upConn.LocalDev().HardwareAddr(), upConn.RemoteDev().HardwareAddr(), newNetworkLayer)
+		default:
+			return fmt.Errorf("link layer type %s not support", newLinkLayerType)
+		}
+		if err != nil {
+			return fmt.Errorf("create link layer: %w", err)
+		}
+
+		// Serialize layers
+		if newTransportLayer == nil {
+			data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
+				newNetworkLayer.(gopacket.SerializableLayer),
+				gopacket.Payload(indicator.Payload()))
+		} else {
+			data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
+				newNetworkLayer.(gopacket.SerializableLayer),
+				newTransportLayer.(gopacket.SerializableLayer),
+				gopacket.Payload(indicator.Payload()))
+		}
+		if err != nil {
+			return fmt.Errorf("serialize: %w", err)
+		}
+
+		// Write packet data
+		n, err := upConn.Write(data)
+		if err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+
+		if indicator.TransportLayer() != nil {
+			// Record the source and the source device of the packet
+			var addNAT bool
+			switch t := indicator.TransportLayer().LayerType(); t {
+			case layers.LayerTypeTCP:
+				a := net.TCPAddr{
+					IP:   upIP,
+					Port: int(upValue),
+				}
+				guide = pcap.NATGuide{
+					Src:      a.String(),
+					Protocol: t,
+				}
+				addNAT = true
+			case layers.LayerTypeUDP:
+				a := net.UDPAddr{
+					IP:   upIP,
+					Port: int(upValue),
+				}
+				guide = pcap.NATGuide{
+					Src:      a.String(),
+					Protocol: t,
+				}
+				addNAT = true
+			case layers.LayerTypeICMPv4:
+				if indicator.ICMPv4Indicator().IsQuery() {
+					guide = pcap.NATGuide{
+						Src: addr.ICMPQueryAddr{
+							IP: upIP,
+							Id: upValue,
+						}.String(),
+						Protocol: t,
+					}
+					addNAT = true
+				}
+			default:
+				return fmt.Errorf("transport layer type %s not support", t)
+			}
+			if addNAT {
+				ni = &natIndicator{
+					src:    conn.RemoteAddr(),
+					embSrc: indicator.NATSrc(),
+					conn:   conn,
+				}
+				natLock.Lock()
+				nat[guide] = ni
+				natLock.Unlock()
 			}
 
-			payload, err := pcap.Serialize(newEmbIPv4Layer, newEmbTransportLayer.(gopacket.SerializableLayer))
-			if err != nil {
-				return fmt.Errorf("create transport layer: %w", fmt.Errorf("serialize: %w", err))
+			// Keep alive
+			protocol := indicator.NATProtocol()
+			switch protocol {
+			case layers.LayerTypeTCP:
+				tcpPortPool[convertFromPort(upValue)] = time.Now()
+			case layers.LayerTypeUDP:
+				udpPortPool[convertFromPort(upValue)] = time.Now()
+			case layers.LayerTypeICMPv4:
+				icmpv4IdPool[upValue] = time.Now()
+			default:
+				return fmt.Errorf("transport layer type %s not support", protocol)
 			}
-
-			newICMPv4Layer.Payload = payload
 		}
-	default:
-		return fmt.Errorf("transport layer type %s not support", t)
+
+		log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
+			indicator.TransportProtocol(), indicator.Src().String(), conn.RemoteAddr().String(), indicator.Dst().String(), n)
 	}
-
-	// Create new network layer
-	switch t := embIndicator.NetworkLayer().LayerType(); t {
-	case layers.LayerTypeIPv4:
-		ipv4Layer := embIndicator.NetworkLayer().(*layers.IPv4)
-		temp := *ipv4Layer
-		newNetworkLayer = &temp
-
-		newIPv4Layer := newNetworkLayer.(*layers.IPv4)
-
-		newIPv4Layer.SrcIP = upConn.LocalDev().IPv4Addr().IP
-		upIP = newIPv4Layer.SrcIP
-	case layers.LayerTypeIPv6:
-		ipv6Layer := embIndicator.NetworkLayer().(*layers.IPv6)
-		temp := *ipv6Layer
-		newNetworkLayer = &temp
-
-		newIPv6Layer := newNetworkLayer.(*layers.IPv6)
-
-		newIPv6Layer.SrcIP = upConn.LocalDev().IPv6Addr().IP
-		upIP = newIPv6Layer.SrcIP
-	default:
-		return fmt.Errorf("network layer type %s not support", t)
-	}
-
-	// Set network layer for transport layer
-	switch t := newTransportLayer.LayerType(); t {
-	case layers.LayerTypeTCP:
-		tcpLayer := newTransportLayer.(*layers.TCP)
-
-		err = tcpLayer.SetNetworkLayerForChecksum(newNetworkLayer)
-	case layers.LayerTypeUDP:
-		udpLayer := newTransportLayer.(*layers.UDP)
-
-		err = udpLayer.SetNetworkLayerForChecksum(newNetworkLayer)
-	case layers.LayerTypeICMPv4:
-		break
-	default:
-		return fmt.Errorf("transport layer type %s not support", t)
-	}
-	if err != nil {
-		return fmt.Errorf("set network layer for checksum: %w", err)
-	}
-
-	// Decide Loopback or Ethernet
-	if upConn.IsLoop() {
-		newLinkLayerType = layers.LayerTypeLoopback
-	} else {
-		newLinkLayerType = layers.LayerTypeEthernet
-	}
-
-	// Create new link layer
-	switch newLinkLayerType {
-	case layers.LayerTypeLoopback:
-		newLinkLayer = pcap.CreateLoopbackLayer()
-	case layers.LayerTypeEthernet:
-		newLinkLayer, err = pcap.CreateEthernetLayer(upConn.LocalDev().HardwareAddr(), upConn.RemoteDev().HardwareAddr(), newNetworkLayer)
-	default:
-		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
-	}
-	if err != nil {
-		return fmt.Errorf("create link layer: %w", err)
-	}
-
-	// Serialize layers
-	data, err := pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
-		newNetworkLayer.(gopacket.SerializableLayer),
-		newTransportLayer.(gopacket.SerializableLayer),
-		gopacket.Payload(embIndicator.Payload()))
-	if err != nil {
-		return fmt.Errorf("serialize: %w", err)
-	}
-
-	// Write packet data
-	n, err := upConn.Write(data)
-	if err != nil {
-		return fmt.Errorf("write: %w", err)
-	}
-
-	// Record the source and the source device of the packet
-	var addNAT bool
-	switch t := embIndicator.TransportLayer().LayerType(); t {
-	case layers.LayerTypeTCP:
-		a := net.TCPAddr{
-			IP:   upIP,
-			Port: int(upValue),
-		}
-		guide = pcap.NATGuide{
-			Src:      a.String(),
-			Protocol: t,
-		}
-		addNAT = true
-	case layers.LayerTypeUDP:
-		a := net.UDPAddr{
-			IP:   upIP,
-			Port: int(upValue),
-		}
-		guide = pcap.NATGuide{
-			Src:      a.String(),
-			Protocol: t,
-		}
-		addNAT = true
-	case layers.LayerTypeICMPv4:
-		if embIndicator.ICMPv4Indicator().IsQuery() {
-			guide = pcap.NATGuide{
-				Src: addr.ICMPQueryAddr{
-					IP: upIP,
-					Id: upValue,
-				}.String(),
-				Protocol: t,
-			}
-			addNAT = true
-		}
-	default:
-		return fmt.Errorf("transport layer type %s not support", t)
-	}
-	if addNAT {
-		ni = &natIndicator{
-			src:    conn.RemoteAddr(),
-			embSrc: embIndicator.NATSrc(),
-			conn:   conn,
-		}
-		natLock.Lock()
-		nat[guide] = ni
-		natLock.Unlock()
-	}
-
-	// Keep alive
-	protocol := embIndicator.NATProtocol()
-	switch protocol {
-	case layers.LayerTypeTCP:
-		tcpPortPool[convertFromPort(upValue)] = time.Now()
-	case layers.LayerTypeUDP:
-		udpPortPool[convertFromPort(upValue)] = time.Now()
-	case layers.LayerTypeICMPv4:
-		icmpv4IdPool[upValue] = time.Now()
-	default:
-		return fmt.Errorf("transport layer type %s not support", protocol)
-	}
-
-	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
-		embIndicator.TransportLayer().LayerType(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), n)
 
 	return nil
 }
 
 func handleUpstream(packet gopacket.Packet) error {
 	var (
-		indicator             *pcap.PacketIndicator
-		embTransportLayer     gopacket.Layer
-		embNetworkLayer       gopacket.NetworkLayer
+		indicator         *pcap.PacketIndicator
+		embTransportLayer gopacket.Layer
+		embNetworkLayer   gopacket.NetworkLayer
 	)
 
 	// Parse packet
@@ -941,6 +1022,34 @@ func dist(t gopacket.LayerType) (uint16, error) {
 	}
 
 	return 0, fmt.Errorf("%s pool empty", t)
+}
+
+func lookUp(indicator *pcap.PacketIndicator, conn net.Conn) (uint16, error) {
+	// Distribute port/Id by source and client address and protocol
+	q := quintuple{
+		src:      indicator.NATSrc().String(),
+		dst:      conn.RemoteAddr().String(),
+		protocol: indicator.NATProtocol(),
+	}
+
+	upValue, ok := patMap[q]
+	if !ok {
+		var err error
+
+		// if ICMPv4 error is not in NAT, drop it
+		if t := indicator.TransportLayer().LayerType(); t == layers.LayerTypeICMPv4 && !indicator.ICMPv4Indicator().IsQuery() {
+			return 0, errors.New("missing nat")
+		}
+
+		upValue, err = dist(indicator.TransportLayer().LayerType())
+		if err != nil {
+			return 0, fmt.Errorf("distribute: %w", err)
+		}
+
+		patMap[q] = upValue
+	}
+
+	return upValue, nil
 }
 
 func convertFromPort(port uint16) uint16 {
