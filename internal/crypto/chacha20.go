@@ -64,7 +64,7 @@ func CreateXChaCha20Poly1305Crypt(key []byte) (*XChaCha20Poly1305Crypt, error) {
 	// AEAD
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
-		fmt.Errorf("new aead: %w", err)
+		return nil, fmt.Errorf("new aead: %w", err)
 	}
 
 	return &XChaCha20Poly1305Crypt{aead: aead}, nil
