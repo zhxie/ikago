@@ -20,6 +20,7 @@ type Config struct {
 	KCPConfig  KCPConfig `json:"kcp-tuning"`
 	Verbose    bool      `json:"verbose"`
 	Publish    string    `json:"publish"`
+	Fragment   int       `json:"fragment"`
 	UpPort     int       `json:"upstream-port"`
 	Filters    []string  `json:"filters"`
 	Server     string    `json:"server"`

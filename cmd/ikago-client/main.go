@@ -48,6 +48,7 @@ var (
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
+	argFragment       = flag.Int("fragment", 0, "Max size of the outbound packets.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argFilters        = flag.String("f", "", "Filters.")
 	argServer         = flag.String("s", "", "Server.")
@@ -55,8 +56,9 @@ var (
 
 var (
 	publishIP  net.IP
-	filters    []net.Addr
+	fragment   int
 	upPort     uint16
+	filters    []net.Addr
 	serverIP   net.IP
 	serverPort uint16
 	listenDevs []*pcap.Device
@@ -121,11 +123,12 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			Verbose: *argVerbose,
-			Publish: *argPublish,
-			UpPort:  *argUpPort,
-			Filters: splitArg(*argFilters),
-			Server:  *argServer,
+			Verbose:  *argVerbose,
+			Publish:  *argPublish,
+			Fragment: *argFragment,
+			UpPort:   *argUpPort,
+			Filters:  splitArg(*argFilters),
+			Server:   *argServer,
 		}
 	}
 
@@ -182,6 +185,9 @@ func main() {
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
 	}
+	if cfg.Fragment != 0 && (cfg.Fragment < 576 || cfg.Fragment > pcap.MaxMTU) {
+		log.Fatalln(fmt.Errorf("fragment %d out of range", cfg.Fragment))
+	}
 	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
 	}
@@ -193,6 +199,9 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid publish %s", cfg.Publish))
 		}
 	}
+
+	// Fragment
+	fragment = cfg.Fragment
 
 	// Filters
 	for _, strFilter := range cfg.Filters {
@@ -569,6 +578,8 @@ func handleUpstream(contents []byte) error {
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
 		data             []byte
+		max              int
+		fragments        [][]byte
 	)
 
 	// Empty payload
@@ -601,8 +612,10 @@ func handleUpstream(contents []byte) error {
 	switch newLinkLayerType {
 	case layers.LayerTypeLoopback:
 		newLinkLayer = pcap.CreateLoopbackLayer()
+		max = max + 4
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr(), ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+		max = max + 14
 	default:
 		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
 	}
@@ -625,13 +638,36 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("serialize: %w", err)
 	}
 
-	// Write packet data
-	_, err = ni.conn.Write(data)
-	if err != nil {
-		return fmt.Errorf("write: %w", err)
-	}
+	fragments = make([][]byte, 0)
+	max = max + fragment
 
-	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
+	// Fragment
+	for len(data) > max {
+		frag := data[:max]
+		fragments = append(fragments, frag)
+
+		data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+			embIndicator.NetworkLayer().(gopacket.SerializableLayer),
+			gopacket.Payload(data[max:]))
+		if err != nil {
+			return fmt.Errorf("serialize: %w", err)
+		}
+	}
+	fragments = append(fragments, data)
+
+	// Write packet data
+	for i, frag := range fragments {
+		_, err = ni.conn.Write(frag)
+		if err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+
+		if i == len(fragments) - 1 {
+			log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
+		} else {
+			log.Verbosef("Redirect an inbound %s packet: %s <- %s (...)\n", embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String())
+		}
+	}
 
 	return nil
 }
