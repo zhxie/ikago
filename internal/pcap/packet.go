@@ -35,6 +35,7 @@ type NATGuide struct {
 
 // PacketIndicator indicates a packet.
 type PacketIndicator struct {
+	packet           gopacket.Packet
 	linkLayer        gopacket.Layer
 	networkLayer     gopacket.Layer
 	transportLayer   gopacket.Layer
@@ -394,6 +395,11 @@ func (indicator *PacketIndicator) Payload() []byte {
 	return indicator.applicationLayer.LayerContents()
 }
 
+// Size returns the size of the packet.
+func (indicator *PacketIndicator) Size() int {
+	return len(indicator.packet.Data())
+}
+
 // ParsePacket parses a packet and returns a packet indicator.
 func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	var (
@@ -465,6 +471,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}
 
 	return &PacketIndicator{
+		packet:           packet,
 		linkLayer:        linkLayer,
 		networkLayer:     networkLayer,
 		transportLayer:   transportLayer,

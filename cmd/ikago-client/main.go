@@ -626,12 +626,12 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Write packet data
-	n, err := ni.conn.Write(data)
+	_, err = ni.conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 
-	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), n)
+	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n", embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
 
 	return nil
 }

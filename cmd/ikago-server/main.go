@@ -727,7 +727,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 		}
 
 		// Write packet data
-		n, err := upConn.Write(data)
+		_, err = upConn.Write(data)
 		if err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
@@ -796,7 +796,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 		}
 
 		log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
-			indicator.TransportProtocol(), indicator.Src().String(), conn.RemoteAddr().String(), indicator.Dst().String(), n)
+			indicator.TransportProtocol(), indicator.Src().String(), conn.RemoteAddr().String(), indicator.Dst().String(), indicator.Size())
 	}
 
 	return nil

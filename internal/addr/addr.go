@@ -89,6 +89,33 @@ func ParseAddr(s string) (net.Addr, error) {
 	return addr, nil
 }
 
+func bpfFilter(prefix string, addr net.Addr) (string, error) {
+	switch t := addr.(type) {
+	case *net.IPAddr:
+		return fmt.Sprintf("(%s host %s)", prefix, fullString(addr.(*net.IPAddr).IP)), nil
+	case *net.TCPAddr:
+		tcpAddr := addr.(*net.TCPAddr)
+
+		if tcpAddr.IP == nil {
+			return fmt.Sprintf("(%s port %d)", prefix, tcpAddr.Port), nil
+		}
+
+		return fmt.Sprintf("(%s host %s && %s port %d)", prefix, fullString(tcpAddr.IP), prefix, tcpAddr.Port), nil
+	default:
+		panic(fmt.Errorf("type %T not support", t))
+	}
+}
+
+// SrcBPFFilter returns a source BPF filter by the giver address.
+func SrcBPFFilter(addr net.Addr) (string, error) {
+	return bpfFilter("src", addr)
+}
+
+// DstBPFFilter returns a destination BPF filter by the giver address.
+func DstBPFFilter(addr net.Addr) (string, error) {
+	return bpfFilter("dst", addr)
+}
+
 func formatIP(ip net.IP) string {
 	if ip == nil {
 		return ""
@@ -115,31 +142,4 @@ func fullString(ip net.IP) string {
 		string(dst[20:24]) + ":" +
 		string(dst[24:28]) + ":" +
 		string(dst[28:])
-}
-
-func bpfFilter(prefix string, addr net.Addr) (string, error) {
-	switch t := addr.(type) {
-	case *net.IPAddr:
-		return fmt.Sprintf("(%s host %s)", prefix, fullString(addr.(*net.IPAddr).IP)), nil
-	case *net.TCPAddr:
-		tcpAddr := addr.(*net.TCPAddr)
-
-		if tcpAddr.IP == nil {
-			return fmt.Sprintf("(%s port %d)", prefix, tcpAddr.Port), nil
-		}
-
-		return fmt.Sprintf("(%s host %s && %s port %d)", prefix, fullString(tcpAddr.IP), prefix, tcpAddr.Port), nil
-	default:
-		panic(fmt.Errorf("type %T not support", t))
-	}
-}
-
-// SrcBPFFilter returns a source BPF filter by the giver address.
-func SrcBPFFilter(addr net.Addr) (string, error) {
-	return bpfFilter("src", addr)
-}
-
-// DstBPFFilter returns a destination BPF filter by the giver address.
-func DstBPFFilter(addr net.Addr) (string, error) {
-	return bpfFilter("dst", addr)
 }
