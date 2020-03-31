@@ -446,10 +446,19 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 
 	// Parse network layer
 	switch t := networkLayer.LayerType(); t {
-	case layers.LayerTypeIPv4, layers.LayerTypeARP:
+	case layers.LayerTypeIPv4:
+		ipv4Layer := networkLayer.(*layers.IPv4)
+		switch ipv4Layer.Protocol {
+		case layers.IPProtocolTCP, layers.IPProtocolUDP, layers.IPProtocolICMPv4, layers.IPProtocolICMPv6:
+			break
+		default:
+			return nil, fmt.Errorf("protocol %s not support", ipv4Layer.Protocol)
+		}
 		break
 	case layers.LayerTypeIPv6:
 		return nil, fmt.Errorf("network layer type %s not fully implemented", t)
+	case layers.LayerTypeARP:
+		break
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}

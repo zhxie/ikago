@@ -90,6 +90,21 @@ func CreateIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer g
 	return ipv4Layer, nil
 }
 
+// FlagIPv4Layer reflags flags in an IPv4 layer.
+func FlagIPv4Layer(layer *layers.IPv4, df, mf bool, offset uint16) {
+	if df {
+		layer.Flags = layers.IPv4DontFragment
+	}
+	if mf {
+		layer.Flags = layers.IPv4MoreFragments
+	}
+	if !df && !mf {
+		layer.Flags = 0
+	}
+
+	layer.FragOffset = offset
+}
+
 // CreateIPv6Layer returns an IPv6 layer.
 func CreateIPv6Layer(srcIP, dstIP net.IP, hopLimit uint8, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
 	if srcIP.To4() != nil {
