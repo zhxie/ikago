@@ -526,7 +526,7 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 }
 
 // ParseRawPacket parses an array of byte as a packet and returns a packet indicator.
-func ParseRawPacket(contents []byte) (*gopacket.Packet, error) {
+func ParseRawPacket(contents []byte) (gopacket.Packet, error) {
 	// Guess link layer type, and here we regard Ethernet layer as a link layer
 	packet := gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
 	if len(packet.Layers()) < 0 {
@@ -543,14 +543,14 @@ func ParseRawPacket(contents []byte) (*gopacket.Packet, error) {
 			return nil, errors.New("missing link layer")
 		}
 
-		return &packet, nil
+		return packet, nil
 	}
 
 	if t := linkLayer.LayerType(); t != layers.LayerTypeEthernet {
 		return nil, fmt.Errorf("link layer type %s not support", t)
 	}
 
-	return &packet, nil
+	return packet, nil
 }
 
 // SendTCPPacket opens a temporary TCP connection and sends a packet.
