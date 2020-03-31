@@ -74,6 +74,7 @@ func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
 			// Final fragment
 			indicator.offset = ipv4Layer.FragOffset
 		}
+	case layers.LayerTypeIPv6:
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -88,7 +89,7 @@ func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
 }
 
 func (indicator *fragIndicator) isCompleted() bool {
-	return indicator.length == indicator.offset
+	return indicator.length/8 == indicator.offset
 }
 
 const keepAlive float64 = 30 // seconds
