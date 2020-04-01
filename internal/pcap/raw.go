@@ -68,15 +68,15 @@ func (c *RawConn) Read(b []byte) (n int, err error) {
 }
 
 // ReadPacket reads packet from the connection.
-func (c *RawConn) ReadPacket() (packet gopacket.Packet, err error) {
+func (c *RawConn) ReadPacket() (gopacket.Packet, error) {
 	b := make([]byte, MaxMTU)
 
-	_, err = c.Read(b)
+	_, err := c.Read(b)
 	if err != nil {
 		return nil, err
 	}
 
-	packet = gopacket.NewPacket(b, c.handle.LinkType(), gopacket.Default)
+	packet := gopacket.NewPacket(b, c.handle.LinkType(), gopacket.Default)
 
 	return packet, nil
 }
@@ -109,4 +109,50 @@ func (c *RawConn) RemoteDev() *Device {
 // IsLoop returns if the connection is to a loopback device.
 func (c *RawConn) IsLoop() bool {
 	return c.dstDev.IsLoop()
+}
+
+type Reader struct {
+	handle *pcap.Handle
+	ps     *gopacket.PacketSource
+}
+
+// CreateReader creates a reader reading a pcap file.
+func CreateReader(file string) (*Reader, error) {
+	handle, err := pcap.OpenOffline(file)
+	if err != nil {
+		return nil, err
+	}
+
+	ps := gopacket.NewPacketSource(handle, handle.LinkType())
+
+	return &Reader{
+		handle: handle,
+		ps:     ps,
+	}, nil
+}
+
+func (r *Reader) Read(b []byte) (n int, err error) {
+	packet, err := r.ReadPacket()
+	if err != nil {
+		return 0, err
+	}
+
+	copy(b, packet.Data())
+
+	return len(packet.Data()), nil
+}
+
+func (r *Reader) ReadPacket() (gopacket.Packet, error) {
+	packet, err := r.ps.NextPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	return packet, nil
+}
+
+func (r *Reader) Close() error {
+	r.handle.Close()
+
+	return nil
 }
