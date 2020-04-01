@@ -359,7 +359,7 @@ func open() error {
 		fs = append(fs, s)
 	}
 	f := strings.Join(fs, " || ")
-	filter := fmt.Sprintf("((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s)",
+	filter := fmt.Sprintf("ip && (((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s))",
 		f, serverIP, serverPort, f, serverIP)
 	if publishIP != nil {
 		filter = filter + fmt.Sprintf(" || ((arp[6:2] = 1) && dst host %s)", publishIP)

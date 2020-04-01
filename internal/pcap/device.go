@@ -295,7 +295,7 @@ func FindGatewayAddr() (net.IP, error) {
 
 // FindGatewayDev returns the gateway device.
 func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
-	conn, err := createPureRawConn(dev, fmt.Sprintf("udp and dst %s and dst port 65535", ip))
+	conn, err := createPureRawConn(dev, fmt.Sprintf("ip && udp && dst %s && dst port 65535", ip))
 
 	c := make(chan gopacket.Packet, 1)
 	go func() {

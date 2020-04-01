@@ -449,7 +449,7 @@ func open() error {
 	}
 
 	// Handles for routing upstream
-	upConn, err = pcap.CreateRawConn(upDev, gatewayDev, fmt.Sprintf("((tcp || udp) && not dst port %d) || icmp", port))
+	upConn, err = pcap.CreateRawConn(upDev, gatewayDev, fmt.Sprintf("ip && (((tcp || udp) && not dst port %d) || icmp)", port))
 	if err != nil {
 		return fmt.Errorf("open upstream device %s: %w", upDev.Alias(), err)
 	}
