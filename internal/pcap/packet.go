@@ -91,7 +91,6 @@ func (indicator *PacketIndicator) IPv4Layer() *layers.IPv4 {
 	return nil
 }
 
-// TODO: IPv6 headers may have extensions
 // IPv6Layer returns the IPv6 layer.
 func (indicator *PacketIndicator) IPv6Layer() *layers.IPv6 {
 	if indicator.NetworkLayer().LayerType() == layers.LayerTypeIPv6 {
@@ -171,8 +170,6 @@ func (indicator *PacketIndicator) IsFrag() bool {
 		}
 
 		return ipv4Layer.FragOffset != 0
-	case layers.LayerTypeIPv6:
-		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -183,8 +180,6 @@ func (indicator *PacketIndicator) FragOffset() uint16 {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().FragOffset
-	case layers.LayerTypeIPv6:
-		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -201,7 +196,12 @@ func (indicator *PacketIndicator) TransportProtocol() gopacket.LayerType {
 
 		return p
 	case layers.LayerTypeIPv6:
-		fallthrough
+		p, err := parseIPProtocol(indicator.IPv6Layer().NextHeader)
+		if err != nil {
+			panic(err)
+		}
+
+		return p
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -465,7 +465,6 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 			if err != nil {
 				return nil, err
 			}
-			break
 		default:
 			return nil, fmt.Errorf("link layer type %s not support", t)
 		}
@@ -480,11 +479,15 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		if err != nil {
 			return nil, err
 		}
-		break
 	case layers.LayerTypeARP:
 		break
 	case layers.LayerTypeIPv6:
-		fallthrough
+		ipv6Layer := networkLayer.(*layers.IPv6)
+
+		_, err := parseIPProtocol(ipv6Layer.NextHeader)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}

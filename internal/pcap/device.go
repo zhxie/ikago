@@ -144,6 +144,35 @@ func (dev Device) String() string {
 	return result
 }
 
+// IPv4String returns a string with IPv4 addresses only.
+func (dev Device) IPv4String() string {
+	var result string
+
+	if dev.hardwareAddr != nil {
+		result = dev.alias + " [" + dev.hardwareAddr.String() + "]: "
+	} else {
+		result = dev.alias + ": "
+	}
+
+	addrs := make([]string, 0)
+	for _, addr := range dev.ipAddrs {
+		if addr.IP.To4() != nil {
+			addrs = append(addrs, addr.IP.String())
+		}
+	}
+	if len(addrs) > 0 {
+		result = result + strings.Join(addrs, ", ")
+	} else {
+		result = result + "(No IPv4 address)"
+	}
+
+	if dev.isLoop {
+		result = result + " (Loopback)"
+	}
+
+	return result
+}
+
 const flagPcapLoopback = 1
 
 var blacklist map[string]bool
@@ -184,11 +213,6 @@ func FindAllDevs() ([]*Device, error) {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
 				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, errors.New("invalid address")))
-				continue
-			}
-
-			// HACK: block IPv6 addresses
-			if ipnet.IP.To4() == nil {
 				continue
 			}
 

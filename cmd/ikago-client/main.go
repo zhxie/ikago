@@ -332,11 +332,11 @@ func open() error {
 	var err error
 
 	if len(listenDevs) == 1 {
-		log.Infof("Listen on %s\n", listenDevs[0])
+		log.Infof("Listen on %s\n", listenDevs[0].IPv4String())
 	} else {
 		log.Infoln("Listen on:")
 		for _, dev := range listenDevs {
-			log.Infof("  %s\n", dev)
+			log.Infof("  %s\n", dev.IPv4String())
 		}
 	}
 	if !gatewayDev.IsLoop() {
@@ -648,10 +648,6 @@ func handleUpstream(contents []byte) error {
 			embNetworkLayer := embIndicator.IPv4Layer()
 			temp := *embNetworkLayer
 			newNetworkLayer = &temp
-		case layers.LayerTypeIPv6:
-			embNetworkLayer := embIndicator.IPv6Layer()
-			temp := *embNetworkLayer
-			newNetworkLayer = &temp
 		default:
 			return fmt.Errorf("network layer type %s not support", t)
 		}
@@ -675,8 +671,6 @@ func handleUpstream(contents []byte) error {
 				} else {
 					pcap.FlagIPv4Layer(ipv4Layer, false, true, uint16(i/8))
 				}
-			case layers.LayerTypeIPv6:
-				fallthrough
 			default:
 				return fmt.Errorf("network layer type %s not support", t)
 			}

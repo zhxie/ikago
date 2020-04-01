@@ -69,7 +69,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
-`-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. Any IPv6 address should be encapsulated by a pair of brackets. For example, `-f 192.168.1.1,[2001:0DB8::1428:57ab]:443,:1080`.
+`-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. **IPv6 addresses will not be listened.** For example, `-f 192.168.1.1,:1080`.
 
 `-s ip:port`: Server. Any IPv6 address should be encapsulated by a pair of brackets.
 

@@ -74,8 +74,6 @@ func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
 			// Final fragment
 			indicator.offset = ipv4Layer.FragOffset
 		}
-	case layers.LayerTypeIPv6:
-		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -114,8 +112,6 @@ func (indicator *fragIndicator) concatenate() (*pcap.PacketIndicator, error) {
 		newNetworkLayer = &temp
 
 		pcap.FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
-	case layers.LayerTypeIPv6:
-		fallthrough
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}
@@ -411,11 +407,11 @@ func open() error {
 	}
 
 	if len(listenDevs) == 1 {
-		log.Infof("Listen on %s\n", listenDevs[0])
+		log.Infof("Listen on %s\n", listenDevs[0].IPv4String())
 	} else {
 		log.Infoln("Listen on:")
 		for _, dev := range listenDevs {
-			log.Infof("  %s\n", dev)
+			log.Infof("  %s\n", dev.IPv4String())
 		}
 	}
 	if !gatewayDev.IsLoop() {
@@ -719,15 +715,6 @@ func handleListen(contents []byte, conn net.Conn) error {
 
 		newIPv4Layer.SrcIP = upConn.LocalDev().IPv4Addr().IP
 		upIP = newIPv4Layer.SrcIP
-	case layers.LayerTypeIPv6:
-		ipv6Layer := embIndicator.NetworkLayer().(*layers.IPv6)
-		temp := *ipv6Layer
-		newNetworkLayer = &temp
-
-		newIPv6Layer := newNetworkLayer.(*layers.IPv6)
-
-		newIPv6Layer.SrcIP = upConn.LocalDev().IPv6Addr().IP
-		upIP = newIPv6Layer.SrcIP
 	default:
 		return fmt.Errorf("network layer type %s not support", t)
 	}
@@ -1026,14 +1013,6 @@ func handleUpstream(packet gopacket.Packet) error {
 		newEmbIPv4Layer := embNetworkLayer.(*layers.IPv4)
 
 		newEmbIPv4Layer.DstIP = ni.embSrcIP()
-	case layers.LayerTypeIPv6:
-		embIPv6Layer := indicator.IPv6Layer()
-		temp := *embIPv6Layer
-		embNetworkLayer = &temp
-
-		newEmbIPv6Layer := embNetworkLayer.(*layers.IPv6)
-
-		newEmbIPv6Layer.DstIP = ni.embSrcIP()
 	default:
 		return fmt.Errorf("embedded network layer type %s not support", t)
 	}
