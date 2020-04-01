@@ -75,7 +75,7 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 		}
 	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -107,7 +107,7 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 		}
 	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
 	if err != nil {
 		return nil, fmt.Errorf("create raw connection: %w", err)
 	}
@@ -128,7 +128,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
 
-	handshakeConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && tcp[tcpflags] & tcp-syn != 0 && dst port %d", srcPort))
+	handshakeConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0 && dst port %d", srcPort))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -138,7 +138,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 		}
 	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && tcp[tcpflags] & tcp-syn == 0 && dst port %d", srcPort))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn == 0 && dst port %d", srcPort))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -203,7 +203,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 }
 
 func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr) error {
-	handshakeConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
+	handshakeConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && (src host %s && src port %d)",
 		srcPort, dstAddr.IP.String(), dstAddr.Port))
 	if err != nil {
 		return fmt.Errorf("create raw connection: %w", err)
@@ -765,7 +765,7 @@ func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Listen
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
 
-	conn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && tcp[tcpflags] & tcp-syn != 0 && dst port %d", srcPort))
+	conn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0 && dst port %d", srcPort))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
