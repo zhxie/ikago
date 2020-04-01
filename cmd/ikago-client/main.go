@@ -675,6 +675,8 @@ func handleUpstream(contents []byte) error {
 				} else {
 					pcap.FlagIPv4Layer(ipv4Layer, false, true, uint16(i/8))
 				}
+			case layers.LayerTypeIPv6:
+				fallthrough
 			default:
 				return fmt.Errorf("network layer type %s not support", t)
 			}

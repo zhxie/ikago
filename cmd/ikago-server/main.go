@@ -74,6 +74,8 @@ func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
 			// Final fragment
 			indicator.offset = ipv4Layer.FragOffset
 		}
+	case layers.LayerTypeIPv6:
+		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -112,6 +114,8 @@ func (indicator *fragIndicator) concatenate() (*pcap.PacketIndicator, error) {
 		newNetworkLayer = &temp
 
 		pcap.FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
+	case layers.LayerTypeIPv6:
+		fallthrough
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}
@@ -704,7 +708,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 		}
 	}
 
-	// Create new network layerr
+	// Create new network layer
 	switch t := embIndicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		ipv4Layer := embIndicator.NetworkLayer().(*layers.IPv4)

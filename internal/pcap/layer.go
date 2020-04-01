@@ -285,6 +285,7 @@ func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 			return nil, errors.New("missing transport layer")
 		}
 
+		// Parse network layer
 		networkLayer := packet.Layers()[0]
 		if t := networkLayer.LayerType(); t != layers.LayerTypeIPv4 {
 			return nil, fmt.Errorf("network layer type %s not support", t)
@@ -292,9 +293,15 @@ func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 
 		embIPv4Layer = networkLayer.(*layers.IPv4)
 		if embIPv4Layer.Version != 4 {
-			return nil, fmt.Errorf("ip version %d not support", embIPv4Layer.Version)
+			return nil, errors.New("network layer type not support")
 		}
 
+		_, err := parseIPProtocol(embIPv4Layer.Protocol)
+		if err != nil {
+			return nil, err
+		}
+
+		// Parse transport layer
 		embTransportLayer = packet.Layers()[1]
 	default:
 		return nil, fmt.Errorf("icmpv4 type %d not support", t)
@@ -368,7 +375,12 @@ func (indicator *ICMPv4Indicator) EmbDstIP() net.IP {
 
 // EmbTransportProtocol returns the protocol of the transport layer.
 func (indicator *ICMPv4Indicator) EmbTransportProtocol() gopacket.LayerType {
-	return ptot(indicator.EmbIPv4Layer().Protocol)
+	p, err := parseIPProtocol(indicator.EmbIPv4Layer().Protocol)
+	if err != nil {
+		panic(err)
+	}
+
+	return p
 }
 
 // EmbTransportLayer returns the embedded transport layer.

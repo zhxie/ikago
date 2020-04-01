@@ -171,6 +171,8 @@ func (indicator *PacketIndicator) IsFrag() bool {
 		}
 
 		return ipv4Layer.FragOffset != 0
+	case layers.LayerTypeIPv6:
+		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -181,6 +183,8 @@ func (indicator *PacketIndicator) FragOffset() uint16 {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().FragOffset
+	case layers.LayerTypeIPv6:
+		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -190,9 +194,14 @@ func (indicator *PacketIndicator) FragOffset() uint16 {
 func (indicator *PacketIndicator) TransportProtocol() gopacket.LayerType {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
-		return ptot(indicator.IPv4Layer().Protocol)
+		p, err := parseIPProtocol(indicator.IPv4Layer().Protocol)
+		if err != nil {
+			panic(err)
+		}
+
+		return p
 	case layers.LayerTypeIPv6:
-		return ptot(indicator.IPv6Layer().NextHeader)
+		fallthrough
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -444,21 +453,38 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}
 	applicationLayer = packet.ApplicationLayer()
 
+	// Parse link layer
+	if linkLayer != nil {
+		switch t := linkLayer.LayerType(); t {
+		case layers.LayerTypeLoopback:
+			break
+		case layers.LayerTypeEthernet:
+			ethernetLayer := linkLayer.(*layers.Ethernet)
+
+			_, err := parseEthernetType(ethernetLayer.EthernetType)
+			if err != nil {
+				return nil, err
+			}
+			break
+		default:
+			return nil, fmt.Errorf("link layer type %s not support", t)
+		}
+	}
+
 	// Parse network layer
 	switch t := networkLayer.LayerType(); t {
 	case layers.LayerTypeIPv4:
 		ipv4Layer := networkLayer.(*layers.IPv4)
-		switch ipv4Layer.Protocol {
-		case layers.IPProtocolTCP, layers.IPProtocolUDP, layers.IPProtocolICMPv4, layers.IPProtocolICMPv6:
-			break
-		default:
-			return nil, fmt.Errorf("protocol %s not support", ipv4Layer.Protocol)
+
+		_, err := parseIPProtocol(ipv4Layer.Protocol)
+		if err != nil {
+			return nil, err
 		}
 		break
-	case layers.LayerTypeIPv6:
-		return nil, fmt.Errorf("network layer type %s not fully implemented", t)
 	case layers.LayerTypeARP:
 		break
+	case layers.LayerTypeIPv6:
+		fallthrough
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}
@@ -514,7 +540,7 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 			return nil, errors.New("network layer type not support")
 		}
 	default:
-		return nil, fmt.Errorf("ip version %d not support", networkLayer.(*layers.IPv4).Version)
+		return nil, errors.New("network layer type not support")
 	}
 
 	// Parse packet
@@ -587,17 +613,30 @@ func SendUDPPacket(addr string, data []byte) error {
 	return nil
 }
 
-func ptot(protocol layers.IPProtocol) gopacket.LayerType {
+func parseIPProtocol(protocol layers.IPProtocol) (gopacket.LayerType, error) {
 	switch protocol {
 	case layers.IPProtocolTCP:
-		return layers.LayerTypeTCP
+		return layers.LayerTypeTCP, nil
 	case layers.IPProtocolUDP:
-		return layers.LayerTypeUDP
+		return layers.LayerTypeUDP, nil
 	case layers.IPProtocolICMPv4:
-		return layers.LayerTypeICMPv4
+		return layers.LayerTypeICMPv4, nil
 	case layers.IPProtocolICMPv6:
-		return layers.LayerTypeICMPv6
+		return layers.LayerTypeICMPv6, nil
 	default:
-		panic(fmt.Errorf("protocol %s not support", protocol))
+		return gopacket.LayerTypeZero, fmt.Errorf("ip protocol %s not support", protocol)
+	}
+}
+
+func parseEthernetType(t layers.EthernetType) (gopacket.LayerType, error) {
+	switch t {
+	case layers.EthernetTypeIPv4:
+		return layers.LayerTypeIPv4, nil
+	case layers.EthernetTypeIPv6:
+		return layers.LayerTypeIPv6, nil
+	case layers.EthernetTypeARP:
+		return layers.LayerTypeARP, nil
+	default:
+		return gopacket.LayerTypeZero, fmt.Errorf("ethernet type %s not support", t)
 	}
 }
