@@ -49,7 +49,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
 
-`-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. For more about encryption, please refer to the [development documentation](https://github.com/zhxie/dev.md).
+`-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. For more about encryption, please refer to the [development documentation](/dev.md).
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
 
