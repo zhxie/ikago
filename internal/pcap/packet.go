@@ -518,7 +518,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}, nil
 }
 
-// ParseEmbPacket parses an embedded packet used in transferring between client and server without link layer.
+// ParseEmbPacket parses an embedded packet used in transmission between client and server without link layer.
 func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 	// Guess network layer type
 	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)

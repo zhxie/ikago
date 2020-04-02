@@ -189,7 +189,7 @@ func SerializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// CreateLayers return layers of transferring between client and server.
+// CreateLayers return layers of transmission between client and server.
 func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *RawConn, dstIP net.IP, id uint16, hop uint8,
 	dstHardwareAddr net.HardwareAddr) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
