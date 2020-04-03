@@ -185,7 +185,7 @@ func main() {
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
 	}
-	if cfg.Fragment != 0 && (cfg.Fragment < 576 || cfg.Fragment > pcap.MaxMTU) {
+	if cfg.Fragment < 576 || cfg.Fragment > pcap.MaxMTU {
 		log.Fatalln(fmt.Errorf("fragment %d out of range", cfg.Fragment))
 	}
 	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
