@@ -587,8 +587,6 @@ func handleUpstream(contents []byte) error {
 		embIndicator       *pcap.PacketIndicator
 		newLinkLayer       gopacket.Layer
 		newLinkLayerType   gopacket.LayerType
-		networkLayerData   []byte
-		transportLayerData []byte
 		fragments          [][]byte
 	)
 
@@ -631,96 +629,15 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("create link layer: %w", err)
 	}
 
-	// Serialize intermediate headers
-	networkLayerData, err = pcap.SerializeRaw(embIndicator.NetworkLayer().(gopacket.SerializableLayer))
-	if err != nil {
-		return fmt.Errorf("serialize: %w", err)
-	}
-	if embIndicator.TransportLayer() != nil {
-		transportLayerData, err = pcap.SerializeRaw(embIndicator.TransportLayer().(gopacket.SerializableLayer))
-		if err != nil {
-			return fmt.Errorf("serialize: %w", err)
-		}
-	}
-
-	fragments = make([][]byte, 0)
-
 	// Fragment
-	if len(networkLayerData)+len(transportLayerData)+len(embIndicator.Payload()) > fragment {
-		// Concatenate transport layer and payload
-		payload := append(transportLayerData, embIndicator.Payload()...)
-
-		// Create new network layer
-		var newNetworkLayer gopacket.NetworkLayer
-
-		switch t := embIndicator.NetworkLayer().LayerType(); t {
-		case layers.LayerTypeIPv4:
-			embNetworkLayer := embIndicator.IPv4Layer()
-			temp := *embNetworkLayer
-			newNetworkLayer = &temp
-		default:
-			return fmt.Errorf("network layer type %s not support", t)
-		}
-
-		for i := 0; i < len(payload); {
-			length := min(fragment-len(networkLayerData), len(payload)-i)
-			remain := len(payload) - i - length
-
-			// Align
-			if remain > 0 {
-				length = length / 8 * 8
-				remain = len(payload) - i - length
-			}
-
-			switch t := newNetworkLayer.LayerType(); t {
-			case layers.LayerTypeIPv4:
-				ipv4Layer := newNetworkLayer.(*layers.IPv4)
-
-				if remain <= 0 {
-					pcap.FlagIPv4Layer(ipv4Layer, false, false, uint16(i/8))
-				} else {
-					pcap.FlagIPv4Layer(ipv4Layer, false, true, uint16(i/8))
-				}
-			default:
-				return fmt.Errorf("network layer type %s not support", t)
-			}
-
-			// Serialize
-			data, err := pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
-				newNetworkLayer.(gopacket.SerializableLayer),
-				gopacket.Payload(payload[i:i+length]))
-			if err != nil {
-				return fmt.Errorf("serialize: %w", err)
-			}
-
-			fragments = append(fragments, data)
-
-			i = i + length
-		}
-	} else {
-		var data []byte
-
-		// Serialize
-		if embIndicator.TransportLayer() == nil {
-			data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
-				gopacket.Payload(networkLayerData),
-				gopacket.Payload(embIndicator.Payload()))
-		} else {
-			data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
-				gopacket.Payload(networkLayerData),
-				gopacket.Payload(transportLayerData),
-				gopacket.Payload(embIndicator.Payload()))
-		}
-		if err != nil {
-			return fmt.Errorf("serialize: %w", err)
-		}
-
-		fragments = append(fragments, data)
+	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, embIndicator.NetworkLayer(), embIndicator.TransportLayer(), gopacket.Payload(embIndicator.Payload()), fragment)
+	if err != nil {
+		return fmt.Errorf("fragment: %w", err)
 	}
 
 	// Write packet data
 	for i, frag := range fragments {
-		_, err = ni.conn.Write(frag)
+		_, err := ni.conn.Write(frag)
 		if err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
@@ -750,12 +667,4 @@ func splitArg(s string) []string {
 	}
 
 	return result
-}
-
-func min(a, b int) int {
-	if a > b {
-		return b
-	}
-
-	return a
 }

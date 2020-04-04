@@ -15,7 +15,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -49,111 +48,6 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 	}
 }
 
-type fragIndicator struct {
-	length uint16
-	offset uint16
-	frags  []*pcap.PacketIndicator
-}
-
-func newFragIndicator() *fragIndicator {
-	return &fragIndicator{
-		frags: make([]*pcap.PacketIndicator, 0),
-	}
-}
-
-func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
-	indicator.frags = append(indicator.frags, ind)
-
-	if ind.MoreFragments() {
-		indicator.length = indicator.length + uint16(len(ind.NetworkPayload()))
-	} else {
-		// Final fragment
-		indicator.offset = ind.FragOffset()
-	}
-
-	// Sort
-	if len(indicator.frags) <= 1 {
-		return
-	}
-	sort.Slice(indicator.frags, func(i, j int) bool {
-		return indicator.frags[i].FragOffset() < indicator.frags[j].FragOffset()
-	})
-}
-
-func (indicator *fragIndicator) isCompleted() bool {
-	return indicator.length/8 == indicator.offset
-}
-
-func (indicator *fragIndicator) concatenate() (*pcap.PacketIndicator, error) {
-	var (
-		err                    error
-		newNetworkLayer        gopacket.NetworkLayer
-		contents               []byte
-		data                   []byte
-		ind                    *pcap.PacketIndicator
-	)
-
-	if !indicator.isCompleted() {
-		return nil, errors.New("incomplete fragments")
-	}
-
-	// Create new network layer
-	switch t := indicator.frags[0].NetworkLayer().LayerType(); t {
-	case layers.LayerTypeIPv4:
-		ipv4Layer := indicator.frags[0].IPv4Layer()
-		temp := *ipv4Layer
-		newNetworkLayer = &temp
-
-		pcap.FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
-	case layers.LayerTypeIPv6:
-		ipv6Layer := indicator.frags[0].IPv6Layer()
-		temp := *ipv6Layer
-		newNetworkLayer = &temp
-
-		newNetworkLayer.(*layers.IPv6).NextHeader = indicator.frags[0].IPv6FragmentLayer().NextHeader
-	default:
-		return nil, fmt.Errorf("network layer type %s not support", t)
-	}
-
-	// Concatenate network payloads
-	contents = make([]byte, 0)
-	for _, frag := range indicator.frags {
-		contents = append(contents, frag.NetworkPayload()...)
-	}
-
-	// Serialize
-	if indicator.frags[0].LinkLayer() == nil {
-		data, err = pcap.Serialize(newNetworkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(contents))
-	} else {
-		data, err = pcap.Serialize(indicator.frags[0].LinkLayer().(gopacket.SerializableLayer),
-			newNetworkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(contents))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("serialize: %w", err)
-	}
-
-	// Parse packet
-	if indicator.frags[0].LinkLayer() == nil {
-		ind, err = pcap.ParseEmbPacket(data)
-	} else {
-		var packet gopacket.Packet
-
-		packet, err = pcap.ParseRawPacket(data)
-		if err != nil {
-			return nil, fmt.Errorf("parse packet: %w", err)
-		}
-
-		ind, err = pcap.ParsePacket(packet)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("parse packet: %w", err)
-	}
-
-	return ind, nil
-}
-
 const keepAlive float64 = 30 // seconds
 
 var (
@@ -181,6 +75,7 @@ var (
 )
 
 var (
+	mtu        int
 	port       uint16
 	listenDevs []*pcap.Device
 	upDev      *pcap.Device
@@ -195,8 +90,8 @@ var (
 	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
-	listenFrags  map[uint]*fragIndicator
-	upFrags      map[uint]*fragIndicator
+	listenFrags  map[uint]*pcap.FragIndicator
+	upFrags      map[uint]*pcap.FragIndicator
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -224,8 +119,8 @@ func init() {
 
 	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
-	listenFrags = make(map[uint]*fragIndicator)
-	upFrags = make(map[uint]*fragIndicator)
+	listenFrags = make(map[uint]*pcap.FragIndicator)
+	upFrags = make(map[uint]*pcap.FragIndicator)
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
@@ -343,6 +238,9 @@ func main() {
 	if isKCP {
 		log.Infoln("Enable KCP")
 	}
+
+	// Fragment
+	mtu = cfg.MTU
 
 	log.Infof("Proxy from :%d\n", cfg.Port)
 
@@ -554,17 +452,17 @@ func closeAll() {
 
 func handleListen(contents []byte, conn net.Conn) error {
 	var (
-		err               error
-		embIndicator      *pcap.PacketIndicator
-		upValue           uint16
-		newTransportLayer gopacket.Layer
-		newNetworkLayer   gopacket.NetworkLayer
-		upIP              net.IP
-		newLinkLayerType  gopacket.LayerType
-		newLinkLayer      gopacket.Layer
-		data              []byte
-		guide             pcap.NATGuide
-		ni                *natIndicator
+		err                 error
+		embIndicator        *pcap.PacketIndicator
+		upValue             uint16
+		newTransportLayer   gopacket.Layer
+		newNetworkLayer     gopacket.NetworkLayer
+		upIP                net.IP
+		newLinkLayerType    gopacket.LayerType
+		newLinkLayer        gopacket.Layer
+		fragments           [][]byte
+		guide               pcap.NATGuide
+		ni                  *natIndicator
 	)
 
 	// Empty payload
@@ -582,17 +480,17 @@ func handleListen(contents []byte, conn net.Conn) error {
 	if embIndicator.IsFrag() {
 		fragIndicator, ok := listenFrags[embIndicator.NetworkId()]
 		if !ok || fragIndicator == nil {
-			fragIndicator = newFragIndicator()
+			fragIndicator = pcap.NewFragIndicator()
 			listenFrags[embIndicator.NetworkId()] = fragIndicator
 		}
 
-		fragIndicator.append(embIndicator)
+		fragIndicator.Append(embIndicator)
 
-		if !fragIndicator.isCompleted() {
+		if !fragIndicator.IsCompleted() {
 			return nil
 		}
 
-		embIndicator, err = fragIndicator.concatenate()
+		embIndicator, err = fragIndicator.Concatenate()
 		if err != nil {
 			return fmt.Errorf("concatenate: %w", err)
 		}
@@ -769,25 +667,26 @@ func handleListen(contents []byte, conn net.Conn) error {
 		return fmt.Errorf("create link layer: %w", err)
 	}
 
-	// Serialize layers
-	if newTransportLayer == nil {
-		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
-			newNetworkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(embIndicator.Payload()))
-	} else {
-		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
-			newNetworkLayer.(gopacket.SerializableLayer),
-			newTransportLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(embIndicator.Payload()))
-	}
+	// Fragment
+	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(embIndicator.Payload()), mtu)
 	if err != nil {
-		return fmt.Errorf("serialize: %w", err)
+		return fmt.Errorf("fragment: %w", err)
 	}
 
 	// Write packet data
-	_, err = upConn.Write(data)
-	if err != nil {
-		return fmt.Errorf("write: %w", err)
+	for i, frag := range fragments {
+		_, err := upConn.Write(frag)
+		if err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+
+		if i == len(fragments)-1 {
+			log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
+				embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), embIndicator.Size())
+		} else {
+			log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (...)\n",
+				embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String())
+		}
 	}
 
 	if embIndicator.TransportLayer() != nil {
@@ -853,9 +752,6 @@ func handleListen(contents []byte, conn net.Conn) error {
 		}
 	}
 
-	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
-		embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), embIndicator.Size())
-
 	return nil
 }
 
@@ -879,17 +775,17 @@ func handleUpstream(packet gopacket.Packet) error {
 	if indicator.IsFrag() {
 		fragIndicator, ok := upFrags[indicator.NetworkId()]
 		if !ok || fragIndicator == nil {
-			fragIndicator = newFragIndicator()
+			fragIndicator = pcap.NewFragIndicator()
 			upFrags[indicator.NetworkId()] = fragIndicator
 		}
 
-		fragIndicator.append(indicator)
+		fragIndicator.Append(indicator)
 
-		if !fragIndicator.isCompleted() {
+		if !fragIndicator.IsCompleted() {
 			return nil
 		}
 
-		indicator, err = fragIndicator.concatenate()
+		indicator, err = fragIndicator.Concatenate()
 		if err != nil {
 			return fmt.Errorf("concatenate: %w", err)
 		}

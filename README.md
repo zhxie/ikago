@@ -59,6 +59,8 @@ go run ./cmd/ikago-server -p [port]
 
 `-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
 
+`-mtu`: (Optional) MTU. In the client, packets fragmentation between sources and client is determined by `-fragment` instead of MTU.
+
 `-v`: (Optional) Print verbose messages.
 
 ### Client options
