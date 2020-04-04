@@ -14,6 +14,16 @@ This is the development documentation of IkaGo.
 
 `Transport Layer`: TCP, UDP and ICMPv4 layer.
 
+## Connection
+
+Clients and server establish a FakeTCP connection at the beginning of transmission. All transmissions will use this connection.
+
+At the beginning of establishing the connection, the TCP 3-way handshaking is simulated. And the 3rd handshaking of ACK is the only packet with empty payload during the whole process of transmission.
+
+Either client or server sends packet starts with IPv4 ID `0` and TCP sequence `0`.
+
+Neither client nor server replies ACK passively.
+
 ## Transmission
 
 ## Between Client and Server
@@ -30,7 +40,7 @@ Transmission size information displayed in verbose log in the client is the size
 
 Transmission size information displayed in verbose log in the server is the size of network, transport and application layer in **reassembled** packets from destinations.
 
-## Packet Structure
+### Packet Structure
 
 <p align="center">
   <img src="/assets/packet.jpg" alt="packet">
@@ -45,6 +55,8 @@ If `-fragment` is set, packets sent by client will be reassembled.
 **Packets sent and received by server are reassembled.**
 
 🏗️ **Currently, packets sent by server will not be fragmented**.
+
+IPv4 options and IPv6 extension headers except fragment extension will not be processed.
 
 Transmission size information displayed in verbose log in the client is the size of application layer in packets from the server.
 

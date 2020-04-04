@@ -64,18 +64,11 @@ func newFragIndicator() *fragIndicator {
 func (indicator *fragIndicator) append(ind *pcap.PacketIndicator) {
 	indicator.frags = append(indicator.frags, ind)
 
-	switch t := ind.NetworkLayer().LayerType(); t {
-	case layers.LayerTypeIPv4:
-		ipv4Layer := ind.IPv4Layer()
-
-		if ipv4Layer.Flags&layers.IPv4MoreFragments != 0 {
-			indicator.length = indicator.length + uint16(len(ipv4Layer.LayerPayload()))
-		} else {
-			// Final fragment
-			indicator.offset = ipv4Layer.FragOffset
-		}
-	default:
-		panic(fmt.Errorf("network layer type %s not support", t))
+	if ind.MoreFragments() {
+		indicator.length = indicator.length + uint16(len(ind.NetworkPayload()))
+	} else {
+		// Final fragment
+		indicator.offset = ind.FragOffset()
 	}
 
 	// Sort
@@ -93,11 +86,11 @@ func (indicator *fragIndicator) isCompleted() bool {
 
 func (indicator *fragIndicator) concatenate() (*pcap.PacketIndicator, error) {
 	var (
-		err             error
-		newNetworkLayer gopacket.NetworkLayer
-		contents        []byte
-		data            []byte
-		ind             *pcap.PacketIndicator
+		err                    error
+		newNetworkLayer        gopacket.NetworkLayer
+		contents               []byte
+		data                   []byte
+		ind                    *pcap.PacketIndicator
 	)
 
 	if !indicator.isCompleted() {
@@ -112,14 +105,20 @@ func (indicator *fragIndicator) concatenate() (*pcap.PacketIndicator, error) {
 		newNetworkLayer = &temp
 
 		pcap.FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
+	case layers.LayerTypeIPv6:
+		ipv6Layer := indicator.frags[0].IPv6Layer()
+		temp := *ipv6Layer
+		newNetworkLayer = &temp
+
+		newNetworkLayer.(*layers.IPv6).NextHeader = indicator.frags[0].IPv6FragmentLayer().NextHeader
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}
 
-	// Concatenate payloads
+	// Concatenate network payloads
 	contents = make([]byte, 0)
 	for _, frag := range indicator.frags {
-		contents = append(contents, frag.Payload()...)
+		contents = append(contents, frag.NetworkPayload()...)
 	}
 
 	// Serialize
@@ -195,8 +194,8 @@ var (
 	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
-	listenFrags  map[uint16]*fragIndicator
-	upFrags      map[uint16]*fragIndicator
+	listenFrags  map[uint]*fragIndicator
+	upFrags      map[uint]*fragIndicator
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -216,8 +215,8 @@ func init() {
 
 	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
-	listenFrags = make(map[uint16]*fragIndicator)
-	upFrags = make(map[uint16]*fragIndicator)
+	listenFrags = make(map[uint]*fragIndicator)
+	upFrags = make(map[uint]*fragIndicator)
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
