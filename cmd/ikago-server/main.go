@@ -69,13 +69,11 @@ var (
 	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
-	argMTU            = flag.Int("mtu", pcap.MaxMTU, "MTU.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argPort           = flag.Int("p", 0, "Port for listening.")
 )
 
 var (
-	mtu        int
 	port       uint16
 	listenDevs []*pcap.Device
 	upDev      *pcap.Device
@@ -161,7 +159,6 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			MTU:     *argMTU,
 			Verbose: *argVerbose,
 			Port:    *argPort,
 		}
@@ -238,9 +235,6 @@ func main() {
 	if isKCP {
 		log.Infoln("Enable KCP")
 	}
-
-	// Fragment
-	mtu = cfg.MTU
 
 	log.Infof("Proxy from :%d\n", cfg.Port)
 
@@ -460,7 +454,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 		upIP                net.IP
 		newLinkLayerType    gopacket.LayerType
 		newLinkLayer        gopacket.Layer
-		fragments           [][]byte
+		data                []byte
 		guide               pcap.NATGuide
 		ni                  *natIndicator
 	)
@@ -667,26 +661,31 @@ func handleListen(contents []byte, conn net.Conn) error {
 		return fmt.Errorf("create link layer: %w", err)
 	}
 
-	// Fragment
-	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(embIndicator.Payload()), mtu)
+	// Serialize layers
+	if newTransportLayer == nil {
+		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
+			newNetworkLayer.(gopacket.SerializableLayer))
+	}
+
+	// Serialize layers
+	if newTransportLayer == nil {
+		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
+			newNetworkLayer.(gopacket.SerializableLayer),
+			gopacket.Payload(embIndicator.Payload()))
+	} else {
+		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
+			newNetworkLayer.(gopacket.SerializableLayer),
+			newTransportLayer.(gopacket.SerializableLayer),
+			gopacket.Payload(embIndicator.Payload()))
+	}
 	if err != nil {
-		return fmt.Errorf("fragment: %w", err)
+		return fmt.Errorf("serialize: %w", err)
 	}
 
 	// Write packet data
-	for i, frag := range fragments {
-		_, err := upConn.Write(frag)
-		if err != nil {
-			return fmt.Errorf("write: %w", err)
-		}
-
-		if i == len(fragments)-1 {
-			log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
-				embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), embIndicator.Size())
-		} else {
-			log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (...)\n",
-				embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String())
-		}
+	_, err = upConn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
 	}
 
 	if embIndicator.TransportLayer() != nil {
@@ -751,6 +750,9 @@ func handleListen(contents []byte, conn net.Conn) error {
 			return fmt.Errorf("transport layer type %s not support", protocol)
 		}
 	}
+
+	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
+		embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), embIndicator.Size())
 
 	return nil
 }

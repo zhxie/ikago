@@ -21,7 +21,6 @@ type Config struct {
 	Password   string    `json:"password"`
 	KCP        bool      `json:"kcp"`
 	KCPConfig  KCPConfig `json:"kcp-tuning"`
-	MTU        int       `json:"mtu"`
 	Verbose    bool      `json:"verbose"`
 	Publish    string    `json:"publish"`
 	Fragment   int       `json:"fragment"`
@@ -36,7 +35,6 @@ func NewConfig() *Config {
 	return &Config{
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
-		MTU:       MaxMTU,
 		Fragment:  MaxMTU,
 	}
 }

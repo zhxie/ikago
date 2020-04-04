@@ -2,10 +2,6 @@
 
 This is the development documentation of IkaGo.
 
-## Legends
-
-🏗️: Related works are currently not completed but in progress.
-
 ## Terms and Adjustments
 
 `Link Layer`: Ethernet and loopback layer.
@@ -34,7 +30,7 @@ Packets transmitted between clients and server will not be verified.
 
 **Transmission between clients and server must be in IPv4.**
 
-🏗️ **Currently, packets transmitted between clients and server will not be fragmented.**
+**Packets transmitted between clients and server will not be fragmented.**
 
 Transmission size information displayed in verbose log in the client is the size of network, transport and application layer in packets from sources, which is the same with the MTU of the source.
 
@@ -56,7 +52,7 @@ If `-fragment` is set, packets sent by client will be reassembled.
 
 **Packets sent and received by server are reassembled.**
 
-🏗️ **Currently, packets sent by server will not be fragmented**.
+**Packets sent by server will not be fragmented**.
 
 IPv4 options will not be processed.
 

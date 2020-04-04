@@ -46,7 +46,6 @@ var (
 	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
-	argMTU            = flag.Int("mtu", pcap.MaxMTU, "MTU.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argFragment       = flag.Int("fragment", pcap.MaxMTU, "Max size of the outbound packets.")
@@ -132,7 +131,6 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			MTU:      *argMTU,
 			Verbose:  *argVerbose,
 			Publish:  *argPublish,
 			Fragment: *argFragment,
