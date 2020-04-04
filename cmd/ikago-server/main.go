@@ -51,6 +51,11 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 const keepAlive float64 = 30 // seconds
 
 var (
+	version = ""
+	build = ""
+)
+
+var (
 	argListDevs       = flag.Bool("list-devices", false, "List all valid devices in current computer.")
 	argConfig         = flag.String("c", "", "Configuration file.")
 	argListenDevs     = flag.String("listen-devices", "", "Devices for listening.")
@@ -102,13 +107,19 @@ var (
 )
 
 func init() {
+	if version != "" && build != "" {
+		log.Infof("IkaGo-server %s-%s\n\n", version, build)
+	} else {
+		log.Infof("IkaGo-server %s%s\n\n", version, build)
+	}
+
 	// Parse arguments
 	flag.Parse()
 
 	// Load config.json by default
 	if len(os.Args) <= 1 {
 		_, err := os.Stat("config.json")
-		if err != nil {
+		if err == nil {
 			*argConfig = "config.json"
 		}
 	}
