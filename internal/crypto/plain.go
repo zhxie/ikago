@@ -24,3 +24,7 @@ func (c *PlainCrypt) Decrypt(data []byte) ([]byte, error) {
 func (c *PlainCrypt) Method() Method {
 	return MethodPlain
 }
+
+func (c *PlainCrypt) Cost() int {
+	return 0
+}

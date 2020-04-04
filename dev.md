@@ -66,7 +66,7 @@ IkaGo supports authenticated encryption.
 
 If encryption is enabled, the wrapped packets will be composed of one-time nonce, data and hash.
 
-The size of hash is always 8 Bytes, and the size of nonce depends on the method of encryption.
+The size of hash is always 16 Bytes, and the size of nonce depends on the method of encryption.
 
 ### Nonce Size
 

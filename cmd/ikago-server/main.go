@@ -226,14 +226,14 @@ func main() {
 	}
 	method := crypt.Method()
 	if method != crypto.MethodPlain {
-		log.Infof("Encrypt with %s\n", method)
+		log.Infof("Encrypt with %s...Cost %d Bytes\n", method, crypt.Cost())
 	}
 
 	// KCP
 	isKCP = cfg.KCP
 	kcpConfig = &cfg.KCPConfig
 	if isKCP {
-		log.Infoln("Enable KCP")
+		log.Infoln("Enable KCP...Cost 24 Bytes")
 	}
 
 	log.Infof("Proxy from :%d\n", cfg.Port)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/crypto/poly1305"
 )
 
 // ChaCha20Poly1305Crypt describes an ChaCha20-Poly1305 crypt.
@@ -54,6 +55,10 @@ func (c *ChaCha20Poly1305Crypt) Method() Method {
 	return MethodChaCha20Poly1305
 }
 
+func (c *ChaCha20Poly1305Crypt) Cost() int {
+	return c.aead.NonceSize() + poly1305.TagSize
+}
+
 // XChaCha20Poly1305Crypt describes an XChaCha20-Poly1305 crypt.
 type XChaCha20Poly1305Crypt struct {
 	aead cipher.AEAD
@@ -99,4 +104,8 @@ func (c *XChaCha20Poly1305Crypt) Decrypt(data []byte) ([]byte, error) {
 
 func (c *XChaCha20Poly1305Crypt) Method() Method {
 	return MethodXChaCha20Poly1305
+}
+
+func (c *XChaCha20Poly1305Crypt) Cost() int {
+	return c.aead.NonceSize() + poly1305.TagSize
 }

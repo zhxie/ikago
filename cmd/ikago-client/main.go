@@ -207,9 +207,15 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid publish %s", cfg.Publish))
 		}
 	}
+	if publishIP != nil {
+		log.Infof("Publish %s\n", publishIP)
+	}
 
 	// Fragment
 	fragment = cfg.Fragment
+	if fragment != pcap.MaxMTU {
+		log.Infof("Fragment by %d Bytes\n", fragment)
+	}
 
 	// Filters
 	for _, strFilter := range cfg.Filters {
@@ -264,18 +270,18 @@ func main() {
 	}
 	method := crypt.Method()
 	if method != crypto.MethodPlain {
-		log.Infof("Encrypt with %s\n", method)
+		log.Infof("Encrypt with %s...Cost %d Bytes\n", method, crypt.Cost())
 	}
 
 	// KCP
 	isKCP = cfg.KCP
 	kcpConfig = &cfg.KCPConfig
 	if isKCP {
-		log.Infoln("Enable KCP")
+		log.Infoln("Enable KCP...Cost 24 Bytes")
 	}
 
 	if len(filters) == 1 {
-		log.Infof("Proxy from %s through :%d to %s\n", filters[0], cfg.UpPort, serverAddr)
+		log.Infof("Proxy %s through :%d to %s\n", filters[0], cfg.UpPort, serverAddr)
 	} else {
 		log.Info("Proxy:")
 		for _, f := range filters {
@@ -351,9 +357,6 @@ func open() error {
 		log.Infof("Route upstream from %s to %s\n", upDev, gatewayDev)
 	} else {
 		log.Infof("Route upstream in %s\n", upDev)
-	}
-	if publishIP != nil {
-		log.Infof("Publish %s\n", publishIP)
 	}
 
 	// Filters for listening

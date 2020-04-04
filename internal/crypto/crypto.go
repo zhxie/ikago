@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -21,6 +22,23 @@ const (
 	MethodXChaCha20Poly1305
 )
 
+func (m Method) String() string {
+	switch m {
+	case MethodPlain:
+		return "Plain"
+	case MethodAESCFB:
+		return "AES-CFB"
+	case MethodAESGCM:
+		return "AES-GCM"
+	case MethodChaCha20Poly1305:
+		return "ChaCha20-Poly1305"
+	case MethodXChaCha20Poly1305:
+		return "XChaCha20-Poly1305"
+	default:
+		return strconv.Itoa(int(m))
+	}
+}
+
 // Crypt describes crypt of encryption.
 type Crypt interface {
 	// Encrypt returns the encrypted data.
@@ -29,6 +47,8 @@ type Crypt interface {
 	Decrypt([]byte) ([]byte, error)
 	// Method returns the method of crypt.
 	Method() Method
+	// Cost returns the size of cost.
+	Cost() int
 }
 
 // ParseCrypt returns a crypt by given method and password.

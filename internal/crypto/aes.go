@@ -52,6 +52,10 @@ func (c *AESCFBCrypt) Method() Method {
 	return MethodAESCFB
 }
 
+func (c *AESCFBCrypt) Cost() int {
+	return 0
+}
+
 // AESGCMCrypt describes an AES-GCM crypt.
 type AESGCMCrypt struct {
 	block cipher.Block
@@ -107,4 +111,8 @@ func (c *AESGCMCrypt) Decrypt(data []byte) ([]byte, error) {
 
 func (c *AESGCMCrypt) Method() Method {
 	return MethodAESGCM
+}
+
+func (c *AESGCMCrypt) Cost() int {
+	return c.aead.NonceSize() + 16
 }

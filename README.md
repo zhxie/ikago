@@ -93,7 +93,7 @@ go run ./cmd/ikago-server -p [port]
    pfctl -e
    ```
 
-2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 32 Bytes, and for KCP support, another 24 Bytes. IkaGo will never do IP fragmentation between client-server transmissions, so please make sure the MTU in your proxied device was set to a reasonable value. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable AES-256-GCM encryption(consuming 20 Bytes) and KCP support, you should set the proxied device's MTU value to no more than 1316 Bytes.
+2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 24 Bytes. IkaGo will never do IP fragmentation between client-server transmissions, so please make sure the MTU in your proxied device was set to a reasonable value. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable AES-256-GCM encryption(consuming 28 Bytes) and KCP support, you should set the proxied device's MTU value to no more than 1308 Bytes.
 
 3. In scenarios such as P2P games, devices on both sides may not actively perform packet fragmentation, and the device's MRU will be set to be the same as the MTU. Even if you set the MTU in your device, the packets sent by the other side may exceed the MRU of your device. Use `-fragment` to fragment outbound packets in IkaGo.
 
