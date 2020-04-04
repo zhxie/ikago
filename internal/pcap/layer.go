@@ -41,13 +41,6 @@ func CreateUDPLayer(srcPort, dstPort uint16) *layers.UDP {
 
 // CreateIPv4Layer returns an IPv4 layer.
 func CreateIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer gopacket.TransportLayer) (*layers.IPv4, error) {
-	if srcIP.To4() == nil {
-		return nil, fmt.Errorf("invalid source ip %s", srcIP)
-	}
-	if dstIP.To4() == nil {
-		return nil, fmt.Errorf("invalid destination ip %s", dstIP)
-	}
-
 	ipv4Layer := &layers.IPv4{
 		Version: 4,
 		IHL:     5,
@@ -103,38 +96,6 @@ func FlagIPv4Layer(layer *layers.IPv4, df, mf bool, offset uint16) {
 	layer.FragOffset = offset
 }
 
-// CreateIPv6Layer returns an IPv6 layer.
-func CreateIPv6Layer(srcIP, dstIP net.IP, hopLimit uint8, transportLayer gopacket.TransportLayer) (*layers.IPv6, error) {
-	if srcIP.To4() != nil {
-		return nil, fmt.Errorf("invalid source ip %s", srcIP)
-	}
-	if dstIP.To4() != nil {
-		return nil, fmt.Errorf("invalid destination ip %s", dstIP)
-	}
-
-	ipv6Layer := &layers.IPv6{
-		Version: 6,
-		// Length: 0,
-		HopLimit: hopLimit,
-		SrcIP:    srcIP,
-		DstIP:    dstIP,
-	}
-
-	// Protocol
-	switch t := transportLayer.LayerType(); t {
-	case layers.LayerTypeTCP:
-		ipv6Layer.NextHeader = layers.IPProtocolTCP
-	case layers.LayerTypeUDP:
-		ipv6Layer.NextHeader = layers.IPProtocolUDP
-	case layers.LayerTypeICMPv4:
-		ipv6Layer.NextHeader = layers.IPProtocolICMPv4
-	default:
-		return nil, fmt.Errorf("transport layer type %s not support", t)
-	}
-
-	return ipv6Layer, nil
-}
-
 // CreateLoopbackLayer returns a loopback layer.
 func CreateLoopbackLayer() *layers.Loopback {
 	return &layers.Loopback{}
@@ -152,8 +113,6 @@ func CreateEthernetLayer(srcMAC, dstMAC net.HardwareAddr, networkLayer gopacket.
 	switch t := networkLayer.LayerType(); t {
 	case layers.LayerTypeIPv4:
 		ethernetLayer.EthernetType = layers.EthernetTypeIPv4
-	case layers.LayerTypeIPv6:
-		ethernetLayer.EthernetType = layers.EthernetTypeIPv6
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}
@@ -193,29 +152,14 @@ func SerializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *RawConn, dstIP net.IP, id uint16, hop uint8,
 	dstHardwareAddr net.HardwareAddr) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
-		networkLayerType gopacket.LayerType
 		linkLayerType    gopacket.LayerType
 	)
 
 	// Create transport layer
 	transportLayer = CreateTCPLayer(srcPort, dstPort, seq, ack)
 
-	// Decide IPv4 or IPv6
-	if dstIP.To4() != nil {
-		networkLayerType = layers.LayerTypeIPv4
-	} else {
-		networkLayerType = layers.LayerTypeIPv6
-	}
-
 	// Create new network layer
-	switch networkLayerType {
-	case layers.LayerTypeIPv4:
-		networkLayer, err = CreateIPv4Layer(conn.LocalDev().IPv4Addr().IP, dstIP, id, hop-1, transportLayer.(gopacket.TransportLayer))
-	case layers.LayerTypeIPv6:
-		networkLayer, err = CreateIPv6Layer(conn.LocalDev().IPv6Addr().IP, dstIP, hop-1, transportLayer.(gopacket.TransportLayer))
-	default:
-		return nil, nil, nil, fmt.Errorf("network layer type %s not support", networkLayerType)
-	}
+	networkLayer, err = CreateIPv4Layer(conn.LocalDev().IPAddr().IP, dstIP, id, hop-1, transportLayer.(gopacket.TransportLayer))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("create network layer: %w", err)
 	}

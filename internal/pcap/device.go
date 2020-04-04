@@ -56,72 +56,6 @@ func (dev *Device) IPAddr() *net.IPNet {
 	return nil
 }
 
-// IPv4Addr returns the first IPv4 address of the device.
-func (dev *Device) IPv4Addr() *net.IPNet {
-	for _, addr := range dev.ipAddrs {
-		if addr.IP.To4() != nil {
-			return addr
-		}
-	}
-
-	return nil
-}
-
-// IPv6Addr returns the first IPv6Addr address of the device.
-func (dev *Device) IPv6Addr() *net.IPNet {
-	for _, addr := range dev.ipAddrs {
-		if addr.IP.To4() == nil && addr.IP.To16() != nil {
-			return addr
-		}
-	}
-
-	return nil
-}
-
-// To4 returns the device with IPv4 addresses only.
-func (dev *Device) To4() *Device {
-	addrs := make([]*net.IPNet, 0)
-
-	for _, addr := range dev.ipAddrs {
-		if addr.IP.To4() != nil {
-			addrs = append(addrs, addr)
-		}
-	}
-	if len(addrs) <= 0 {
-		return nil
-	}
-
-	return &Device{
-		name:         dev.name,
-		alias:        dev.alias,
-		ipAddrs:      addrs,
-		hardwareAddr: dev.hardwareAddr,
-		isLoop:       dev.isLoop,
-	}
-}
-
-// To16Only returns the device with IPv6 addresses only.
-func (dev *Device) To16Only() *Device {
-	addrs := make([]*net.IPNet, 0)
-
-	for _, addr := range dev.ipAddrs {
-		if addr.IP.To4() == nil {
-			addrs = append(addrs, addr)
-		}
-	}
-	if len(addrs) <= 0 {
-		return nil
-	}
-
-	return &Device{
-		name:         dev.name,
-		alias:        dev.alias,
-		ipAddrs:      addrs,
-		hardwareAddr: dev.hardwareAddr,
-		isLoop:       dev.isLoop,
-	}
-}
-
 func (dev Device) String() string {
 	var result string
 
@@ -136,35 +70,6 @@ func (dev Device) String() string {
 		addrs = append(addrs, addr.IP.String())
 	}
 	result = result + strings.Join(addrs, ", ")
-
-	if dev.isLoop {
-		result = result + " (Loopback)"
-	}
-
-	return result
-}
-
-// IPv4String returns a string with IPv4 addresses only.
-func (dev Device) IPv4String() string {
-	var result string
-
-	if dev.hardwareAddr != nil {
-		result = dev.alias + " [" + dev.hardwareAddr.String() + "]: "
-	} else {
-		result = dev.alias + ": "
-	}
-
-	addrs := make([]string, 0)
-	for _, addr := range dev.ipAddrs {
-		if addr.IP.To4() != nil {
-			addrs = append(addrs, addr.IP.String())
-		}
-	}
-	if len(addrs) > 0 {
-		result = result + strings.Join(addrs, ", ")
-	} else {
-		result = result + "(No IPv4 address)"
-	}
 
 	if dev.isLoop {
 		result = result + " (Loopback)"
@@ -213,6 +118,11 @@ func FindAllDevs() ([]*Device, error) {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
 				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, errors.New("invalid address")))
+				continue
+			}
+
+			// Only pass IPv4 address
+			if ipnet.IP.To4() == nil {
 				continue
 			}
 

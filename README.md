@@ -71,9 +71,9 @@ go run ./cmd/ikago-server -p [port]
 
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
-`-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. **IPv6 addresses will not be listened.** For example, `-f 192.168.1.1,:1080`.
+`-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. For example, `-f 192.168.1.1,:1080`.
 
-`-s ip:port`: Server. Any IPv6 address should be encapsulated by a pair of brackets.
+`-s ip:port`: Server.
 
 ### Server options
 
@@ -95,9 +95,13 @@ go run ./cmd/ikago-server -p [port]
    pfctl -e
    ```
 
-2. IkaGo prepend packets with TCP header, so an extra IPv4/IPv6 and TCP header will be added to the packet. As a consequence, an extra 40/60 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 32 Bytes, and for KCP support, another 24 Bytes. IkaGo will never do IP fragmentation between client-server transmissions, so please make sure the MTU in your proxied device was set to a reasonable value. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable AES-256-GCM encryption(consuming 20 Bytes) and KCP support, you should set the proxied device's MTU value to no more than 1316 Bytes.
+2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 32 Bytes, and for KCP support, another 24 Bytes. IkaGo will never do IP fragmentation between client-server transmissions, so please make sure the MTU in your proxied device was set to a reasonable value. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable AES-256-GCM encryption(consuming 20 Bytes) and KCP support, you should set the proxied device's MTU value to no more than 1316 Bytes.
 
 3. In scenarios such as P2P games, devices on both sides may not actively perform packet fragmentation, and the device's MRU will be set to be the same as the MTU. Even if you set the MTU in your device, the packets sent by the other side may exceed the MRU of your device. Use `-fragment` to fragment outbound packets in IkaGo.
+
+## Limitations
+
+1. IPv6 is not supported because the dependency package [gopacket](https://github.com/google/gopacket) does not fully implement the serialization of the IPv6 extension header.
 
 ## Todo
 

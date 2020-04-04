@@ -314,11 +314,11 @@ func open() error {
 	}
 
 	if len(listenDevs) == 1 {
-		log.Infof("Listen on %s\n", listenDevs[0].IPv4String())
+		log.Infof("Listen on %s\n", listenDevs[0].String())
 	} else {
 		log.Infoln("Listen on:")
 		for _, dev := range listenDevs {
-			log.Infof("  %s\n", dev.IPv4String())
+			log.Infof("  %s\n", dev.String())
 		}
 	}
 	if !gatewayDev.IsLoop() {
@@ -556,7 +556,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 				temp := *embIndicator.ICMPv4Indicator().EmbIPv4Layer()
 				newEmbIPv4Layer := &temp
 
-				newEmbIPv4Layer.DstIP = upConn.LocalDev().IPv4Addr().IP
+				newEmbIPv4Layer.DstIP = upConn.LocalDev().IPAddr().IP
 
 				var (
 					err                  error
@@ -620,7 +620,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 
 		newIPv4Layer := newNetworkLayer.(*layers.IPv4)
 
-		newIPv4Layer.SrcIP = upConn.LocalDev().IPv4Addr().IP
+		newIPv4Layer.SrcIP = upConn.LocalDev().IPAddr().IP
 		upIP = newIPv4Layer.SrcIP
 	default:
 		return fmt.Errorf("network layer type %s not support", t)

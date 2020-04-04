@@ -38,7 +38,6 @@ type PacketIndicator struct {
 	packet            gopacket.Packet
 	linkLayer         gopacket.Layer
 	networkLayer      gopacket.Layer
-	ipv6FragmentLayer *layers.IPv6Fragment
 	transportLayer    gopacket.Layer
 	icmpv4Indicator   *ICMPv4Indicator
 	applicationLayer  gopacket.ApplicationLayer
@@ -92,20 +91,6 @@ func (indicator *PacketIndicator) IPv4Layer() *layers.IPv4 {
 	return nil
 }
 
-// IPv6Layer returns the IPv6 layer.
-func (indicator *PacketIndicator) IPv6Layer() *layers.IPv6 {
-	if indicator.NetworkLayer().LayerType() == layers.LayerTypeIPv6 {
-		return indicator.networkLayer.(*layers.IPv6)
-	}
-
-	return nil
-}
-
-// IPv6FragmentLayer returns the IPv6 fragment layer.
-func (indicator *PacketIndicator) IPv6FragmentLayer() *layers.IPv6Fragment {
-	return indicator.ipv6FragmentLayer
-}
-
 // ARPLayer returns the ARP layer.
 func (indicator *PacketIndicator) ARPLayer() *layers.ARP {
 	if indicator.NetworkLayer().LayerType() == layers.LayerTypeARP {
@@ -120,8 +105,6 @@ func (indicator *PacketIndicator) SrcIP() net.IP {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().SrcIP
-	case layers.LayerTypeIPv6:
-		return indicator.IPv6Layer().SrcIP
 	case layers.LayerTypeARP:
 		return indicator.ARPLayer().SourceProtAddress
 	default:
@@ -134,8 +117,6 @@ func (indicator *PacketIndicator) DstIP() net.IP {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().DstIP
-	case layers.LayerTypeIPv6:
-		return indicator.IPv6Layer().DstIP
 	case layers.LayerTypeARP:
 		return indicator.ARPLayer().DstProtAddress
 	default:
@@ -143,13 +124,11 @@ func (indicator *PacketIndicator) DstIP() net.IP {
 	}
 }
 
-// Hop returns the TTL in IPv4 layer or hop limit in IPv6 layer.
-func (indicator *PacketIndicator) Hop() uint8 {
+// TTL returns the TTL.
+func (indicator *PacketIndicator) TTL() uint8 {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().TTL
-	case layers.LayerTypeIPv6:
-		return indicator.IPv6Layer().HopLimit
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -160,8 +139,6 @@ func (indicator *PacketIndicator) NetworkId() uint {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return uint(indicator.IPv4Layer().Id)
-	case layers.LayerTypeIPv6:
-		return uint(indicator.ipv6FragmentLayer.Identification)
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -178,10 +155,6 @@ func (indicator *PacketIndicator) IsFrag() bool {
 		}
 
 		return ipv4Layer.FragOffset != 0
-	case layers.LayerTypeIPv6:
-		ipv6Layer := indicator.IPv6Layer()
-
-		return ipv6Layer.NextHeader == layers.IPProtocolIPv6Fragment
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -192,8 +165,6 @@ func (indicator *PacketIndicator) FragOffset() uint16 {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().FragOffset
-	case layers.LayerTypeIPv6:
-		return indicator.ipv6FragmentLayer.FragmentOffset
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -204,8 +175,6 @@ func (indicator *PacketIndicator) MoreFragments() bool {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		return indicator.IPv4Layer().Flags&layers.IPv4MoreFragments != 0
-	case layers.LayerTypeIPv6:
-		return indicator.ipv6FragmentLayer.MoreFragments
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
@@ -216,22 +185,6 @@ func (indicator *PacketIndicator) TransportProtocol() gopacket.LayerType {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
 		p, err := parseIPProtocol(indicator.IPv4Layer().Protocol)
-		if err != nil {
-			panic(err)
-		}
-
-		return p
-	case layers.LayerTypeIPv6:
-		var (
-			err error
-			p   gopacket.LayerType
-		)
-
-		if indicator.IsFrag() {
-			p, err = parseIPProtocol(indicator.IPv6Layer().NextHeader)
-		} else {
-			p, err = parseIPProtocol(indicator.ipv6FragmentLayer.NextHeader)
-		}
 		if err != nil {
 			panic(err)
 		}
@@ -432,12 +385,7 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 
 // NetworkPayload returns the payload of network layer.
 func (indicator *PacketIndicator) NetworkPayload() []byte {
-	var payload []byte
-	if indicator.IsFrag() && indicator.NetworkLayer().LayerType() == layers.LayerTypeIPv6 {
-		payload = indicator.IPv6FragmentLayer().LayerPayload()
-	} else {
-		payload = indicator.NetworkLayer().LayerPayload()
-	}
+	payload := indicator.NetworkLayer().LayerPayload()
 	if payload == nil {
 		return nil
 	}
@@ -465,7 +413,6 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	var (
 		linkLayer         gopacket.Layer
 		networkLayer      gopacket.Layer
-		ipv6FragmentLayer *layers.IPv6Fragment
 		transportLayer    gopacket.Layer
 		icmpv4Indicator   *ICMPv4Indicator
 		applicationLayer  gopacket.ApplicationLayer
@@ -531,25 +478,6 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		if err != nil {
 			return nil, err
 		}
-	case layers.LayerTypeIPv6:
-		ipv6Layer := networkLayer.(*layers.IPv6)
-
-		if ipv6Layer.NextHeader == layers.IPProtocolIPv6Fragment {
-			ipv6FragmentLayer = packet.Layer(layers.LayerTypeIPv6Fragment).(*layers.IPv6Fragment)
-			if ipv6FragmentLayer == nil {
-				return nil, errors.New("missing ipv6 fragment layer")
-			}
-
-			_, err := parseIPProtocol(ipv6FragmentLayer.NextHeader)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			_, err := parseIPProtocol(ipv6Layer.NextHeader)
-			if err != nil {
-				return nil, err
-			}
-		}
 	case layers.LayerTypeARP:
 		break
 	default:
@@ -576,7 +504,6 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		packet:            packet,
 		linkLayer:         linkLayer,
 		networkLayer:      networkLayer,
-		ipv6FragmentLayer: ipv6FragmentLayer,
 		transportLayer:    transportLayer,
 		icmpv4Indicator:   icmpv4Indicator,
 		applicationLayer:  applicationLayer,
@@ -597,16 +524,6 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 	switch networkLayer.(*layers.IPv4).Version {
 	case 4:
 		break
-	case 6:
-		// Not IPv4, but IPv6
-		embPacket := gopacket.NewPacket(contents, layers.LayerTypeIPv6, gopacket.Default)
-		networkLayer = embPacket.NetworkLayer()
-		if networkLayer == nil {
-			return nil, errors.New("missing network layer")
-		}
-		if networkLayer.LayerType() != layers.LayerTypeIPv6 {
-			return nil, errors.New("network layer type not support")
-		}
 	default:
 		return nil, errors.New("network layer type not support")
 	}
@@ -689,8 +606,6 @@ func parseIPProtocol(protocol layers.IPProtocol) (gopacket.LayerType, error) {
 		return layers.LayerTypeUDP, nil
 	case layers.IPProtocolICMPv4:
 		return layers.LayerTypeICMPv4, nil
-	case layers.IPProtocolICMPv6:
-		return layers.LayerTypeICMPv6, nil
 	default:
 		return gopacket.LayerTypeZero, fmt.Errorf("ip protocol %s not support", protocol)
 	}
@@ -700,8 +615,6 @@ func parseEthernetType(t layers.EthernetType) (gopacket.LayerType, error) {
 	switch t {
 	case layers.EthernetTypeIPv4:
 		return layers.LayerTypeIPv4, nil
-	case layers.EthernetTypeIPv6:
-		return layers.LayerTypeIPv6, nil
 	case layers.EthernetTypeARP:
 		return layers.LayerTypeARP, nil
 	default:

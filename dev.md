@@ -10,7 +10,7 @@ This is the development documentation of IkaGo.
 
 `Link Layer`: Ethernet and loopback layer.
 
-`Network Layer`: IPv4, IPv6, ARP layer and IPv6 extension layers.
+`Network Layer`: IPv4 and ARP layer.
 
 `Transport Layer`: TCP, UDP and ICMPv4 layer.
 
@@ -28,11 +28,11 @@ Neither client nor server replies ACK passively.
 
 ## Between Client and Server
 
-All packets transmitted must contain exactly a link and transport layer, and must have at least 1 network layer.
+All packets transmitted must contain exactly a link layer, a network layer and a transport layer.
 
 Packets transmitted between clients and server will not be verified.
 
-🏗️ **Currently, transmission between clients and server must be in IPv4.**
+**Transmission between clients and server must be in IPv4.**
 
 🏗️ **Currently, packets transmitted between clients and server will not be fragmented.**
 
@@ -48,7 +48,9 @@ Transmission size information displayed in verbose log in the server is the size
 
 ## Between Sources and Client, Server and Destinations
 
-All packets transmitted must contain exactly a link and transport layer, and must have at least 1 network layer.
+All packets transmitted must contain exactly a link layer, a network layer and a transport layer.
+
+**Transmission between sources and clients, server and destinations must be in IPv4.**
 
 If `-fragment` is set, packets sent by client will be reassembled.
 
@@ -56,7 +58,7 @@ If `-fragment` is set, packets sent by client will be reassembled.
 
 🏗️ **Currently, packets sent by server will not be fragmented**.
 
-IPv4 options and IPv6 extension headers except fragment extension will not be processed.
+IPv4 options will not be processed.
 
 Transmission size information displayed in verbose log in the client is the size of application layer in packets from the server.
 

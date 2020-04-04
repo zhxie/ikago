@@ -69,12 +69,6 @@ func (indicator *FragIndicator) Concatenate() (*PacketIndicator, error) {
 		newNetworkLayer = &temp
 
 		FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
-	case layers.LayerTypeIPv6:
-		ipv6Layer := indicator.frags[0].IPv6Layer()
-		temp := *ipv6Layer
-		newNetworkLayer = &temp
-
-		newNetworkLayer.(*layers.IPv6).NextHeader = indicator.frags[0].IPv6FragmentLayer().NextHeader
 	default:
 		return nil, fmt.Errorf("network layer type %s not support", t)
 	}

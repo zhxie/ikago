@@ -43,19 +43,9 @@ func newConn() *Conn {
 
 // Dial acts like Dial for pcap networks.
 func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*Conn, error) {
-	var srcAddr *net.TCPAddr
-
-	// Decide IPv4 or IPv6
-	if dstAddr.IP.To4() != nil {
-		srcAddr = &net.TCPAddr{
-			IP:   srcDev.IPv4Addr().IP,
-			Port: int(srcPort),
-		}
-	} else {
-		srcAddr = &net.TCPAddr{
-			IP:   srcDev.IPv6Addr().IP,
-			Port: int(srcPort),
-		}
+	srcAddr := &net.TCPAddr{
+		IP:   srcDev.IPAddr().IP,
+		Port: int(srcPort),
 	}
 
 	conn := newConn()
@@ -75,7 +65,7 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 		}
 	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -92,22 +82,12 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 }
 
 func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*Conn, error) {
-	var srcAddr *net.TCPAddr
-
-	// Decide IPv4 or IPv6
-	if dstAddr.IP.To4() != nil {
-		srcAddr = &net.TCPAddr{
-			IP:   srcDev.IPv4Addr().IP,
-			Port: int(srcPort),
-		}
-	} else {
-		srcAddr = &net.TCPAddr{
-			IP:   srcDev.IPv6Addr().IP,
-			Port: int(srcPort),
-		}
+	srcAddr := &net.TCPAddr{
+		IP:   srcDev.IPAddr().IP,
+		Port: int(srcPort),
 	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && dst port %d && (src host %s && src port %d)", srcAddr.Port, dstAddr.IP, dstAddr.Port))
 	if err != nil {
 		return nil, fmt.Errorf("create raw connection: %w", err)
 	}
@@ -189,7 +169,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 					log.Errorln(&net.OpError{
 						Op:     "handshake",
 						Net:    "pcap",
-						Source: conn.corLocalAddr(indicator.Src()),
+						Source: conn.LocalAddr(),
 						Addr:   indicator.Src(),
 						Err:    err,
 					})
@@ -450,7 +430,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 		return 0, a, &net.OpError{
 			Op:     "read",
 			Net:    "pcap",
-			Source: c.corLocalAddr(a),
+			Source: c.LocalAddr(),
 			Addr:   a,
 			Err:    err,
 		}
@@ -468,7 +448,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 		return 0, a, &net.OpError{
 			Op:     "read",
 			Net:    "pcap",
-			Source: c.corLocalAddr(a),
+			Source: c.LocalAddr(),
 			Addr:   a,
 			Err:    fmt.Errorf("client %s unauthorized", a.String()),
 		}
@@ -483,7 +463,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 		return 0, a, &net.OpError{
 			Op:     "read",
 			Net:    "pcap",
-			Source: c.corLocalAddr(a),
+			Source: c.LocalAddr(),
 			Addr:   a,
 			Err:    fmt.Errorf("decrypt: %w", err),
 		}
@@ -563,7 +543,7 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return 0, &net.OpError{
 			Op:     "write",
 			Net:    "pcap",
-			Source: c.corLocalAddr(addr),
+			Source: c.LocalAddr(),
 			Addr:   addr,
 			Err:    fmt.Errorf("type %T not support", t),
 		}
@@ -640,7 +620,7 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return 0, &net.OpError{
 			Op:     "write",
 			Net:    "pcap",
-			Source: c.corLocalAddr(addr),
+			Source: c.LocalAddr(),
 			Addr:   addr,
 			Err:    err,
 		}
@@ -657,7 +637,7 @@ func (c *Conn) Close() error {
 		return &net.OpError{
 			Op:   "close",
 			Net:  "pcap",
-			Addr: c.corLocalAddr(c.RemoteAddr()),
+			Addr: c.LocalAddr(),
 			Err:  err,
 		}
 	}
@@ -672,44 +652,6 @@ func (c *Conn) LocalDev() *Device {
 
 func (c *Conn) LocalAddr() net.Addr {
 	return &net.UDPAddr{IP: c.LocalDev().IPAddr().IP, Port: int(c.srcPort)}
-}
-
-func (c *Conn) corLocalAddr(dstAddr net.Addr) net.Addr {
-	if dstAddr == nil {
-		addrs := make([]*net.TCPAddr, 0)
-
-		for _, ip := range c.LocalDev().IPAddrs() {
-			addrs = append(addrs, &net.TCPAddr{
-				IP:   ip.IP,
-				Port: int(c.srcPort),
-			})
-		}
-
-		return &addr.MultiTCPAddr{Addrs: addrs}
-	}
-
-	var ip net.IP
-
-	switch t := dstAddr.(type) {
-	case *net.TCPAddr:
-		ip = dstAddr.(*net.TCPAddr).IP
-	case *net.UDPAddr:
-		ip = dstAddr.(*net.UDPAddr).IP
-	default:
-		panic(fmt.Errorf("type %T not support", t))
-	}
-
-	if ip.To4() != nil {
-		return &net.TCPAddr{
-			IP:   c.LocalDev().IPv4Addr().IP,
-			Port: int(c.srcPort),
-		}
-	}
-
-	return &net.TCPAddr{
-		IP:   c.LocalDev().IPv6Addr().IP,
-		Port: int(c.srcPort),
-	}
 }
 
 // RemoteDev returns the remote device.
@@ -790,7 +732,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:   "accept",
 			Net:  "pcap",
-			Addr: l.corAddr(nil),
+			Addr: l.Addr(),
 			Err:  fmt.Errorf("read device %s: %w", l.Dev().Alias(), err),
 		}
 	}
@@ -801,7 +743,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:   "accept",
 			Net:  "pcap",
-			Addr: l.corAddr(nil),
+			Addr: l.Addr(),
 			Err:  fmt.Errorf("parse packet: %w", err),
 		}
 	}
@@ -811,7 +753,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:     "dial",
 			Net:    "pcap",
-			Source: l.corAddr(indicator.Src()),
+			Source: l.Addr(),
 			Addr:   indicator.Src(),
 			Err:    err,
 		}
@@ -829,7 +771,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, &net.OpError{
 			Op:     "handshake",
 			Net:    "pcap",
-			Source: l.corAddr(indicator.Src()),
+			Source: l.Addr(),
 			Addr:   indicator.Src(),
 			Err:    err,
 		}
@@ -844,7 +786,7 @@ func (l *Listener) Close() error {
 		return &net.OpError{
 			Op:   "close",
 			Net:  "pcap",
-			Addr: l.corAddr(nil),
+			Addr: l.Addr(),
 			Err:  err,
 		}
 	}
@@ -860,44 +802,6 @@ func (l *Listener) Dev() *Device {
 func (l *Listener) Addr() net.Addr {
 	return &net.TCPAddr{
 		IP:   l.Dev().IPAddr().IP,
-		Port: int(l.srcPort),
-	}
-}
-
-func (l *Listener) corAddr(dstAddr net.Addr) net.Addr {
-	if dstAddr == nil {
-		addrs := make([]*net.TCPAddr, 0)
-
-		for _, ip := range l.Dev().IPAddrs() {
-			addrs = append(addrs, &net.TCPAddr{
-				IP:   ip.IP,
-				Port: int(l.srcPort),
-			})
-		}
-
-		return &addr.MultiTCPAddr{Addrs: addrs}
-	}
-
-	var ip net.IP
-
-	switch t := dstAddr.(type) {
-	case *net.TCPAddr:
-		ip = dstAddr.(*net.TCPAddr).IP
-	case *net.UDPAddr:
-		ip = dstAddr.(*net.UDPAddr).IP
-	default:
-		panic(fmt.Errorf("type %T not support", t))
-	}
-
-	if ip.To4() != nil {
-		return &net.TCPAddr{
-			IP:   l.Dev().IPv4Addr().IP,
-			Port: int(l.srcPort),
-		}
-	}
-
-	return &net.TCPAddr{
-		IP:   l.Dev().IPv6Addr().IP,
 		Port: int(l.srcPort),
 	}
 }

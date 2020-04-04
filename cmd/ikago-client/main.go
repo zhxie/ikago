@@ -342,11 +342,11 @@ func open() error {
 	var err error
 
 	if len(listenDevs) == 1 {
-		log.Infof("Listen on %s\n", listenDevs[0].IPv4String())
+		log.Infof("Listen on %s\n", listenDevs[0].String())
 	} else {
 		log.Infoln("Listen on:")
 		for _, dev := range listenDevs {
-			log.Infof("  %s\n", dev.IPv4String())
+			log.Infof("  %s\n", dev.String())
 		}
 	}
 	if !gatewayDev.IsLoop() {
