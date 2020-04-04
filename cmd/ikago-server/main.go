@@ -175,6 +175,7 @@ var (
 	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
+	argMTU            = flag.Int("mtu", pcap.MaxMTU, "MTU.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argPort           = flag.Int("p", 0, "Port for listening.")
 )
@@ -210,6 +211,14 @@ var (
 func init() {
 	// Parse arguments
 	flag.Parse()
+
+	// Load config.json by default
+	if len(os.Args) <= 1 {
+		_, err := os.Stat("config.json")
+		if err != nil {
+			*argConfig = "config.json"
+		}
+	}
 
 	listenDevs = make([]*pcap.Device, 0)
 
@@ -257,6 +266,7 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
+			MTU:     *argMTU,
 			Verbose: *argVerbose,
 			Port:    *argPort,
 		}
