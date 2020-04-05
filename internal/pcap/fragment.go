@@ -193,8 +193,8 @@ func CreateFragmentPackets(linkLayer, networkLayer, transportLayer, payload gopa
 		}
 	} else {
 		// Serialize layers
-		data, err := SerializeRaw(linkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(networkLayerData),
+		data, err := Serialize(linkLayer.(gopacket.SerializableLayer),
+			networkLayer.(gopacket.SerializableLayer),
 			gopacket.Payload(networkLayerPayload))
 		if err != nil {
 			return nil, fmt.Errorf("serialize: %w", err)

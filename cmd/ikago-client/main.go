@@ -651,6 +651,27 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("missing nat to %s", embIndicator.DstIP())
 	}
 
+	// Set network layer for transport layer
+	if embIndicator.TransportLayer() != nil {
+		switch t := embIndicator.TransportLayer().LayerType(); t {
+		case layers.LayerTypeTCP:
+			tcpLayer := embIndicator.TCPLayer()
+
+			err = tcpLayer.SetNetworkLayerForChecksum(embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+		case layers.LayerTypeUDP:
+			udpLayer := embIndicator.UDPLayer()
+
+			err = udpLayer.SetNetworkLayerForChecksum(embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+		case layers.LayerTypeICMPv4, gopacket.LayerTypeFragment:
+			break
+		default:
+			return fmt.Errorf("transport layer type %s not support", t)
+		}
+		if err != nil {
+			return fmt.Errorf("set network layer for checksum: %w", err)
+		}
+	}
+
 	// Decide Loopback or Ethernet
 	if ni.conn.IsLoop() {
 		newLinkLayerType = layers.LayerTypeLoopback

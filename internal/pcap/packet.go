@@ -385,22 +385,20 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 
 // NetworkPayload returns the payload of network layer.
 func (indicator *PacketIndicator) NetworkPayload() []byte {
-	payload := indicator.NetworkLayer().LayerPayload()
-	if payload == nil {
+	if indicator.networkLayer == nil {
 		return nil
 	}
 
-	return payload
+	return indicator.NetworkLayer().LayerPayload()
 }
 
 // Payload returns the payload of transport layer, or layer contents in application layer.
 func (indicator *PacketIndicator) Payload() []byte {
-	payload := indicator.applicationLayer.LayerContents()
-	if payload == nil {
+	if indicator.applicationLayer == nil {
 		return nil
 	}
 
-	return payload
+	return indicator.applicationLayer.LayerContents()
 }
 
 // Size returns the size of the packet.
