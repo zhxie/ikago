@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,7 +30,7 @@ type natIndicator struct {
 
 var (
 	version = ""
-	build = ""
+	build   = ""
 )
 
 var (
@@ -122,6 +123,7 @@ func main() {
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse config file %s: %w", *argConfig, err))
 		}
+		log.Infof("Load configuration from %s\n", *argConfig)
 	} else {
 		cfg = &config.Config{
 			ListenDevs: splitArg(*argListenDevs),
@@ -153,6 +155,13 @@ func main() {
 
 	// Log
 	log.SetVerbose(cfg.Verbose)
+
+	// Check permission
+	if runtime.GOOS != "windows" {
+		if os.Geteuid() != 0 {
+			log.Fatalln("Please run IkaGo-client with sudo.")
+		}
+	}
 
 	// Exclusive commands
 	if *argListDevs {
@@ -596,10 +605,10 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 func handleUpstream(contents []byte) error {
 	var (
-		embIndicator       *pcap.PacketIndicator
-		newLinkLayer       gopacket.Layer
-		newLinkLayerType   gopacket.LayerType
-		fragments          [][]byte
+		embIndicator     *pcap.PacketIndicator
+		newLinkLayer     gopacket.Layer
+		newLinkLayerType gopacket.LayerType
+		fragments        [][]byte
 	)
 
 	// Empty payload

@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -52,7 +53,7 @@ const keepAlive float64 = 30 // seconds
 
 var (
 	version = ""
-	build = ""
+	build   = ""
 )
 
 var (
@@ -150,6 +151,7 @@ func main() {
 		if err != nil {
 			log.Fatalln(fmt.Errorf("parse config file %s: %w", *argConfig, err))
 		}
+		log.Infof("Load configuration from %s\n", *argConfig)
 	} else {
 		cfg = &config.Config{
 			ListenDevs: splitArg(*argListenDevs),
@@ -177,6 +179,13 @@ func main() {
 
 	// Log
 	log.SetVerbose(cfg.Verbose)
+
+	// Check permission
+	if runtime.GOOS != "windows" {
+		if os.Geteuid() != 0 {
+			log.Fatalln("Please run IkaGo-server with sudo.")
+		}
+	}
 
 	// Exclusive commands
 	if *argListDevs {
@@ -457,17 +466,17 @@ func closeAll() {
 
 func handleListen(contents []byte, conn net.Conn) error {
 	var (
-		err                 error
-		embIndicator        *pcap.PacketIndicator
-		upValue             uint16
-		newTransportLayer   gopacket.Layer
-		newNetworkLayer     gopacket.NetworkLayer
-		upIP                net.IP
-		newLinkLayerType    gopacket.LayerType
-		newLinkLayer        gopacket.Layer
-		data                []byte
-		guide               pcap.NATGuide
-		ni                  *natIndicator
+		err               error
+		embIndicator      *pcap.PacketIndicator
+		upValue           uint16
+		newTransportLayer gopacket.Layer
+		newNetworkLayer   gopacket.NetworkLayer
+		upIP              net.IP
+		newLinkLayerType  gopacket.LayerType
+		newLinkLayer      gopacket.Layer
+		data              []byte
+		guide             pcap.NATGuide
+		ni                *natIndicator
 	)
 
 	// Empty payload
