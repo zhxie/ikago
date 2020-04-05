@@ -19,7 +19,7 @@
   },
   "verbose": false,
 
-  "publish": "",
+  "publish": [],
   "fragment": 0,
   "upstream-port": 0,
   "filters": [

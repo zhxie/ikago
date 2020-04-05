@@ -22,7 +22,7 @@ type Config struct {
 	KCP        bool      `json:"kcp"`
 	KCPConfig  KCPConfig `json:"kcp-tuning"`
 	Verbose    bool      `json:"verbose"`
-	Publish    string    `json:"publish"`
+	Publish    []string  `json:"publish"`
 	Fragment   int       `json:"fragment"`
 	UpPort     int       `json:"upstream-port"`
 	Filters    []string  `json:"filters"`
@@ -35,7 +35,9 @@ func NewConfig() *Config {
 	return &Config{
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
+		Publish:   make([]string, 0),
 		Fragment:  MaxMTU,
+		Filters:   make([]string, 0),
 	}
 }
 

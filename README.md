@@ -63,7 +63,7 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-publish address`: (Optional) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
+`-publish addresses`: (Optional) ARP publishing address, use comma to separate multiple addresses. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
 
 `-fragment size`: (Optional) Max size of the outbound packets. If this value is not set or set as `0`, outbound packets will not be fragmented. For more about MTU and fragmentation, please refer to the [Troubleshoot](https://github.com/zhxie/ikago#troubleshoot).
 

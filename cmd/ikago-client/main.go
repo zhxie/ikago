@@ -61,7 +61,7 @@ var (
 )
 
 var (
-	publishIP  net.IP
+	publishIPs []*net.IPAddr
 	fragment   int
 	upPort     uint16
 	filters    []net.Addr
@@ -102,6 +102,7 @@ func init() {
 		}
 	}
 
+	publishIPs = make([]*net.IPAddr, 0)
 	filters = make([]net.Addr, 0)
 	listenDevs = make([]*pcap.Device, 0)
 
@@ -145,7 +146,7 @@ func main() {
 				NC:          *argKCPNC,
 			},
 			Verbose:  *argVerbose,
-			Publish:  *argPublish,
+			Publish:  splitArg(*argPublish),
 			Fragment: *argFragment,
 			UpPort:   *argUpPort,
 			Filters:  splitArg(*argFilters),
@@ -221,14 +222,24 @@ func main() {
 	}
 
 	// Publish
-	if cfg.Publish != "" {
-		publishIP = net.ParseIP(cfg.Publish)
-		if publishIP == nil {
-			log.Fatalln(fmt.Errorf("invalid publish %s", cfg.Publish))
+	if len(cfg.Publish) > 0 {
+		for _, a := range cfg.Publish {
+			ip := net.ParseIP(a)
+			if ip == nil {
+				log.Errorln(fmt.Errorf("invalid publish %s", a))
+			}
+			publishIPs = append(publishIPs, &net.IPAddr{IP: ip})
 		}
 	}
-	if publishIP != nil {
-		log.Infof("Publish %s\n", publishIP)
+	if len(publishIPs) > 0 {
+		if len(publishIPs) == 1 {
+			log.Infof("Publish %s\n", publishIPs[0].IP)
+		} else {
+			log.Infoln("Publish:")
+			for _, ip := range publishIPs {
+				log.Infof("  %s\n", ip.IP)
+			}
+		}
 	}
 
 	// Fragment
@@ -392,8 +403,18 @@ func open() error {
 	f := strings.Join(fs, " || ")
 	filter := fmt.Sprintf("ip && (((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s))",
 		f, serverIP, serverPort, f, serverIP)
-	if publishIP != nil {
-		filter = filter + fmt.Sprintf(" || ((arp[6:2] = 1) && dst host %s)", publishIP)
+	if len(publishIPs) > 0 {
+		fs := make([]string, 0)
+		for _, f := range publishIPs {
+			s, err := addr.DstBPFFilter(f)
+			if err != nil {
+				return fmt.Errorf("parse filter %s: %w", f, err)
+			}
+
+			fs = append(fs, s)
+		}
+		f := strings.Join(fs, " || ")
+		filter = filter + fmt.Sprintf(" || (arp[6:2] = 1 && %s)", f)
 	}
 
 	// Handles for listening
