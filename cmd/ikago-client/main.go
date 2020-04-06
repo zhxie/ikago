@@ -12,6 +12,7 @@ import (
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
+	"ikago/internal/stat"
 	"math/rand"
 	"net"
 	"os"
@@ -82,6 +83,8 @@ var (
 	c           chan pcap.ConnPacket
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
+	listenStats *stat.TrafficManager
+	upStats     *stat.TrafficManager
 )
 
 func init() {
@@ -109,6 +112,8 @@ func init() {
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	nat = make(map[string]*natIndicator)
+	listenStats = stat.NewTrafficManager()
+	upStats = stat.NewTrafficManager()
 }
 
 func main() {
@@ -508,6 +513,26 @@ func closeAll() {
 	if upConn != nil {
 		upConn.Close()
 	}
+
+	// Statistics
+	log.Infof("\nOutbound statistics:\n")
+	for _, node := range listenStats.Nodes() {
+		indicator, err := listenStats.Indicator(node)
+		if err != nil {
+			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
+		}
+
+		log.Infof("%s: %s\n", node, indicator.String())
+	}
+	log.Infof("\nInbound statistics:\n")
+	for _, node := range upStats.Nodes() {
+		indicator, err := upStats.Indicator(node)
+		if err != nil {
+			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
+		}
+
+		log.Infof("%s: %s\n", node, indicator.String())
+	}
 }
 
 func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
@@ -619,6 +644,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 		natLock.Unlock()
 	}
 
+	// Statistics
+	listenStats.Add(indicator.SrcIP().String(), uint(n))
+
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n", indicator.TransportProtocol(), indicator.Src().String(), indicator.Dst().String(), n)
 
 	return nil
@@ -712,6 +740,9 @@ func handleUpstream(contents []byte) error {
 		}
 
 	}
+
+	// Statistics
+	upStats.Add(embIndicator.DstIP().String(), uint(embIndicator.Size()))
 
 	return nil
 }

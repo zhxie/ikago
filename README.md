@@ -104,7 +104,7 @@ go run ./cmd/ikago-server -p [port]
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
-- [ ] Statistics
+- [ ] Log
 
 ## License
 

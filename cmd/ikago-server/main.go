@@ -12,6 +12,7 @@ import (
 	"ikago/internal/crypto"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
+	"ikago/internal/stat"
 	"net"
 	"os"
 	"os/signal"
@@ -105,6 +106,8 @@ var (
 	patMap       map[quintuple]uint16
 	natLock      sync.RWMutex
 	nat          map[pcap.NATGuide]*natIndicator
+	listenStats  *stat.TrafficManager
+	upStats      *stat.TrafficManager
 )
 
 func init() {
@@ -136,6 +139,8 @@ func init() {
 	icmpv4IdPool = make([]time.Time, 65536)
 	patMap = make(map[quintuple]uint16)
 	nat = make(map[pcap.NATGuide]*natIndicator)
+	listenStats = stat.NewTrafficManager()
+	upStats = stat.NewTrafficManager()
 }
 
 func main() {
@@ -462,6 +467,26 @@ func closeAll() {
 	if upConn != nil {
 		upConn.Close()
 	}
+
+	// Statistics
+	log.Infof("\nOutbound statistics:\n")
+	for _, node := range listenStats.Nodes() {
+		indicator, err := listenStats.Indicator(node)
+		if err != nil {
+			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
+		}
+
+		log.Infof("%s: %s\n", node, indicator.String())
+	}
+	log.Infof("\nInbound statistics:\n")
+	for _, node := range upStats.Nodes() {
+		indicator, err := upStats.Indicator(node)
+		if err != nil {
+			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
+		}
+
+		log.Infof("%s: %s\n", node, indicator.String())
+	}
 }
 
 func handleListen(contents []byte, conn net.Conn) error {
@@ -771,6 +796,9 @@ func handleListen(contents []byte, conn net.Conn) error {
 		}
 	}
 
+	// Statistics
+	listenStats.Add(conn.RemoteAddr().String(), uint(embIndicator.Size()))
+
 	log.Verbosef("Redirect an inbound %s packet: %s -> %s -> %s (%d Bytes)\n",
 		embIndicator.TransportProtocol(), embIndicator.Src().String(), conn.RemoteAddr().String(), embIndicator.Dst().String(), embIndicator.Size())
 
@@ -983,6 +1011,9 @@ func handleUpstream(packet gopacket.Packet) error {
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
+
+	// Statistics
+	upStats.Add(ni.conn.RemoteAddr().String(), uint(n))
 
 	log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s (%d Bytes)\n",
 		indicator.TransportProtocol(), ni.embSrc.String(), ni.src.String(), indicator.Src(), n)
