@@ -79,18 +79,28 @@ go run ./cmd/ikago-server -p [port]
 
 ## Troubleshoot
 
-1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` in Linux or `pfctl` in macOS and FreeBSD with the rule below to solve the problem:
+1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` in Linux, `pfctl` in macOS and BSD, or `netsh` in Windows with the following rules to solve the problem:
    ```
    // Linux
-   // You can use stricter policies to maintain a stable network environment if you are using IkaGo-client.
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
+   // You can specify source and destination address to maintain a stable network environment if you are using
+   // IkaGo-client with proxy ARP.
+   iptables -A OUTPUT -s server_ip/32 -p tcp --tcp-flags RST RST --dport server_port -j DROP
    
-   // macOS, FreeBSD
-   // You can specify source and destination addresses instead of "any" to maintain a stable network environment
-   // if you are using IkaGo-client.
+   // macOS, BSD
    echo "block drop proto tcp from any to any flags R/R" >> /etc/pf.conf
    pfctl -f /etc/pf.conf
    pfctl -e
+   // You can specify source and destination addresses instead of "any" to maintain a stable network environment
+   // if you are using IkaGo-client with proxy ARP.
+   echo "block drop proto tcp from any to server_ip flags R/R port server_port" >> /etc/pf.conf
+   pfctl -f /etc/pf.conf
+   pfctl -e
+   
+   // Windows (You may not have to)
+   // If you are using IkaGo-client with proxy ARP.
+   netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=in remoteip=server_ip/32 remoteport=server_port action=block
+   netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=out remoteip=server_ip/32 remoteport=server_port action=block
    ```
 
 2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 24 Bytes. IkaGo will never do IP fragmentation between client-server transmissions, so please make sure the MTU in your proxied device was set to a reasonable value. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable AES-256-GCM encryption(consuming 28 Bytes) and KCP support, you should set the proxied device's MTU value to no more than 1308 Bytes.
