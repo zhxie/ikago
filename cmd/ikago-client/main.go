@@ -56,24 +56,27 @@ var (
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argFragment       = flag.Int("fragment", pcap.MaxMTU, "Max size of the outbound packets.")
+	argDummy          = flag.Bool("dummy", false, "Initialize a dummy TCP listener.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argFilters        = flag.String("f", "", "Filters.")
 	argServer         = flag.String("s", "", "Server.")
 )
 
 var (
-	publishIPs []*net.IPAddr
-	fragment   int
-	upPort     uint16
-	filters    []net.Addr
-	serverIP   net.IP
-	serverPort uint16
-	listenDevs []*pcap.Device
-	upDev      *pcap.Device
-	gatewayDev *pcap.Device
-	crypt      crypto.Crypt
-	isKCP      bool
-	kcpConfig  *config.KCPConfig
+	publishIPs    []*net.IPAddr
+	fragment      int
+	upPort        uint16
+	dummy         bool
+	filters       []net.Addr
+	serverIP      net.IP
+	serverPort    uint16
+	listenDevs    []*pcap.Device
+	upDev         *pcap.Device
+	gatewayDev    *pcap.Device
+	crypt         crypto.Crypt
+	isKCP         bool
+	kcpConfig     *config.KCPConfig
+	dummyListener net.Listener
 )
 
 var (
@@ -153,6 +156,7 @@ func main() {
 			Verbose:  *argVerbose,
 			Publish:  splitArg(*argPublish),
 			Fragment: *argFragment,
+			Dummy:    *argDummy,
 			UpPort:   *argUpPort,
 			Filters:  splitArg(*argFilters),
 			Server:   *argServer,
@@ -292,6 +296,9 @@ func main() {
 	}
 	upPort = uint16(cfg.UpPort)
 
+	// Dummy
+	dummy = cfg.Dummy
+
 	serverAddr, err := addr.ParseTCPAddr(cfg.Server)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
@@ -368,8 +375,20 @@ func main() {
 	go func() {
 		<-sig
 		closeAll()
+		if dummyListener != nil {
+			dummyListener.Close()
+		}
 		os.Exit(0)
 	}()
+
+	// Dummy Listener
+	if dummy {
+		dummyListener, err = net.Listen("tcp", fmt.Sprintf(":%d", upPort))
+		if err != nil {
+			log.Fatalln("open dummy: %s", err)
+		}
+		log.Infof("Listen on :%d by dummy\n", upPort)
+	}
 
 	// Open pcap
 	err = open()
