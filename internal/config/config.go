@@ -22,6 +22,7 @@ type Config struct {
 	KCP        bool      `json:"kcp"`
 	KCPConfig  KCPConfig `json:"kcp-tuning"`
 	Verbose    bool      `json:"verbose"`
+	Log        string    `json:"log"`
 	Publish    []string  `json:"publish"`
 	Fragment   int       `json:"fragment"`
 	Dummy      bool      `json:"dummy"`

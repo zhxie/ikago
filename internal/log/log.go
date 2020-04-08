@@ -5,11 +5,19 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 )
 
-var allowVerbose bool
-var outLogger *logger
-var errLogger *logger
+var (
+	allowVerbose bool
+	logPath      string
+)
+
+var (
+	outLogger *logger
+	errLogger *logger
+	logFile   *os.File
+)
 
 type logger struct {
 	lock sync.Mutex
@@ -18,9 +26,16 @@ type logger struct {
 
 func (l *logger) output(s string) error {
 	l.lock.Lock()
-	defer l.lock.Unlock()
-
 	_, err := l.out.Write([]byte(s))
+	l.lock.Unlock()
+
+	if logFile != nil {
+		t := time.Now()
+		_, err := logFile.WriteString(fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d] %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), s))
+		if err != nil {
+			Errorln(fmt.Errorf("log: %w", err))
+		}
+	}
 
 	return err
 }
@@ -34,6 +49,38 @@ func init() {
 // SetVerbose sets the state if verbose message is allowed to print.
 func SetVerbose(allow bool) {
 	allowVerbose = allow
+}
+
+// SetLog sets the path of log file.
+func SetLog(path string) error {
+	logPath = path
+
+	if logFile != nil {
+		err := logFile.Close()
+		if err != nil {
+			return fmt.Errorf("close: %w", err)
+		}
+	}
+
+	if logPath != "" {
+		var err error
+
+		logFile, err = os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 755)
+		if err != nil {
+			return fmt.Errorf("open: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Close closes the logger.
+func Close() error {
+	if logFile != nil {
+		return logFile.Close()
+	}
+
+	return nil
 }
 
 // Verbosef prints message to the stdout if verbose message is allowed to print. Arguments are handled in the manner of fmt.Printf.

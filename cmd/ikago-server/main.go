@@ -77,6 +77,7 @@ var (
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
+	argLog            = flag.String("log", "", "Log.")
 	argPort           = flag.Int("p", 0, "Port for listening.")
 )
 
@@ -178,12 +179,20 @@ func main() {
 				NC:          *argKCPNC,
 			},
 			Verbose: *argVerbose,
+			Log:     *argLog,
 			Port:    *argPort,
 		}
 	}
 
 	// Log
 	log.SetVerbose(cfg.Verbose)
+	err = log.SetLog(cfg.Log)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("log %s: %w", cfg.Log, err))
+	}
+	if cfg.Log != "" {
+		log.Infof("Save log to file %s\n", cfg.Log)
+	}
 
 	// Check permission
 	if runtime.GOOS != "windows" {
@@ -305,6 +314,7 @@ func main() {
 	go func() {
 		<-sig
 		closeAll()
+		log.Close()
 		os.Exit(0)
 	}()
 

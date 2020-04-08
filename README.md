@@ -61,6 +61,8 @@ go run ./cmd/ikago-server -p [port]
 
 `-v`: (Optional) Print verbose messages.
 
+`-log path`: (Optional) Log.
+
 ### Client options
 
 `-publish addresses`: (Optional) ARP publishing address, use comma to separate multiple addresses. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.

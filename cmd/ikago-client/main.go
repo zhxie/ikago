@@ -54,6 +54,7 @@ var (
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
+	argLog            = flag.String("log", "", "Log.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argFragment       = flag.Int("fragment", pcap.MaxMTU, "Max size of the outbound packets.")
 	argDummy          = flag.Bool("dummy", false, "Initialize a dummy TCP listener.")
@@ -154,6 +155,7 @@ func main() {
 				NC:          *argKCPNC,
 			},
 			Verbose:  *argVerbose,
+			Log:      *argLog,
 			Publish:  splitArg(*argPublish),
 			Fragment: *argFragment,
 			Dummy:    *argDummy,
@@ -165,6 +167,13 @@ func main() {
 
 	// Log
 	log.SetVerbose(cfg.Verbose)
+	err = log.SetLog(cfg.Log)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("log %s: %w", cfg.Log, err))
+	}
+	if cfg.Log != "" {
+		log.Infof("Save log to file %s\n", cfg.Log)
+	}
 
 	// Check permission
 	if runtime.GOOS != "windows" {
@@ -378,6 +387,7 @@ func main() {
 		if dummyListener != nil {
 			dummyListener.Close()
 		}
+		log.Close()
 		os.Exit(0)
 	}()
 
