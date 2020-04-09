@@ -59,6 +59,8 @@ go run ./cmd/ikago-server -p [port]
 
 `-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
 
+`-rule`: (Optional) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
+
 `-v`: (Optional) Print verbose messages.
 
 `-log path`: (Optional) Log.

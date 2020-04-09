@@ -10,6 +10,7 @@ import (
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
+	"ikago/internal/exec"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"ikago/internal/stat"
@@ -76,6 +77,7 @@ var (
 	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
+	argRule           = flag.Bool("rule", false, "Add firewall rule.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
 	argPort           = flag.Int("p", 0, "Port for listening.")
@@ -178,6 +180,7 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
+			Rule:    *argRule,
 			Verbose: *argVerbose,
 			Log:     *argLog,
 			Port:    *argPort,
@@ -251,7 +254,17 @@ func main() {
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.Port))
 	}
+
+	// Port
 	port = uint16(cfg.Port)
+
+	// Add firewall rule
+	if cfg.Rule {
+		err := exec.AddGlobalFirewallRule()
+		if err != nil {
+			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
+		}
+	}
 
 	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)

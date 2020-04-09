@@ -10,6 +10,7 @@ import (
 	"ikago/internal/addr"
 	"ikago/internal/config"
 	"ikago/internal/crypto"
+	"ikago/internal/exec"
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"ikago/internal/stat"
@@ -53,6 +54,7 @@ var (
 	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
+	argRule           = flag.Bool("rule", false, "Add firewall rule.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
@@ -66,8 +68,8 @@ var (
 var (
 	publishIPs    []*net.IPAddr
 	fragment      int
-	upPort        uint16
 	dummy         bool
+	upPort        uint16
 	filters       []net.Addr
 	serverIP      net.IP
 	serverPort    uint16
@@ -154,6 +156,7 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
+			Rule:     *argRule,
 			Verbose:  *argVerbose,
 			Log:      *argLog,
 			Publish:  splitArg(*argPublish),
@@ -239,33 +242,6 @@ func main() {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
 	}
 
-	// Publish
-	if len(cfg.Publish) > 0 {
-		for _, a := range cfg.Publish {
-			ip := net.ParseIP(a)
-			if ip == nil {
-				log.Errorln(fmt.Errorf("invalid publish %s", a))
-			}
-			publishIPs = append(publishIPs, &net.IPAddr{IP: ip})
-		}
-	}
-	if len(publishIPs) > 0 {
-		if len(publishIPs) == 1 {
-			log.Infof("Publish %s\n", publishIPs[0].IP)
-		} else {
-			log.Infoln("Publish:")
-			for _, ip := range publishIPs {
-				log.Infof("  %s\n", ip.IP)
-			}
-		}
-	}
-
-	// Fragment
-	fragment = cfg.Fragment
-	if fragment != pcap.MaxMTU {
-		log.Infof("Fragment by %d Bytes\n", fragment)
-	}
-
 	// Filters
 	for _, strFilter := range cfg.Filters {
 		f, err := addr.ParseAddr(strFilter)
@@ -305,15 +281,51 @@ func main() {
 	}
 	upPort = uint16(cfg.UpPort)
 
-	// Dummy
-	dummy = cfg.Dummy
-
+	// Server
 	serverAddr, err := addr.ParseTCPAddr(cfg.Server)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
 	}
 	serverIP = serverAddr.IP
 	serverPort = uint16(serverAddr.Port)
+
+	// Add firewall rule
+	if cfg.Rule {
+		err := exec.AddSpecificFirewallRule(serverIP, serverPort)
+		if err != nil {
+			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
+		}
+	}
+
+	// Publish
+	if len(cfg.Publish) > 0 {
+		for _, a := range cfg.Publish {
+			ip := net.ParseIP(a)
+			if ip == nil {
+				log.Errorln(fmt.Errorf("invalid publish %s", a))
+			}
+			publishIPs = append(publishIPs, &net.IPAddr{IP: ip})
+		}
+	}
+	if len(publishIPs) > 0 {
+		if len(publishIPs) == 1 {
+			log.Infof("Publish %s\n", publishIPs[0].IP)
+		} else {
+			log.Infoln("Publish:")
+			for _, ip := range publishIPs {
+				log.Infof("  %s\n", ip.IP)
+			}
+		}
+	}
+
+	// Fragment
+	fragment = cfg.Fragment
+	if fragment != pcap.MaxMTU {
+		log.Infof("Fragment by %d Bytes\n", fragment)
+	}
+
+	// Dummy
+	dummy = cfg.Dummy
 
 	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
