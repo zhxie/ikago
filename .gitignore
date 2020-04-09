@@ -20,5 +20,6 @@
 # GoLand directories
 .idea/
 
-# Bin directories
+# Bin and library directories
 bin/
+lib/
