@@ -29,14 +29,6 @@ func (l *logger) output(s string) error {
 	_, err := l.out.Write([]byte(s))
 	l.lock.Unlock()
 
-	if logFile != nil {
-		t := time.Now()
-		_, err := logFile.WriteString(fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d] %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), s))
-		if err != nil {
-			Errorln(fmt.Errorf("log: %w", err))
-		}
-	}
-
 	return err
 }
 
@@ -85,53 +77,69 @@ func Close() error {
 
 // Verbosef prints message to the stdout if verbose message is allowed to print. Arguments are handled in the manner of fmt.Printf.
 func Verbosef(format string, v ...interface{}) {
-	if allowVerbose {
-		outLogger.output(fmt.Sprintf(format, v...))
-	}
+	Verbose(fmt.Sprintf(format, v...))
 }
 
 // Verbose prints message to the stdout if verbose message is allowed to print. Arguments are handled in the manner of fmt.Print.
 func Verbose(v ...interface{}) {
-	if allowVerbose {
-		outLogger.output(fmt.Sprint(v...))
+	if allowVerbose || (logFile != nil) {
+		s := fmt.Sprint(v...)
+
+		if allowVerbose {
+			outLogger.output(s)
+		}
+
+		if logFile != nil {
+			log(s)
+		}
 	}
 }
 
 // Verboseln prints message to the stdout if verbose message is allowed to print. Arguments are handled in the manner of fmt.Println.
 func Verboseln(v ...interface{}) {
-	if allowVerbose {
-		outLogger.output(fmt.Sprintln(v...))
-	}
+	Verbose(fmt.Sprintln(v...))
 }
 
 // Infof prints message to the stdout. Arguments are handled in the manner of fmt.Printf.
 func Infof(format string, v ...interface{}) {
-	outLogger.output(fmt.Sprintf(format, v...))
+	Info(fmt.Sprintf(format, v...))
 }
 
 // Info prints message to the stdout. Arguments are handled in the manner of fmt.Print.
 func Info(v ...interface{}) {
-	outLogger.output(fmt.Sprint(v...))
+	s := fmt.Sprint(v...)
+
+	outLogger.output(s)
+
+	if logFile != nil {
+		log(s)
+	}
 }
 
 // Infoln prints message to the stdout. Arguments are handled in the manner of fmt.Println.
 func Infoln(v ...interface{}) {
-	outLogger.output(fmt.Sprintln(v...))
+	Info(fmt.Sprintln(v...))
 }
 
 // Errorf prints message to the stderr. Arguments are handled in the manner of fmt.Printf.
 func Errorf(format string, v ...interface{}) {
-	errLogger.output(fmt.Sprintf(format, v...))
+	Error(fmt.Sprintf(format, v...))
 }
 
 // Error prints message to the stderr. Arguments are handled in the manner of fmt.Print.
 func Error(v ...interface{}) {
-	errLogger.output(fmt.Sprint(v...))
+	s := fmt.Sprint(v...)
+
+	errLogger.output(s)
+
+	if logFile != nil {
+		log(s)
+	}
 }
 
 // Errorln prints message to the stderr. Arguments are handled in the manner of fmt.Printf.
 func Errorln(v ...interface{}) {
-	errLogger.output(fmt.Sprintln(v...))
+	Error(fmt.Sprintln(v...))
 }
 
 // Fatalf prints message to the stderr, and ends with os.Exit(1). Arguments are handled in the manner of fmt.Printf.
@@ -150,4 +158,16 @@ func Fatal(v ...interface{}) {
 func Fatalln(v ...interface{}) {
 	Errorln(v...)
 	os.Exit(1)
+}
+
+func log(s string) error {
+	if logFile != nil {
+		t := time.Now()
+		_, err := logFile.WriteString(fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d] %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), s))
+		if err != nil {
+			return fmt.Errorf("log: %w", err)
+		}
+	}
+
+	return nil
 }

@@ -264,6 +264,8 @@ func main() {
 		if err != nil {
 			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
 		}
+
+		log.Infoln("Add firewall rule")
 	}
 
 	// Crypt
