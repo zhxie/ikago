@@ -107,6 +107,13 @@ go run ./cmd/ikago-server -p [port]
 
 3. In scenarios such as P2P games, devices on both sides may not actively perform packet fragmentation, and the device's MRU will be set to be the same as the MTU. Even if you set the MTU in your device, the packets sent by the other side may exceed the MRU of your device. Use `-fragment` to fragment outbound packets in IkaGo.
 
+4. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
+   ```
+   // Linux, macOS, FreeBSD
+   sudo setcap cap_net_raw+ep path_to_ikago
+   ```
+   before opening IkaGo. If you run IkaGO with non-root, `-rule` will not work, please add firewall rules described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) manually.
+
 ## Limitations
 
 1. IPv6 is not supported because the dependency package [gopacket](https://github.com/google/gopacket) does not fully implement the serialization of the IPv6 extension header.
