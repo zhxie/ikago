@@ -85,26 +85,22 @@ go run ./cmd/ikago-server -p [port]
 
 ## Troubleshoot
 
-1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet. You may configure `iptables` in Linux, `pfctl` in macOS and BSD, or `netsh` in Windows with the following rules to solve the problem:
+1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet or even drop the packet. You may configure `iptables` in Linux, `pfctl` in macOS and FreeBSD, or `netsh` in Windows with the following rules to solve the problem:
    ```
    // Linux
+   // IkaGo-server
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
-   // You can specify source and destination address to maintain a stable network environment if you are using
-   // IkaGo-client with proxy ARP.
-   iptables -A OUTPUT -s server_ip/32 -p tcp --tcp-flags RST RST --dport server_port -j DROP
+   // IkaGo-client with proxy ARP
+   iptables -A OUTPUT -s server_ip/32 -p tcp --dport server_port -j DROP
    
-   // macOS, BSD
-   echo "block drop proto tcp from any to any flags R/R" >> /etc/pf.conf
-   pfctl -f /etc/pf.conf
-   pfctl -e
-   // You can specify source and destination addresses instead of "any" to maintain a stable network environment
-   // if you are using IkaGo-client with proxy ARP.
-   echo "block drop proto tcp from any to server_ip flags R/R port server_port" >> /etc/pf.conf
-   pfctl -f /etc/pf.conf
+   // macOS, FreeBSD
+   // IkaGo-client with proxy ARP
+   echo "block drop proto tcp from any to server_ip port server_port" >> ./pf.conf
+   pfctl -f ./pf.conf
    pfctl -e
    
    // Windows (You may not have to)
-   // If you are using IkaGo-client with proxy ARP.
+   // IkaGo-client with proxy ARP
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=in remoteip=server_ip/32 remoteport=server_port action=block
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=out remoteip=server_ip/32 remoteport=server_port action=block
    ```

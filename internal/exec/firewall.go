@@ -12,10 +12,6 @@ func AddGlobalFirewallRule() error {
 	var err error
 
 	switch t := runtime.GOOS; t {
-	case "windows":
-		log.Infof("Skip adding firewall rule on %s\n", t)
-	case "darwin", "freebsd":
-		err = addGlobalFirewallRule()
 	case "linux":
 		err = addGlobalFirewallRule()
 	default:
