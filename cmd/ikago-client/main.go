@@ -178,7 +178,14 @@ func main() {
 	// Check permission
 	if runtime.GOOS != "windows" {
 		if os.Geteuid() != 0 {
-			log.Fatalln("Please run IkaGo-client with sudo.")
+			ex, err := os.Executable()
+			if err != nil {
+				ex = "path_to_ikago"
+			}
+
+			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, run")
+			log.Infof("  sudo setcap cap_net_raw+ep %s\n", ex)
+			log.Infoln("  before opening IkaGo, or just run as root with sudo.")
 		}
 	}
 
