@@ -59,7 +59,6 @@ var (
 	argLog            = flag.String("log", "", "Log.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argFragment       = flag.Int("fragment", pcap.MaxMTU, "Max size of the outbound packets.")
-	argDummy          = flag.Bool("dummy", false, "Initialize a dummy TCP listener.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argFilters        = flag.String("f", "", "Filters.")
 	argServer         = flag.String("s", "", "Server.")
@@ -68,7 +67,6 @@ var (
 var (
 	publishIPs    []*net.IPAddr
 	fragment      int
-	dummy         bool
 	upPort        uint16
 	filters       []net.Addr
 	serverIP      net.IP
@@ -161,7 +159,6 @@ func main() {
 			Log:      *argLog,
 			Publish:  splitArg(*argPublish),
 			Fragment: *argFragment,
-			Dummy:    *argDummy,
 			UpPort:   *argUpPort,
 			Filters:  splitArg(*argFilters),
 			Server:   *argServer,
@@ -326,9 +323,6 @@ func main() {
 		log.Infof("Fragment by %d Bytes\n", fragment)
 	}
 
-	// Dummy
-	dummy = cfg.Dummy
-
 	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
@@ -404,15 +398,6 @@ func main() {
 		log.Close()
 		os.Exit(0)
 	}()
-
-	// Dummy Listener
-	if dummy {
-		dummyListener, err = net.Listen("tcp", fmt.Sprintf(":%d", upPort))
-		if err != nil {
-			log.Fatalln("open dummy: %s", err)
-		}
-		log.Infof("Listen on :%d by dummy\n", upPort)
-	}
 
 	// Open pcap
 	err = open()

@@ -23,7 +23,6 @@
 
   "publish": [],
   "fragment": 0,
-  "dummy": false,
   "upstream-port": 0,
   "filters": [
     "192.168.1.2",

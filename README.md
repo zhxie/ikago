@@ -71,8 +71,6 @@ go run ./cmd/ikago-server -p [port]
 
 `-fragment size`: (Optional) Max size of the outbound packets. If this value is not set or set as `0`, outbound packets will not be fragmented. For more about MTU and fragmentation, please refer to the [Troubleshoot](https://github.com/zhxie/ikago#troubleshoot).
 
-`-dummy`: (Optional) Initialize a dummy TCP listener, the listener will listen on the port for routing upstream.
-
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
 `-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. For example, `-f 192.168.1.1,:1080`.
