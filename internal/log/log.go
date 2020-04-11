@@ -84,7 +84,7 @@ func Verbosef(format string, v ...interface{}) {
 		outLogger.output(s)
 	}
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -96,7 +96,7 @@ func Verbose(v ...interface{}) {
 		outLogger.output(s)
 	}
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -108,7 +108,7 @@ func Verboseln(v ...interface{}) {
 		outLogger.output(s)
 	}
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -118,7 +118,7 @@ func Infof(format string, v ...interface{}) {
 
 	outLogger.output(s)
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -128,7 +128,7 @@ func Info(v ...interface{}) {
 
 	outLogger.output(s)
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -138,7 +138,7 @@ func Infoln(v ...interface{}) {
 
 	outLogger.output(s)
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -148,7 +148,7 @@ func Errorf(format string, v ...interface{}) {
 
 	errLogger.output(s)
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -158,7 +158,7 @@ func Error(v ...interface{}) {
 
 	errLogger.output(s)
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 
@@ -168,7 +168,7 @@ func Errorln(v ...interface{}) {
 
 	errLogger.output(s)
 	if logLogger != nil {
-		logLogger.output(s)
+		logLogger.outputWithTime(s)
 	}
 }
 

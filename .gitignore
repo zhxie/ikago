@@ -23,3 +23,6 @@
 # Bin and library directories
 bin/
 lib/
+
+# Log files
+*.log
