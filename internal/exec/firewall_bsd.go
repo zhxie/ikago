@@ -19,7 +19,7 @@ func addSpecificFirewallRule(ip net.IP, port uint16) error {
 		return fmt.Errorf("open: %w", err)
 	}
 
-	_, err = file.WriteString(fmt.Sprintf("block drop proto tcp from any to %s port %d", ip, port))
+	_, err = file.WriteString(fmt.Sprintf("block drop proto tcp from any to %s port %d\n", ip, port))
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
