@@ -1,115 +1,49 @@
 package pcap
 
 import (
-	"errors"
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/ip4defrag"
 	"github.com/google/gopacket/layers"
-	"sort"
 )
 
-// ConnPacket describes fragments.
-type FragIndicator struct {
-	length uint16
-	offset uint16
-	frags  []*PacketIndicator
+// Defragmenter is a machine defragments packets.
+type Defragmenter struct {
+	defragmenter *ip4defrag.IPv4Defragmenter
 }
 
-// NewFragIndicator returns a new fragment indicator.
-func NewFragIndicator() *FragIndicator {
-	return &FragIndicator{
-		frags: make([]*PacketIndicator, 0),
-	}
+// NewDefragmenter returns a new defragmenter.
+func NewDefragmenter() *Defragmenter {
+	return &Defragmenter{defragmenter: ip4defrag.NewIPv4Defragmenter()}
 }
 
-// Append appends a fragment.
-func (indicator *FragIndicator) Append(ind *PacketIndicator) {
-	indicator.frags = append(indicator.frags, ind)
-
-	if ind.MoreFragments() {
-		indicator.length = indicator.length + uint16(len(ind.NetworkPayload()))
-	} else {
-		// Final fragment
-		indicator.offset = ind.FragOffset()
+// Append adds a fragment to the defragmenter.
+func (defrag *Defragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
+	if !ind.IsFrag() {
+		return ind, nil
 	}
 
-	// Sort
-	if len(indicator.frags) <= 1 {
-		return
-	}
-	sort.Slice(indicator.frags, func(i, j int) bool {
-		return indicator.frags[i].FragOffset() < indicator.frags[j].FragOffset()
-	})
-}
-
-// IsCompleted returns if fragments are completed.
-func (indicator *FragIndicator) IsCompleted() bool {
-	return indicator.length/8 == indicator.offset
-}
-
-// Concatenate concatenates fragments and returns reassembled packet indicator.
-func (indicator *FragIndicator) Concatenate() (*PacketIndicator, error) {
-	var (
-		err                    error
-		newNetworkLayer        gopacket.NetworkLayer
-		contents               []byte
-		data                   []byte
-		ind                    *PacketIndicator
-	)
-
-	if !indicator.IsCompleted() {
-		return nil, errors.New("incomplete fragments")
+	layer, err := defrag.defragmenter.DefragIPv4(ind.IPv4Layer())
+	if err != nil {
+		return nil, fmt.Errorf("defrag: %w", err)
 	}
 
-	// Create new network layer
-	switch t := indicator.frags[0].NetworkLayer().LayerType(); t {
-	case layers.LayerTypeIPv4:
-		ipv4Layer := indicator.frags[0].IPv4Layer()
-		temp := *ipv4Layer
-		newNetworkLayer = &temp
-
-		FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
-	default:
-		return nil, fmt.Errorf("network layer type %s not support", t)
-	}
-
-	// Concatenate network payloads
-	contents = make([]byte, 0)
-	for _, frag := range indicator.frags {
-		contents = append(contents, frag.NetworkPayload()...)
+	if layer == nil {
+		return nil, nil
 	}
 
 	// Serialize
-	if indicator.frags[0].LinkLayer() == nil {
-		data, err = Serialize(newNetworkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(contents))
-	} else {
-		data, err = Serialize(indicator.frags[0].LinkLayer().(gopacket.SerializableLayer),
-			newNetworkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(contents))
-	}
+	data, err := Serialize(layer, gopacket.Payload(layer.Payload))
 	if err != nil {
 		return nil, fmt.Errorf("serialize: %w", err)
 	}
 
-	// Parse packet
-	if indicator.frags[0].LinkLayer() == nil {
-		ind, err = ParseEmbPacket(data)
-	} else {
-		var packet gopacket.Packet
-
-		packet, err = ParseRawPacket(data)
-		if err != nil {
-			return nil, fmt.Errorf("parse packet: %w", err)
-		}
-
-		ind, err = ParsePacket(packet)
-	}
+	indicator, err := ParseEmbPacket(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse packet: %w", err)
 	}
 
-	return ind, nil
+	return indicator, nil
 }
 
 // CreateFragmentPackets creates fragments by giver layers and fragment size.
@@ -148,7 +82,7 @@ func CreateFragmentPackets(linkLayer, networkLayer, transportLayer, payload gopa
 		// Create new network layer
 		switch t := networkLayer.LayerType(); t {
 		case layers.LayerTypeIPv4:
-			newIPv4Layer := newNetworkLayer.(*layers.IPv4)
+			newIPv4Layer := networkLayer.(*layers.IPv4)
 			temp := *newIPv4Layer
 			newNetworkLayer = &temp
 		default:

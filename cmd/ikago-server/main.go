@@ -98,8 +98,8 @@ var (
 	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
-	listenFrags  map[uint]*pcap.FragIndicator
-	upFrags      map[uint]*pcap.FragIndicator
+	listenDefrag *pcap.Defragmenter
+	upDefrag     *pcap.Defragmenter
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -135,8 +135,8 @@ func init() {
 
 	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
-	listenFrags = make(map[uint]*pcap.FragIndicator)
-	upFrags = make(map[uint]*pcap.FragIndicator)
+	listenDefrag = pcap.NewDefragmenter()
+	upDefrag = pcap.NewDefragmenter()
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
@@ -152,6 +152,12 @@ func main() {
 		cfg     *config.Config
 		gateway net.IP
 	)
+
+	r, _ := pcap.CreateReader("C:/Users/Xie/Desktop/udpfrag2.pcapng")
+	p1, _ := r.ReadPacket()
+	handleListen(p1.TransportLayer().LayerPayload(), nil)
+	p2, _ := r.ReadPacket()
+	handleListen(p2.TransportLayer().LayerPayload(), nil)
 
 	// Configuration file
 	if *argConfig != "" {
@@ -549,25 +555,12 @@ func handleListen(contents []byte, conn net.Conn) error {
 	}
 
 	// Fragment
-	if embIndicator.IsFrag() {
-		fragIndicator, ok := listenFrags[embIndicator.NetworkId()]
-		if !ok || fragIndicator == nil {
-			fragIndicator = pcap.NewFragIndicator()
-			listenFrags[embIndicator.NetworkId()] = fragIndicator
-		}
-
-		fragIndicator.Append(embIndicator)
-
-		if !fragIndicator.IsCompleted() {
-			return nil
-		}
-
-		embIndicator, err = fragIndicator.Concatenate()
-		if err != nil {
-			return fmt.Errorf("concatenate: %w", err)
-		}
-
-		listenFrags[embIndicator.NetworkId()] = nil
+	embIndicator, err = listenDefrag.Append(embIndicator)
+	if err != nil {
+		return fmt.Errorf("defrag: %w", err)
+	}
+	if embIndicator == nil {
+		return nil
 	}
 
 	// Distribute port/Id by source and client address and protocol
@@ -855,25 +848,12 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Fragment
-	if indicator.IsFrag() {
-		fragIndicator, ok := upFrags[indicator.NetworkId()]
-		if !ok || fragIndicator == nil {
-			fragIndicator = pcap.NewFragIndicator()
-			upFrags[indicator.NetworkId()] = fragIndicator
-		}
-
-		fragIndicator.Append(indicator)
-
-		if !fragIndicator.IsCompleted() {
-			return nil
-		}
-
-		indicator, err = fragIndicator.Concatenate()
-		if err != nil {
-			return fmt.Errorf("concatenate: %w", err)
-		}
-
-		upFrags[indicator.NetworkId()] = nil
+	indicator, err = upDefrag.Append(indicator)
+	if err != nil {
+		return fmt.Errorf("defrag: %w", err)
+	}
+	if indicator == nil {
+		return nil
 	}
 
 	// NAT
