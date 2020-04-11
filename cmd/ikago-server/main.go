@@ -153,12 +153,6 @@ func main() {
 		gateway net.IP
 	)
 
-	r, _ := pcap.CreateReader("C:/Users/Xie/Desktop/udpfrag2.pcapng")
-	p1, _ := r.ReadPacket()
-	handleListen(p1.TransportLayer().LayerPayload(), nil)
-	p2, _ := r.ReadPacket()
-	handleListen(p2.TransportLayer().LayerPayload(), nil)
-
 	// Configuration file
 	if *argConfig != "" {
 		cfg, err = config.ParseFile(*argConfig)
