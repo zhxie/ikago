@@ -109,7 +109,7 @@ go run ./cmd/ikago-server -p [port]
 
 4. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
    ```
-   // Linux, macOS, FreeBSD
+   // Linux
    sudo setcap cap_net_raw+ep path_to_ikago
    ```
    before opening IkaGo. If you run IkaGO with non-root, `-rule` will not work, please add firewall rules described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) manually.
