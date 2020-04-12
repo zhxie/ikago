@@ -111,6 +111,7 @@ func (c *RawConn) IsLoop() bool {
 	return c.dstDev.IsLoop()
 }
 
+// Reader is a reader reads packets from a pcap file.
 type Reader struct {
 	handle *pcap.Handle
 	ps     *gopacket.PacketSource

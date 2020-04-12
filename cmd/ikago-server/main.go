@@ -548,7 +548,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 		return fmt.Errorf("parse embedded packet: %w", err)
 	}
 
-	// Fragment
+	// Handle fragments
 	embIndicator, err = listenDefrag.Append(embIndicator)
 	if err != nil {
 		return fmt.Errorf("defrag: %w", err)
@@ -729,12 +729,6 @@ func handleListen(contents []byte, conn net.Conn) error {
 	// Serialize layers
 	if newTransportLayer == nil {
 		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
-			newNetworkLayer.(gopacket.SerializableLayer))
-	}
-
-	// Serialize layers
-	if newTransportLayer == nil {
-		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
 			newNetworkLayer.(gopacket.SerializableLayer),
 			gopacket.Payload(embIndicator.Payload()))
 	} else {
@@ -747,6 +741,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 		return fmt.Errorf("serialize: %w", err)
 	}
 
+	// TODO: fragment with MTU
 	// Write packet data
 	_, err = upConn.Write(data)
 	if err != nil {
@@ -841,7 +836,7 @@ func handleUpstream(packet gopacket.Packet) error {
 		return fmt.Errorf("parse packet: %w", err)
 	}
 
-	// Fragment
+	// Handle fragments
 	indicator, err = upDefrag.Append(indicator)
 	if err != nil {
 		return fmt.Errorf("defrag: %w", err)
@@ -1000,6 +995,7 @@ func handleUpstream(packet gopacket.Packet) error {
 		}
 	}
 
+	// TODO: fragment with MTU
 	// Construct contents of new application layer
 	if embTransportLayer == nil {
 		contents, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),

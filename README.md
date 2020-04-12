@@ -121,6 +121,7 @@ go run ./cmd/ikago-server -p [port]
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
+- [ ] Fragment packets with MTU
 
 ## License
 

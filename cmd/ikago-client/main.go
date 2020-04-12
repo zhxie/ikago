@@ -706,6 +706,8 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("parse embedded packet: %w", err)
 	}
 
+	// TODO: handle fragments
+
 	// Check map
 	natLock.RLock()
 	ni, ok := nat[embIndicator.DstIP().String()]
