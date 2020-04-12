@@ -41,7 +41,7 @@ func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 		layers.ICMPv4TypeTimeExceeded,
 		layers.ICMPv4TypeParameterProblem:
 		// Parse IPv4 header and 8 bytes content
-		packet := gopacket.NewPacket(layer.Payload, layers.LayerTypeIPv4, gopacket.Default)
+		packet := gopacket.NewPacket(layer.Payload, layers.LayerTypeIPv4, gopacket.NoCopy)
 		if len(packet.Layers()) <= 0 {
 			return nil, errors.New("missing network layer")
 		}

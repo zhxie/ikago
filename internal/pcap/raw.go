@@ -76,7 +76,7 @@ func (c *RawConn) ReadPacket() (gopacket.Packet, error) {
 		return nil, err
 	}
 
-	packet := gopacket.NewPacket(b, c.handle.LinkType(), gopacket.Default)
+	packet := gopacket.NewPacket(b, c.handle.LinkType(), gopacket.NoCopy)
 
 	return packet, nil
 }

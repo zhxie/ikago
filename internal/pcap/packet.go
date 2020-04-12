@@ -35,12 +35,12 @@ type NATGuide struct {
 
 // PacketIndicator indicates a packet.
 type PacketIndicator struct {
-	packet            gopacket.Packet
-	linkLayer         gopacket.Layer
-	networkLayer      gopacket.Layer
-	transportLayer    gopacket.Layer
-	icmpv4Indicator   *ICMPv4Indicator
-	applicationLayer  gopacket.ApplicationLayer
+	packet           gopacket.Packet
+	linkLayer        gopacket.Layer
+	networkLayer     gopacket.Layer
+	transportLayer   gopacket.Layer
+	icmpv4Indicator  *ICMPv4Indicator
+	applicationLayer gopacket.ApplicationLayer
 }
 
 // LinkLayer returns the link layer.
@@ -409,11 +409,11 @@ func (indicator *PacketIndicator) Size() int {
 // ParsePacket parses a packet and returns a packet indicator.
 func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	var (
-		linkLayer         gopacket.Layer
-		networkLayer      gopacket.Layer
-		transportLayer    gopacket.Layer
-		icmpv4Indicator   *ICMPv4Indicator
-		applicationLayer  gopacket.ApplicationLayer
+		linkLayer        gopacket.Layer
+		networkLayer     gopacket.Layer
+		transportLayer   gopacket.Layer
+		icmpv4Indicator  *ICMPv4Indicator
+		applicationLayer gopacket.ApplicationLayer
 	)
 
 	// Parse packet
@@ -499,19 +499,19 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 	}
 
 	return &PacketIndicator{
-		packet:            packet,
-		linkLayer:         linkLayer,
-		networkLayer:      networkLayer,
-		transportLayer:    transportLayer,
-		icmpv4Indicator:   icmpv4Indicator,
-		applicationLayer:  applicationLayer,
+		packet:           packet,
+		linkLayer:        linkLayer,
+		networkLayer:     networkLayer,
+		transportLayer:   transportLayer,
+		icmpv4Indicator:  icmpv4Indicator,
+		applicationLayer: applicationLayer,
 	}, nil
 }
 
 // ParseEmbPacket parses an embedded packet used in transmission between client and server without link layer.
 func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 	// Guess network layer type
-	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.Default)
+	packet := gopacket.NewPacket(contents, layers.LayerTypeIPv4, gopacket.NoCopy)
 	networkLayer := packet.NetworkLayer()
 	if networkLayer == nil {
 		return nil, errors.New("missing network layer")
@@ -537,7 +537,7 @@ func ParseEmbPacket(contents []byte) (*PacketIndicator, error) {
 // ParseRawPacket parses an array of byte as a packet and returns a packet indicator.
 func ParseRawPacket(contents []byte) (gopacket.Packet, error) {
 	// Guess link layer type, and here we regard Ethernet layer as a link layer
-	packet := gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.Default)
+	packet := gopacket.NewPacket(contents, layers.LayerTypeEthernet, gopacket.NoCopy)
 	if len(packet.Layers()) < 0 {
 		return nil, errors.New("missing link layer")
 	}
@@ -545,7 +545,7 @@ func ParseRawPacket(contents []byte) (gopacket.Packet, error) {
 	linkLayer := packet.LinkLayer()
 	if linkLayer == nil {
 		// Guess loopback
-		packet = gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.Default)
+		packet = gopacket.NewPacket(contents, layers.LayerTypeLoopback, gopacket.NoCopy)
 
 		linkLayer := packet.Layer(layers.LayerTypeLoopback)
 		if linkLayer == nil {
