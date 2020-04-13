@@ -59,7 +59,6 @@ var (
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
-	argFragment       = flag.Int("fragment", 0, "Max size of the outbound packets.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argFilters        = flag.String("f", "", "Filters.")
 	argServer         = flag.String("s", "", "Server.")
@@ -67,7 +66,6 @@ var (
 
 var (
 	publishIPs    []*net.IPAddr
-	fragment      int
 	upPort        uint16
 	filters       []net.Addr
 	serverIP      net.IP
@@ -84,15 +82,16 @@ var (
 )
 
 var (
-	isClosed    bool
-	listenConns []*pcap.RawConn
-	upConn      net.Conn
-	c           chan pcap.ConnPacket
-	upDefrag    *pcap.Defragmenter
-	natLock     sync.RWMutex
-	nat         map[string]*natIndicator
-	listenStats *stat.TrafficManager
-	upStats     *stat.TrafficManager
+	isClosed     bool
+	listenConns  []*pcap.RawConn
+	upConn       net.Conn
+	c            chan pcap.ConnPacket
+	listenDefrag *pcap.Defragmenter
+	upDefrag     *pcap.Defragmenter
+	natLock      sync.RWMutex
+	nat          map[string]*natIndicator
+	listenStats  *stat.TrafficManager
+	upStats      *stat.TrafficManager
 )
 
 func init() {
@@ -119,6 +118,7 @@ func init() {
 
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
+	listenDefrag = pcap.NewDefragmenter()
 	upDefrag = pcap.NewDefragmenter()
 	nat = make(map[string]*natIndicator)
 	listenStats = stat.NewTrafficManager()
@@ -164,7 +164,6 @@ func main() {
 			Verbose:  *argVerbose,
 			Log:      *argLog,
 			Publish:  splitArg(*argPublish),
-			Fragment: *argFragment,
 			UpPort:   *argUpPort,
 			Filters:  splitArg(*argFilters),
 			Server:   *argServer,
@@ -252,13 +251,6 @@ func main() {
 			log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
 		}
 	}
-	if cfg.Fragment < 576 || cfg.Fragment > pcap.MaxMTU {
-		if cfg.Fragment == 0 {
-			cfg.Fragment = pcap.MaxMTU
-		} else {
-			log.Fatalln(fmt.Errorf("fragment %d out of range", cfg.Fragment))
-		}
-	}
 	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
 	}
@@ -339,12 +331,6 @@ func main() {
 				log.Infof("  %s\n", ip.IP)
 			}
 		}
-	}
-
-	// Fragment
-	fragment = cfg.Fragment
-	if fragment != pcap.MaxMTU {
-		log.Infof("Fragment by %d Bytes\n", fragment)
 	}
 
 	// Crypt
@@ -825,7 +811,7 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Fragment
-	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, embIndicator.NetworkLayer(), embIndicator.TransportLayer(), gopacket.Payload(embIndicator.Payload()), fragment)
+	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, embIndicator.NetworkLayer(), embIndicator.TransportLayer(), gopacket.Payload(embIndicator.Payload()), mtu)
 	if err != nil {
 		return fmt.Errorf("fragment: %w", err)
 	}

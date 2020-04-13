@@ -71,8 +71,6 @@ go run ./cmd/ikago-server -p [port]
 
 `-publish addresses`: (Optional) ARP publishing address, use comma to separate multiple addresses. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
 
-`-fragment size`: (Optional) Max size of the outbound packets. If this value is not set or set as `0`, outbound packets will not be fragmented. For more about MTU and fragmentation, please refer to the [Troubleshoot](https://github.com/zhxie/ikago#troubleshoot).
-
 `-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
 `-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. For example, `-f 192.168.1.1,:1080`.
@@ -105,11 +103,9 @@ go run ./cmd/ikago-server -p [port]
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=out remoteip=server_ip/32 remoteport=server_port action=block
    ```
 
-2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 32 Bytes. Assuming your IPv4 network has a MRU value of 1400 Bytes, when you enable AES-256-GCM encryption(consuming 28 Bytes) and KCP support, you should set the proxied device's MTU value to no more than 1300 Bytes.
+2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 32 Bytes. IkaGo will calculates its MSS, but excessive use of resources in the packet header will cause a significant decrease in performance.
 
-3. In scenarios such as P2P games, devices on both sides may not actively perform packet fragmentation, and the device's MRU will be set to be the same as the MTU. Even if you set the MTU in your device, the packets sent by the other side may exceed the MRU of your device. Use `-fragment` to fragment outbound packets in IkaGo.
-
-4. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
+3. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
    ```
    // Linux
    sudo setcap cap_net_raw+ep path_to_ikago
@@ -123,7 +119,6 @@ go run ./cmd/ikago-server -p [port]
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
-- [ ] Fragment packets with MTU
 
 ## License
 

@@ -23,7 +23,6 @@ type Config struct {
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`
 	Publish    []string  `json:"publish"`
-	Fragment   int       `json:"fragment"`
 	UpPort     int       `json:"upstream-port"`
 	Filters    []string  `json:"filters"`
 	Server     string    `json:"server"`
