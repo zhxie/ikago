@@ -383,9 +383,9 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 	}
 }
 
-// NetworkPayload returns the payload of network layer.
+// NetworkPayload returns the payload of network layer, used for fragmentation.
 func (indicator *PacketIndicator) NetworkPayload() []byte {
-	if indicator.networkLayer == nil {
+	if indicator.NetworkLayer() == nil {
 		return nil
 	}
 
@@ -399,6 +399,11 @@ func (indicator *PacketIndicator) Payload() []byte {
 	}
 
 	return indicator.applicationLayer.LayerContents()
+}
+
+// MTU returns the required MTU of the packet.
+func (indicator *PacketIndicator) MTU() int {
+	return len(indicator.NetworkLayer().LayerContents()) + len(indicator.NetworkPayload())
 }
 
 // Size returns the size of the packet.

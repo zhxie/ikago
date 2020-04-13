@@ -30,8 +30,6 @@ Packets transmitted between clients and server will not be verified.
 
 **Transmission between clients and server must be in IPv4.**
 
-**Packets transmitted between clients and server will not be fragmented.**
-
 Transmission size information displayed in verbose log in the client is the size of network, transport and application layer in packets from sources, which is the same with the MTU of the source.
 
 Transmission size information displayed in verbose log in the server is the size of network, transport and application layer in **reassembled** packets from destinations.
@@ -50,9 +48,7 @@ All packets transmitted must contain exactly a link layer, a network layer and a
 
 If `-fragment` is set, packets sent by client will be reassembled.
 
-**Packets sent and received by server are reassembled.**
-
-**Packets sent by server will not be fragmented**.
+**Packets sent and received by clients and server may be reassembled.**
 
 IPv4 options will not be processed.
 

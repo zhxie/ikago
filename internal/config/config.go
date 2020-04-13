@@ -9,9 +9,6 @@ import (
 	"regexp"
 )
 
-// MaxMTU is the max transmission and receive unit in pcap raw conn.
-const MaxMTU = 1600
-
 // Config describes the configuration of IkaGo.
 type Config struct {
 	ListenDevs []string  `json:"listen-devices"`
@@ -21,6 +18,7 @@ type Config struct {
 	Password   string    `json:"password"`
 	KCP        bool      `json:"kcp"`
 	KCPConfig  KCPConfig `json:"kcp-tuning"`
+	MTU        int       `json:"mtu"`
 	Rule       bool      `json:"rule"`
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`
@@ -38,7 +36,6 @@ func NewConfig() *Config {
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
 		Publish:   make([]string, 0),
-		Fragment:  MaxMTU,
 		Filters:   make([]string, 0),
 	}
 }

@@ -17,6 +17,7 @@
     "resend": 0,
     "nc": 0
   },
+  "mtu": 0,
   "rule": false,
   "verbose": false,
   "log": "",
