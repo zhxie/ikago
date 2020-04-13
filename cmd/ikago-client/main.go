@@ -710,7 +710,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// Fragment
-	fragments, err = pcap.CreateEmbFragmentPackets(indicator.NetworkLayer(), indicator.TransportLayer(), gopacket.Payload(indicator.Payload()), mss)
+	fragments, err = pcap.CreateFragmentPackets(nil, indicator.NetworkLayer(), indicator.TransportLayer(), gopacket.Payload(indicator.Payload()), mss)
 	if err != nil {
 		return fmt.Errorf("fragment: %w", err)
 	}

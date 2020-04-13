@@ -1023,7 +1023,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Fragment
-	fragments, err = pcap.CreateEmbFragmentPackets(embNetworkLayer, embTransportLayer, gopacket.Payload(indicator.Payload()), mss)
+	fragments, err = pcap.CreateFragmentPackets(nil, embNetworkLayer, embTransportLayer, gopacket.Payload(indicator.Payload()), mss)
 	if err != nil {
 		return fmt.Errorf("fragment: %w", err)
 	}
