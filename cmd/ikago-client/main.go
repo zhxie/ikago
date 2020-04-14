@@ -159,14 +159,14 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			MTU:      *argMTU,
-			Rule:     *argRule,
-			Verbose:  *argVerbose,
-			Log:      *argLog,
-			Publish:  splitArg(*argPublish),
-			UpPort:   *argUpPort,
-			Filters:  splitArg(*argFilters),
-			Server:   *argServer,
+			MTU:     *argMTU,
+			Rule:    *argRule,
+			Verbose: *argVerbose,
+			Log:     *argLog,
+			Publish: splitArg(*argPublish),
+			UpPort:  *argUpPort,
+			Filters: splitArg(*argFilters),
+			Server:  *argServer,
 		}
 	}
 
@@ -181,7 +181,8 @@ func main() {
 	}
 
 	// Check permission
-	if runtime.GOOS != "windows" {
+	switch runtime.GOOS {
+	case "linux":
 		if os.Geteuid() != 0 {
 			ex, err := os.Executable()
 			if err != nil {
@@ -189,9 +190,13 @@ func main() {
 			}
 
 			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, run")
-			log.Infof("  sudo setcap cap_net_raw+ep %s\n", ex)
+			log.Infof("  sudo setcap cap_net_raw+ep \"%s\"\n", ex)
 			log.Infoln("  before opening IkaGo, or just run as root with sudo.")
 		}
+	case "windows":
+		break
+	default:
+		log.Fatalln("Please run IkaGo as root with sudo.")
 	}
 
 	// Exclusive commands
