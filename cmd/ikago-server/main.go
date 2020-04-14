@@ -217,7 +217,9 @@ func main() {
 	case "windows":
 		break
 	default:
-		log.Fatalln("Please run IkaGo as root with sudo.")
+		if os.Geteuid() != 0 {
+			log.Fatalln("Please run IkaGo as root with sudo.")
+		}
 	}
 
 	// Exclusive commands
