@@ -35,6 +35,12 @@ func addSpecificFirewallRule(ip net.IP, port uint16) error {
 		return fmt.Errorf("exec: %w", err)
 	}
 
+	routeCmd = exec.Command("pfctl", "-d")
+	_, err = routeCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+
 	routeCmd = exec.Command("pfctl", "-e")
 	_, err = routeCmd.CombinedOutput()
 	if err != nil {
