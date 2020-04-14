@@ -661,7 +661,10 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 }
 
 func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
-	var fragments [][]byte
+	var (
+		hardwareAddr net.HardwareAddr
+		fragments    [][]byte
+	)
 
 	// Parse packet
 	indicator, err := pcap.ParsePacket(packet)
@@ -676,6 +679,18 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 			return fmt.Errorf("publish: %w", err)
 		}
 
+		return nil
+	}
+
+	// Record source hardware address
+	hardwareAddr = indicator.SrcHardwareAddr()
+
+	// Handle fragments
+	indicator, err = listenDefrag.Append(indicator)
+	if err != nil {
+		return fmt.Errorf("defrag: %w", err)
+	}
+	if indicator == nil {
 		return nil
 	}
 
@@ -726,9 +741,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 	// Record the connection of the packet
 	ni, ok := nat[indicator.SrcIP().String()]
-	if !ok || ni.srcHardwareAddr.String() != indicator.SrcHardwareAddr().String() {
+	if !ok || ni.srcHardwareAddr.String() != hardwareAddr.String() {
 		natLock.Lock()
-		nat[indicator.SrcIP().String()] = &natIndicator{srcHardwareAddr: indicator.SrcHardwareAddr(), conn: conn}
+		nat[indicator.SrcIP().String()] = &natIndicator{srcHardwareAddr: hardwareAddr, conn: conn}
 		natLock.Unlock()
 	}
 
