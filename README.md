@@ -69,11 +69,11 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-publish addresses`: (Optional) ARP publishing address, use comma to separate multiple addresses. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
+`-publish addresses`: (Optional) ARP publishing addresses, use comma to separate multiple addresses. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
 
-`-p port`: (Optional) Port for routing upstream, must be different with any port filter. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
+`-p port`: (Optional) Port for routing upstream. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
-`-f filters`: Filters, use comma to separate multiple filters, must not contain the server. A filter may an IP address, an IP port endpoint, or a port starts with a colon. For example, `-f 192.168.1.1,:1080`.
+`-f addresses`: Filters, use comma to separate multiple filters, must not contain the server. Packets with the same address with the filter's will be proxied.
 
 `-s ip:port`: Server.
 

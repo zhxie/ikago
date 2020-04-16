@@ -26,8 +26,7 @@
   "fragment": 0,
   "upstream-port": 0,
   "filters": [
-    "192.168.1.2",
-    ":1080"
+    "192.168.1.2"
   ],
   "server": "server:18081",
 

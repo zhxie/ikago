@@ -61,34 +61,6 @@ func ParseTCPAddr(s string) (*net.TCPAddr, error) {
 	return &net.TCPAddr{IP: ip, Port: int(port)}, nil
 }
 
-// ParseAddr returns an Addr by the given address.
-func ParseAddr(s string) (net.Addr, error) {
-	// Guess port
-	if s[0] == ':' {
-		port, err := strconv.ParseUint(s[1:], 10, 16)
-		if err != nil {
-			return nil, fmt.Errorf("parse port %s: %w", s[1:], err)
-		}
-		return &net.TCPAddr{
-			IP:   nil,
-			Port: int(port),
-		}, nil
-	}
-
-	// Guess IP and port
-	addr, err := ParseTCPAddr(s)
-	if err != nil {
-		// IP
-		ip := net.ParseIP(s)
-		if ip == nil {
-			return nil, fmt.Errorf("invalid ip %s", s)
-		}
-		return &net.IPAddr{IP: ip}, nil
-	}
-
-	return addr, nil
-}
-
 func bpfFilter(prefix string, addr net.Addr) (string, error) {
 	switch t := addr.(type) {
 	case *net.IPAddr:

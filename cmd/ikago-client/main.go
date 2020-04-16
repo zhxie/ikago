@@ -67,7 +67,7 @@ var (
 var (
 	publishIPs    []*net.IPAddr
 	upPort        uint16
-	filters       []net.Addr
+	filters       []*net.IPAddr
 	serverIP      net.IP
 	serverPort    uint16
 	listenDevs    []*pcap.Device
@@ -113,7 +113,7 @@ func init() {
 	}
 
 	publishIPs = make([]*net.IPAddr, 0)
-	filters = make([]net.Addr, 0)
+	filters = make([]*net.IPAddr, 0)
 	listenDevs = make([]*pcap.Device, 0)
 
 	listenConns = make([]*pcap.RawConn, 0)
@@ -262,44 +262,22 @@ func main() {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
 	}
 
-	// Filters
-	for _, strFilter := range cfg.Filters {
-		f, err := addr.ParseAddr(strFilter)
-		if err != nil {
-			log.Fatalln(fmt.Errorf("parse filter %s: %w", strFilter, err))
-		}
-		filters = append(filters, f)
-	}
-
 	// Randomize upstream port
 	if cfg.UpPort == 0 {
 		s := rand.NewSource(time.Now().UnixNano())
 		r := rand.New(s)
-		// Select an upstream port which is different from any port in filters
-		for {
-			cfg.UpPort = 49152 + r.Intn(16384)
-			var exist bool
-			for _, f := range filters {
-				switch t := f.(type) {
-				case *net.IPAddr:
-					break
-				case *net.TCPAddr:
-					if f.(*net.TCPAddr).Port == cfg.UpPort {
-						exist = true
-					}
-				default:
-					panic(fmt.Errorf("type %T not support", t))
-				}
-				if exist {
-					break
-				}
-			}
-			if !exist {
-				break
-			}
-		}
+		cfg.UpPort = 49152 + r.Intn(16384)
 	}
 	upPort = uint16(cfg.UpPort)
+
+	// Filters
+	for _, strFilter := range cfg.Filters {
+		ip := net.ParseIP(strFilter)
+		if ip == nil {
+			log.Fatalln(fmt.Errorf("invalid filter %s", strFilter))
+		}
+		filters = append(filters, &net.IPAddr{IP: ip})
+	}
 
 	// Server
 	serverAddr, err := addr.ParseTCPAddr(cfg.Server)

@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/jackpal/gateway"
+	"ikago/internal/addr"
 	"ikago/internal/log"
 	"net"
 	"strings"
@@ -66,8 +67,8 @@ func (dev Device) String() string {
 	}
 
 	addrs := make([]string, 0)
-	for _, addr := range dev.ipAddrs {
-		addrs = append(addrs, addr.IP.String())
+	for _, a := range dev.ipAddrs {
+		addrs = append(addrs, a.IP.String())
 	}
 	result = result + strings.Join(addrs, ", ")
 
@@ -114,8 +115,8 @@ func FindAllDevs() ([]*Device, error) {
 		}
 
 		as := make([]*net.IPNet, 0)
-		for _, addr := range addrs {
-			ipnet, ok := addr.(*net.IPNet)
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
 			if !ok {
 				log.Errorln(fmt.Errorf("parse interface %s: %w", inter.Name, errors.New("invalid address")))
 				continue
@@ -163,8 +164,8 @@ func FindAllDevs() ([]*Device, error) {
 			if len(dev.Addresses) <= 0 {
 				continue
 			}
-			for _, addr := range dev.Addresses {
-				d := FindDev(t, addr.IP)
+			for _, a := range dev.Addresses {
+				d := FindDev(t, a.IP)
 				if d == nil {
 					continue
 				}
@@ -207,8 +208,8 @@ func FindLoopDev(devs []*Device) *Device {
 // FindDev returns the device with designated IP in designated devices.
 func FindDev(devs []*Device, ip net.IP) *Device {
 	for _, dev := range devs {
-		for _, addr := range dev.ipAddrs {
-			if addr.IP.Equal(ip) {
+		for _, a := range dev.ipAddrs {
+			if a.IP.Equal(ip) {
 				return dev
 			}
 		}
@@ -228,8 +229,19 @@ func FindGatewayAddr() (net.IP, error) {
 }
 
 // FindGatewayDev returns the gateway device.
-func FindGatewayDev(dev string, ip net.IP) (*Device, error) {
-	conn, err := createPureRawConn(dev, fmt.Sprintf("ip && udp && dst %s && dst port 65535", ip))
+func FindGatewayDev(dev *Device, ip net.IP) (*Device, error) {
+	f, err := addr.DstBPFFilter(&net.TCPAddr{
+		IP:   ip,
+		Port: 65535,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("parse filter %s: %w", ip, err)
+	}
+
+	conn, err := createPureRawConn(dev.Name(), fmt.Sprintf("ip && udp && %s", f))
+	if err != nil {
+		return nil, fmt.Errorf("open device %s: %w", dev.Alias(), err)
+	}
 
 	c := make(chan gopacket.Packet, 1)
 	go func() {
@@ -329,19 +341,19 @@ func FindUpstreamDevAndGatewayDev(name string, gateway net.IP) (upDev, gatewayDe
 				}
 			}
 
-			gatewayDev, err = FindGatewayDev(upDev.name, gateway)
+			gatewayDev, err = FindGatewayDev(upDev, gateway)
 			if err != nil {
 				return nil, nil, fmt.Errorf("find gateway device: %w", err)
 			}
 
 			// Test if device's IP is in the same domain of the gateway's
 			var newUpDev *Device
-			for _, addr := range upDev.ipAddrs {
-				if addr.Contains(gatewayDev.ipAddrs[0].IP) {
+			for _, a := range upDev.ipAddrs {
+				if a.Contains(gatewayDev.ipAddrs[0].IP) {
 					newUpDev = &Device{
 						name:         upDev.name,
 						alias:        upDev.alias,
-						ipAddrs:      append(make([]*net.IPNet, 0), addr),
+						ipAddrs:      append(make([]*net.IPNet, 0), a),
 						hardwareAddr: upDev.hardwareAddr,
 						isLoop:       upDev.isLoop,
 					}
@@ -370,16 +382,16 @@ func FindUpstreamDevAndGatewayDev(name string, gateway net.IP) (upDev, gatewayDe
 			}
 
 			// Test if device's IP is in the same domain of the gateway's
-			for _, addr := range dev.ipAddrs {
-				if addr.Contains(gateway) {
-					gatewayDev, err = FindGatewayDev(dev.name, gateway)
+			for _, a := range dev.ipAddrs {
+				if a.Contains(gateway) {
+					gatewayDev, err = FindGatewayDev(dev, gateway)
 					if err != nil {
 						continue
 					}
 					upDev = &Device{
 						name:         dev.name,
 						alias:        dev.alias,
-						ipAddrs:      append(make([]*net.IPNet, 0), addr),
+						ipAddrs:      append(make([]*net.IPNet, 0), a),
 						hardwareAddr: dev.hardwareAddr,
 						isLoop:       dev.isLoop,
 					}

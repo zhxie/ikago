@@ -135,10 +135,10 @@ func (indicator *PacketIndicator) TTL() uint8 {
 }
 
 // Id returns the Id in the network layer.
-func (indicator *PacketIndicator) NetworkId() uint {
+func (indicator *PacketIndicator) NetworkId() uint16 {
 	switch t := indicator.NetworkLayer().LayerType(); t {
 	case layers.LayerTypeIPv4:
-		return uint(indicator.IPv4Layer().Id)
+		return indicator.IPv4Layer().Id
 	default:
 		panic(fmt.Errorf("network layer type %s not support", t))
 	}
