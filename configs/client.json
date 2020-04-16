@@ -24,11 +24,9 @@
 
   "publish": [],
   "fragment": 0,
-  "upstream-port": 0,
-  "filters": [
+  "port": 0,
+  "sources": [
     "192.168.1.2"
   ],
-  "server": "server:18081",
-
-  "port": 18081
+  "server": "server:18081"
 }

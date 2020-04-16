@@ -1,0 +1,26 @@
+{
+  "listen-devices": [],
+  "upstream-device": "",
+  "gateway": "",
+  "method": "plain",
+  "password": "",
+  "kcp": false,
+  "kcp-tuning": {
+    "mtu": 1400,
+    "sndwnd": 32,
+    "rcvwnd": 32,
+    "datashard": 10,
+    "parityshard": 3,
+    "acknodelay": false,
+    "nodelay": false,
+    "interval": 10,
+    "resend": 0,
+    "nc": 0
+  },
+  "mtu": 0,
+  "rule": false,
+  "verbose": false,
+  "log": "",
+
+  "port": 18081
+}

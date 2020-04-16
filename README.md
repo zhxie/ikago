@@ -31,7 +31,7 @@
 
 ```
 # Client
-go run ./cmd/ikago-client -f [filters] -s [address:port]
+go run ./cmd/ikago-client -r [sources] -s [ip:port]
 
 # Server
 go run ./cmd/ikago-server -p [port]
@@ -41,7 +41,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-list-devices`: (Optional, exclusively) List all valid devices in current computer.
 
-`-c`: (Optional, exclusively) Configuration file. An example of configuration file is [here](/configs/config.json).
+`-c`: (Optional, exclusively) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments, it will automatically read the configuration file `config.json` in the working directory if it exists.
 
 `-listen-devices devices`: (Optional) Devices for listening, use comma to separate multiple devices. If this value is not set, all valid devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
@@ -73,7 +73,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-p port`: (Optional) Port for routing upstream. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
-`-f addresses`: Filters, use comma to separate multiple filters, must not contain the server. Packets with the same address with the filter's will be proxied.
+`-r addresses`: Sources, use comma to separate multiple addresses. Packets with the same source's address will be proxied.
 
 `-s ip:port`: Server.
 

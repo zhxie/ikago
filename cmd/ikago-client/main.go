@@ -60,14 +60,14 @@ var (
 	argLog            = flag.String("log", "", "Log.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
-	argFilters        = flag.String("f", "", "Filters.")
+	argSources        = flag.String("r", "", "Sources.")
 	argServer         = flag.String("s", "", "Server.")
 )
 
 var (
 	publishIPs    []*net.IPAddr
 	upPort        uint16
-	filters       []*net.IPAddr
+	sources       []*net.IPAddr
 	serverIP      net.IP
 	serverPort    uint16
 	listenDevs    []*pcap.Device
@@ -113,7 +113,7 @@ func init() {
 	}
 
 	publishIPs = make([]*net.IPAddr, 0)
-	filters = make([]*net.IPAddr, 0)
+	sources = make([]*net.IPAddr, 0)
 	listenDevs = make([]*pcap.Device, 0)
 
 	listenConns = make([]*pcap.RawConn, 0)
@@ -164,8 +164,8 @@ func main() {
 			Verbose: *argVerbose,
 			Log:     *argLog,
 			Publish: splitArg(*argPublish),
-			UpPort:  *argUpPort,
-			Filters: splitArg(*argFilters),
+			Port:    *argUpPort,
+			Sources: splitArg(*argSources),
 			Server:  *argServer,
 		}
 	}
@@ -215,8 +215,8 @@ func main() {
 	}
 
 	// Verify parameters
-	if len(cfg.Filters) <= 0 {
-		log.Fatalln("Please provide filters by -f filters.")
+	if len(cfg.Sources) <= 0 {
+		log.Fatalln("Please provide sources by -r addresses.")
 	}
 	if cfg.Server == "" {
 		log.Fatalln("Please provide server by -s ip:port.")
@@ -258,25 +258,25 @@ func main() {
 			log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
 		}
 	}
-	if cfg.UpPort < 0 || cfg.UpPort > 65535 {
-		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.UpPort))
+	if cfg.Port < 0 || cfg.Port > 65535 {
+		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.Port))
 	}
 
 	// Randomize upstream port
-	if cfg.UpPort == 0 {
+	if cfg.Port == 0 {
 		s := rand.NewSource(time.Now().UnixNano())
 		r := rand.New(s)
-		cfg.UpPort = 49152 + r.Intn(16384)
+		cfg.Port = 49152 + r.Intn(16384)
 	}
-	upPort = uint16(cfg.UpPort)
+	upPort = uint16(cfg.Port)
 
-	// Filters
-	for _, strFilter := range cfg.Filters {
-		ip := net.ParseIP(strFilter)
+	// Sources
+	for _, source := range cfg.Sources {
+		ip := net.ParseIP(source)
 		if ip == nil {
-			log.Fatalln(fmt.Errorf("invalid filter %s", strFilter))
+			log.Fatalln(fmt.Errorf("invalid source %s", source))
 		}
-		filters = append(filters, &net.IPAddr{IP: ip})
+		sources = append(sources, &net.IPAddr{IP: ip})
 	}
 
 	// Server
@@ -353,14 +353,14 @@ func main() {
 		log.Infof("Set KCP MTU to %d Bytes\n", mss)
 	}
 
-	if len(filters) == 1 {
-		log.Infof("Proxy %s through :%d to %s\n", filters[0], cfg.UpPort, serverAddr)
+	if len(sources) == 1 {
+		log.Infof("Proxy %s through :%d to %s\n", sources[0], upPort, serverAddr)
 	} else {
 		log.Info("Proxy:")
-		for _, f := range filters {
+		for _, f := range sources {
 			log.Infof("\n  %s", f)
 		}
-		log.Infof(" through :%d to %s\n", cfg.UpPort, serverAddr)
+		log.Infof(" through :%d to %s\n", upPort, serverAddr)
 	}
 
 	// Find devices
@@ -438,7 +438,7 @@ func open() error {
 
 	// Filters for listening
 	fs := make([]string, 0)
-	for _, f := range filters {
+	for _, f := range sources {
 		s, err := addr.SrcBPFFilter(f)
 		if err != nil {
 			return fmt.Errorf("parse filter %s: %w", f, err)

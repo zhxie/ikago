@@ -22,11 +22,10 @@ type Config struct {
 	Rule       bool      `json:"rule"`
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`
-	Publish    []string  `json:"publish"`
-	UpPort     int       `json:"upstream-port"`
-	Filters    []string  `json:"filters"`
-	Server     string    `json:"server"`
 	Port       int       `json:"port"`
+	Publish    []string  `json:"publish"`
+	Sources    []string  `json:"sources"`
+	Server     string    `json:"server"`
 }
 
 // NewConfig returns a new config.
@@ -35,7 +34,7 @@ func NewConfig() *Config {
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
 		Publish:   make([]string, 0),
-		Filters:   make([]string, 0),
+		Sources:   make([]string, 0),
 	}
 }
 
