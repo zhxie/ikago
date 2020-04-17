@@ -69,7 +69,7 @@ go run ./cmd/ikago-server -p [port]
 
 ### Client options
 
-`-publish addresses`: (Optional) ARP publishing addresses, use comma to separate multiple addresses. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
+`-publish addresses`: (Optional) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
 
 `-p port`: (Optional) Port for routing upstream. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 

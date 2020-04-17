@@ -65,7 +65,7 @@ var (
 )
 
 var (
-	publishIPs    []*net.IPAddr
+	publishIP     *net.IPAddr
 	upPort        uint16
 	sources       []*net.IPAddr
 	serverIP      net.IP
@@ -112,7 +112,6 @@ func init() {
 		}
 	}
 
-	publishIPs = make([]*net.IPAddr, 0)
 	sources = make([]*net.IPAddr, 0)
 	listenDevs = make([]*pcap.Device, 0)
 
@@ -163,7 +162,7 @@ func main() {
 			Rule:    *argRule,
 			Verbose: *argVerbose,
 			Log:     *argLog,
-			Publish: splitArg(*argPublish),
+			Publish: *argPublish,
 			Port:    *argUpPort,
 			Sources: splitArg(*argSources),
 			Server:  *argServer,
@@ -298,24 +297,15 @@ func main() {
 	}
 
 	// Publish
-	if len(cfg.Publish) > 0 {
-		for _, a := range cfg.Publish {
-			ip := net.ParseIP(a)
-			if ip == nil {
-				log.Errorln(fmt.Errorf("invalid publish %s", a))
-			}
-			publishIPs = append(publishIPs, &net.IPAddr{IP: ip})
+	if cfg.Publish != "" {
+		ip := net.ParseIP(cfg.Publish)
+		if ip == nil {
+			log.Errorln(fmt.Errorf("invalid publish %s", cfg.Publish))
 		}
+		publishIP = &net.IPAddr{IP: ip}
 	}
-	if len(publishIPs) > 0 {
-		if len(publishIPs) == 1 {
-			log.Infof("Publish %s\n", publishIPs[0].IP)
-		} else {
-			log.Infoln("Publish:")
-			for _, ip := range publishIPs {
-				log.Infof("  %s\n", ip.IP)
-			}
-		}
+	if publishIP != nil {
+		log.Infof("Publish %s\n", publishIP.IP)
 	}
 
 	// Crypt
@@ -449,18 +439,12 @@ func open() error {
 	f := strings.Join(fs, " || ")
 	filter := fmt.Sprintf("ip && (((tcp || udp) && (%s) && not (src host %s && src port %d)) || (icmp && (%s) && not src host %s))",
 		f, serverIP, serverPort, f, serverIP)
-	if len(publishIPs) > 0 {
-		fs := make([]string, 0)
-		for _, f := range publishIPs {
-			s, err := addr.DstBPFFilter(f)
-			if err != nil {
-				return fmt.Errorf("parse filter %s: %w", f, err)
-			}
-
-			fs = append(fs, s)
+	if publishIP != nil {
+		s, err := addr.DstBPFFilter(publishIP)
+		if err != nil {
+			return fmt.Errorf("parse filter %s: %w", f, err)
 		}
-		f := strings.Join(fs, " || ")
-		filter = filter + fmt.Sprintf(" || (arp[6:2] = 1 && %s)", f)
+		filter = filter + fmt.Sprintf(" || (arp[6:2] = 1 && %s)", s)
 	}
 
 	// Handles for listening

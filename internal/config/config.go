@@ -23,7 +23,7 @@ type Config struct {
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`
 	Port       int       `json:"port"`
-	Publish    []string  `json:"publish"`
+	Publish    string    `json:"publish"`
 	Sources    []string  `json:"sources"`
 	Server     string    `json:"server"`
 }
@@ -33,7 +33,6 @@ func NewConfig() *Config {
 	return &Config{
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
-		Publish:   make([]string, 0),
 		Sources:   make([]string, 0),
 	}
 }

@@ -22,7 +22,7 @@
   "verbose": false,
   "log": "",
 
-  "publish": [],
+  "publish": "",
   "fragment": 0,
   "port": 0,
   "sources": [
