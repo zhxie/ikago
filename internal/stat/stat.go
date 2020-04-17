@@ -3,6 +3,7 @@ package stat
 import (
 	"errors"
 	"fmt"
+	"ikago/internal/log"
 )
 
 // TrafficManager describes traffic statistics from and to different nodes.
@@ -40,6 +41,7 @@ func (manager *TrafficManager) Add(node string, size uint) {
 	if !ok {
 		indicator = &TrafficIndicator{}
 		manager.indicators[node] = indicator
+		log.Verbosef("Track new traffic from %s\n", node)
 	}
 	indicator.Add(size)
 }
