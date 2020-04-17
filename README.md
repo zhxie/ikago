@@ -103,7 +103,7 @@ go run ./cmd/ikago-server -p [port]
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=out remoteip=server_ip/32 remoteport=server_port action=block
    ```
 
-2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 32 Bytes. IkaGo will calculates its MSS, but excessive use of resources in the packet header will cause a significant decrease in performance.
+2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 52 Bytes. IkaGo will calculates its MSS, but excessive use of resources in the packet header will cause a significant decrease in performance.
 
 3. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
    ```
