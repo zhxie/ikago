@@ -323,7 +323,7 @@ func main() {
 	if mss != pcap.MaxMTU-40 {
 		log.Infof("Set MSS to %d Bytes\n", mss)
 	}
-	if isKCP && kcpConfig.MTU > mss + 52 {
+	if isKCP && kcpConfig.MTU > mss+52 {
 		kcpConfig.MTU = mss + 52
 		log.Infof("Set KCP MTU to %d Bytes\n", kcpConfig.MTU)
 	}
@@ -445,7 +445,8 @@ func open() error {
 	}
 
 	// Start handling
-	for _, listener := range listeners {
+	for i := 0; i < len(listeners); i++ {
+		listener := listeners[i]
 		go func() {
 			for {
 				conn, err := listener.Accept()
