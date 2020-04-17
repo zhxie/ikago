@@ -331,15 +331,15 @@ func main() {
 		log.Infof("Set MTU to %d Bytes\n", mtu)
 	}
 	if isKCP {
-		mss = cfg.MTU - 40 - crypt.Cost() - 52
+		mss = cfg.MTU - 40 - crypt.Cost() - 32
 	} else {
 		mss = cfg.MTU - 40 - crypt.Cost()
 	}
 	if mss != pcap.MaxMTU-40 {
 		log.Infof("Set MSS to %d Bytes\n", mss)
 	}
-	if isKCP && kcpConfig.MTU > mss + 52 {
-		kcpConfig.MTU = mss + 52
+	if isKCP && kcpConfig.MTU > mss+32 {
+		kcpConfig.MTU = mss + 32
 		log.Infof("Set KCP MTU to %d Bytes\n", kcpConfig.MTU)
 	}
 

@@ -827,18 +827,7 @@ func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 		return nil, err
 	}
 
-	block, err := kcp.NewNoneBlockCrypt(nil)
-	if err != nil {
-		return nil, &net.OpError{
-			Op:     "dial",
-			Net:    "pcap",
-			Source: conn.LocalAddr(),
-			Addr:   conn.RemoteAddr(),
-			Err:    fmt.Errorf("crypt: %w", err),
-		}
-	}
-
-	sess, err := kcp.NewConn(dstAddr.String(), block, config.DataShard, config.ParityShard, conn)
+	sess, err := kcp.NewConn(dstAddr.String(), nil, config.DataShard, config.ParityShard, conn)
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -872,17 +861,7 @@ func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, d
 		return nil, err
 	}
 
-	block, err := kcp.NewNoneBlockCrypt(nil)
-	if err != nil {
-		return nil, &net.OpError{
-			Op:     "listen",
-			Net:    "pcap",
-			Source: conn.LocalAddr(),
-			Err:    fmt.Errorf("crypt: %w", err),
-		}
-	}
-
-	listener, err := kcp.ServeConn(block, dataShards, parityShards, conn)
+	listener, err := kcp.ServeConn(nil, dataShards, parityShards, conn)
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "listen",
