@@ -37,7 +37,7 @@ Transmission size information displayed in verbose log in the server is the size
 ### Packet Structure
 
 <p align="center">
-  <img src="/assets/packet.jpg" alt="packet">
+  <img src="/assets/packet.jpg" alt="diagram">
 </p>
 
 ## Between Sources and Client, Server and Destinations
