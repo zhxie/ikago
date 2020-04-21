@@ -619,7 +619,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 		return fmt.Errorf("write: %w", err)
 	}
 
-	log.Infof("Device %s [%s] joined the network\n", indicator.DstIP(), net.HardwareAddr(arpLayer.SourceHwAddress))
+	log.Infof("Device %s [%s] joined the network\n", indicator.SrcIP(), net.HardwareAddr(arpLayer.SourceHwAddress))
 	log.Verbosef("Reply an %s request: %s -> %s (%d Bytes)\n", indicator.NetworkLayer().LayerType(), indicator.SrcIP(), indicator.DstIP(), n)
 
 	return nil
