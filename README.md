@@ -53,13 +53,13 @@ go run ./cmd/ikago-server -p [port]
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
 
+`-mtu`: (Optional) MTU.
+
 `-kcp`: (Optional) Enable KCP.
 
 `-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
 
 `-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
-
-`-mtu`: (Optional) MTU.
 
 `-rule`: (Optional) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
 
@@ -103,7 +103,7 @@ go run ./cmd/ikago-server -p [port]
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=out remoteip=server_ip/32 remoteport=server_port action=block
    ```
 
-2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 32 Bytes. IkaGo will calculates its MSS, but excessive use of resources in the packet header will cause a significant decrease in performance.
+2. IkaGo prepend packets with TCP header, so an extra IPv4 and TCP header will be added to the packet. As a consequence, an extra 40 Bytes will be added to the total packet size. For encryption, extra bytes according to the method, up to 40 Bytes, and for KCP support, another 32 Bytes. IkaGo will fragment packets which are oversize, but excessive use in the packet header will cause a significant decrease in performance.
 
 3. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
    ```

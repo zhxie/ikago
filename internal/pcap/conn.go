@@ -24,9 +24,11 @@ type clientIndicator struct {
 // Conn is a packet pcap network connection add fake TCP header to all traffic.
 type Conn struct {
 	conn          *RawConn
+	defrag        *Defragmenter
 	srcPort       uint16
 	dstAddr       *net.TCPAddr
 	crypt         crypto.Crypt
+	mtu           int
 	isClosed      bool
 	clientsLock   sync.RWMutex
 	clients       map[string]*clientIndicator
@@ -37,12 +39,14 @@ type Conn struct {
 
 func newConn() *Conn {
 	return &Conn{
+		defrag:  NewDefragmenter(),
+		mtu:     MaxMTU,
 		clients: make(map[string]*clientIndicator),
 	}
 }
 
 // Dial acts like Dial for pcap networks.
-func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*Conn, error) {
+func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*Conn, error) {
 	srcAddr := &net.TCPAddr{
 		IP:   srcDev.IPAddr().IP,
 		Port: int(srcPort),
@@ -52,6 +56,7 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 	conn.srcPort = srcPort
 	conn.dstAddr = dstAddr
 	conn.crypt = crypt
+	conn.mtu = mtu
 
 	// Handshake
 	err := conn.handshake(srcDev, dstDev, srcPort, dstAddr)
@@ -86,7 +91,7 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 	return conn, nil
 }
 
-func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt) (*Conn, error) {
+func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*Conn, error) {
 	srcAddr := &net.TCPAddr{
 		IP:   srcDev.IPAddr().IP,
 		Port: int(srcPort),
@@ -106,12 +111,13 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 	conn.srcPort = srcPort
 	conn.dstAddr = dstAddr
 	conn.crypt = crypt
+	conn.mtu = mtu
 	conn.conn = rawConn
 
 	return conn, nil
 }
 
-func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Conn, error) {
+func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int) (*Conn, error) {
 	addrs := make([]*net.TCPAddr, 0)
 	for _, ip := range srcDev.IPAddrs() {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
@@ -142,6 +148,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt)
 	conn.conn = rawConn
 	conn.srcPort = srcPort
 	conn.crypt = crypt
+	conn.mtu = mtu
 
 	// Handle handshaking
 	go func() {
@@ -488,7 +495,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 	return len(contents), a, err
 }
 
-func (c *Conn) readPacketFrom() (packet gopacket.Packet, addr net.Addr, err error) {
+func (c *Conn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 	type tuple struct {
 		packet gopacket.Packet
 		err    error
@@ -496,12 +503,31 @@ func (c *Conn) readPacketFrom() (packet gopacket.Packet, addr net.Addr, err erro
 
 	ch := make(chan tuple)
 	go func() {
-		packet, err := c.conn.ReadPacket()
-		if err != nil {
-			ch <- tuple{err: err}
-		}
+		for {
+			packet, err := c.conn.ReadPacket()
+			if err != nil {
+				ch <- tuple{err: err}
+				return
+			}
 
-		ch <- tuple{packet: packet}
+			// Parse packet
+			indicator, err := ParsePacket(packet)
+			if err != nil {
+				ch <- tuple{err: fmt.Errorf("parse: %w", err)}
+				return
+			}
+
+			// Handle fragments
+			indicator, err = c.defrag.Append(indicator)
+			if err != nil {
+				ch <- tuple{err: fmt.Errorf("defrag: %w", err)}
+				return
+			}
+			if indicator != nil {
+				ch <- tuple{packet: indicator.packet}
+				return
+			}
+		}
 	}()
 	// Timeout
 	if !c.readDeadline.IsZero() {
@@ -568,6 +594,7 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			transportLayer gopacket.SerializableLayer
 			networkLayer   gopacket.SerializableLayer
 			linkLayer      gopacket.SerializableLayer
+			fragments      [][]byte
 		)
 
 		// Client
@@ -593,18 +620,20 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			return
 		}
 
-		// Serialize layers
-		data, err := Serialize(linkLayer, networkLayer, transportLayer, gopacket.Payload(contents))
+		// Fragment
+		fragments, err = CreateFragmentPackets(linkLayer.(gopacket.Layer), networkLayer.(gopacket.Layer), transportLayer.(gopacket.Layer), gopacket.Payload(contents), c.mtu)
 		if err != nil {
-			ch <- fmt.Errorf("serialize: %w", err)
+			ch <- fmt.Errorf("fragment: %w", err)
 			return
 		}
 
 		// Write packet data
-		_, err = c.conn.Write(data)
-		if err != nil {
-			ch <- fmt.Errorf("write: %w", err)
-			return
+		for _, frag := range fragments {
+			_, err := c.conn.Write(frag)
+			if err != nil {
+				ch <- fmt.Errorf("write: %w", err)
+				return
+			}
 		}
 
 		// TCP Seq
@@ -711,10 +740,11 @@ type Listener struct {
 	conn    *RawConn
 	srcPort uint16
 	crypt   crypto.Crypt
+	mtu     int
 }
 
 // Listen acts like Listen for pcap networks.
-func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Listener, error) {
+func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int) (*Listener, error) {
 	addrs := make([]*net.TCPAddr, 0)
 	for _, ip := range srcDev.IPAddrs() {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
@@ -735,6 +765,7 @@ func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt) (*Listen
 		conn:    conn,
 		srcPort: srcPort,
 		crypt:   crypt,
+		mtu:     mtu,
 	}
 
 	return listener, nil
@@ -762,7 +793,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		}
 	}
 
-	conn, err := dialPassive(l.Dev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt)
+	conn, err := dialPassive(l.Dev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt, l.mtu)
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -821,8 +852,8 @@ func (l *Listener) Addr() net.Addr {
 }
 
 // DialWithKCP connects to the remote address in the pcap connection with KCP support.
-func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, config *config.KCPConfig) (*kcp.UDPSession, error) {
-	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt)
+func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.UDPSession, error) {
+	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
 	if err != nil {
 		return nil, err
 	}
@@ -855,13 +886,13 @@ func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 }
 
 // ListenWithKCP listens for incoming packets addressed to the local address in the pcap connection with KCP support.
-func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, dataShards, parityShards int) (*kcp.Listener, error) {
-	conn, err := listenMulticast(srcDev, dstDev, srcPort, crypt)
+func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.Listener, error) {
+	conn, err := listenMulticast(srcDev, dstDev, srcPort, crypt, mtu)
 	if err != nil {
 		return nil, err
 	}
 
-	listener, err := kcp.ServeConn(nil, dataShards, parityShards, conn)
+	listener, err := kcp.ServeConn(nil, config.DataShard, config.ParityShard, conn)
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "listen",

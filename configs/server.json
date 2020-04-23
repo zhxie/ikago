@@ -4,6 +4,7 @@
   "gateway": "",
   "method": "plain",
   "password": "",
+  "mtu": 0,
   "kcp": false,
   "kcp-tuning": {
     "mtu": 1400,
@@ -17,7 +18,6 @@
     "resend": 0,
     "nc": 0
   },
-  "mtu": 0,
   "rule": false,
   "verbose": false,
   "log": "",

@@ -16,9 +16,9 @@ type Config struct {
 	Gateway    string    `json:"gateway"`
 	Method     string    `json:"method"`
 	Password   string    `json:"password"`
+	MTU        int       `json:"mtu"`
 	KCP        bool      `json:"kcp"`
 	KCPConfig  KCPConfig `json:"kcp-tuning"`
-	MTU        int       `json:"mtu"`
 	Rule       bool      `json:"rule"`
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`

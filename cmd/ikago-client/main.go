@@ -43,9 +43,9 @@ var (
 	argGateway        = flag.String("gateway", "", "Gateway address.")
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
+	argMTU            = flag.Int("mtu", 0, "MTU.")
 	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
 	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
-	argMTU            = flag.Int("mtu", 0, "MTU.")
 	argKCPSendWindow  = flag.Int("kcp-sndwnd", kcp.IKCP_WND_SND, "KCP tuning option sndwnd.")
 	argKCPRecvWindow  = flag.Int("kcp-rcvwnd", kcp.IKCP_WND_RCV, "KCP tuning option rcvwnd.")
 	argKCPDataShard   = flag.Int("kcp-datashard", 10, "KCP tuning option datashard.")
@@ -74,24 +74,22 @@ var (
 	upDev         *pcap.Device
 	gatewayDev    *pcap.Device
 	crypt         crypto.Crypt
+	mtu           int
 	isKCP         bool
 	kcpConfig     *config.KCPConfig
-	mtu           int
-	mss           int
 	dummyListener net.Listener
 )
 
 var (
-	isClosed     bool
-	listenConns  []*pcap.RawConn
-	upConn       net.Conn
-	c            chan pcap.ConnPacket
-	listenDefrag *pcap.Defragmenter
-	upDefrag     *pcap.Defragmenter
-	natLock      sync.RWMutex
-	nat          map[string]*natIndicator
-	listenStats  *stat.TrafficManager
-	upStats      *stat.TrafficManager
+	isClosed    bool
+	listenConns []*pcap.RawConn
+	upConn      net.Conn
+	c           chan pcap.ConnPacket
+	defrag      *pcap.Defragmenter
+	natLock     sync.RWMutex
+	nat         map[string]*natIndicator
+	listenStats *stat.TrafficManager
+	upStats     *stat.TrafficManager
 )
 
 func init() {
@@ -117,8 +115,7 @@ func init() {
 
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
-	listenDefrag = pcap.NewDefragmenter()
-	upDefrag = pcap.NewDefragmenter()
+	defrag = pcap.NewDefragmenter()
 	nat = make(map[string]*natIndicator)
 	listenStats = stat.NewTrafficManager()
 	upStats = stat.NewTrafficManager()
@@ -226,6 +223,13 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
+	if cfg.MTU < 576 || cfg.MTU > pcap.MaxMTU {
+		if cfg.MTU == 0 {
+			cfg.MTU = pcap.MaxMTU
+		} else {
+			log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
+		}
+	}
 	if cfg.KCPConfig.MTU > 1500 {
 		log.Fatalln(fmt.Errorf("kcp mtu %d out of range", cfg.KCPConfig.MTU))
 	}
@@ -249,13 +253,6 @@ func main() {
 	}
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
-	}
-	if cfg.MTU < 576 || cfg.MTU > pcap.MaxMTU {
-		if cfg.MTU == 0 {
-			cfg.MTU = pcap.MaxMTU
-		} else {
-			log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
-		}
 	}
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.Port))
@@ -318,29 +315,17 @@ func main() {
 		log.Infof("Encrypt with %s\n", method)
 	}
 
-	// KCP
-	isKCP = cfg.KCP
-	kcpConfig = &cfg.KCPConfig
-	if isKCP {
-		log.Infoln("Enable KCP")
-	}
-
 	// MTU
 	mtu = cfg.MTU
 	if mtu != pcap.MaxMTU {
 		log.Infof("Set MTU to %d Bytes\n", mtu)
 	}
+
+	// KCP
+	isKCP = cfg.KCP
+	kcpConfig = &cfg.KCPConfig
 	if isKCP {
-		mss = cfg.MTU - 40 - crypt.Cost() - 32
-	} else {
-		mss = cfg.MTU - 40 - crypt.Cost()
-	}
-	if mss != pcap.MaxMTU-40 {
-		log.Infof("Set MSS to %d Bytes\n", mss)
-	}
-	if isKCP && kcpConfig.MTU > mss+32 {
-		kcpConfig.MTU = mss + 32
-		log.Infof("Set KCP MTU to %d Bytes\n", kcpConfig.MTU)
+		log.Infoln("Enable KCP")
 	}
 
 	if len(sources) == 1 {
@@ -468,9 +453,9 @@ func open() error {
 
 	// Handle for routing upstream
 	if isKCP {
-		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, kcpConfig)
+		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, kcpConfig)
 	} else {
-		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu)
 	}
 	if err != nil {
 		return fmt.Errorf("open upstream: %w", err)
@@ -628,7 +613,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
 		hardwareAddr net.HardwareAddr
-		fragments    [][]byte
+		data         []byte
 	)
 
 	// Parse packet
@@ -650,7 +635,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	hardwareAddr = indicator.SrcHardwareAddr()
 
 	// Handle fragments
-	indicator, err = listenDefrag.Append(indicator)
+	indicator, err = defrag.Append(indicator)
 	if err != nil {
 		return fmt.Errorf("defrag: %w", err)
 	}
@@ -679,28 +664,16 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 		}
 	}
 
-	// Fragment
-	fragments, err = pcap.CreateFragmentPackets(nil, indicator.NetworkLayer(), indicator.TransportLayer(), gopacket.Payload(indicator.Payload()), mss)
+	// Serialize layers
+	data, err = pcap.Serialize(indicator.NetworkLayer().(gopacket.SerializableLayer), indicator.TransportLayer().(gopacket.SerializableLayer), gopacket.Payload(indicator.Payload()))
 	if err != nil {
-		return fmt.Errorf("fragment: %w", err)
+		return fmt.Errorf("serialize: %w", err)
 	}
 
-	size := indicator.MTU()
-
 	// Write packet data
-	for i, frag := range fragments {
-		_, err := upConn.Write(frag)
-		if err != nil {
-			return fmt.Errorf("write: %w", err)
-		}
-
-		if i == len(fragments)-1 {
-			log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
-				indicator.TransportProtocol(), indicator.Src().String(), indicator.Dst().String(), size)
-		} else {
-			log.Verbosef("Redirect an outbound %s packet: %s -> %s (...)\n",
-				indicator.TransportProtocol(), indicator.Src().String(), indicator.Dst().String())
-		}
+	_, err = upConn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
 	}
 
 	// Record the connection of the packet
@@ -712,7 +685,11 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// Statistics
+	size := indicator.MTU()
 	listenStats.Add(indicator.SrcIP().String(), uint(size))
+
+	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
+		indicator.TransportProtocol(), indicator.Src().String(), indicator.Dst().String(), size)
 
 	return nil
 }
@@ -734,15 +711,6 @@ func handleUpstream(contents []byte) error {
 	embIndicator, err := pcap.ParseEmbPacket(contents)
 	if err != nil {
 		return fmt.Errorf("parse embedded packet: %w", err)
-	}
-
-	// Handle fragments
-	embIndicator, err = upDefrag.Append(embIndicator)
-	if err != nil {
-		return fmt.Errorf("defrag: %w", err)
-	}
-	if embIndicator == nil {
-		return nil
 	}
 
 	// Check map
