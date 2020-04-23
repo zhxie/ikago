@@ -272,7 +272,7 @@ func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TC
 		return fmt.Errorf("acknowledge: %w", err)
 	}
 
-	log.Infof("Connected to server %s in %.3f ms (two-way)\n", dstAddr.String(), float64(duration.Microseconds())/1000)
+	log.Infof("Connected to server %s in %.3f ms (RTT)\n", dstAddr.String(), float64(duration.Microseconds())/1000)
 
 	return nil
 }
