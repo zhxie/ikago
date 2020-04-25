@@ -33,6 +33,7 @@ type natIndicator struct {
 var (
 	version = ""
 	build   = ""
+	commit  = ""
 )
 
 var (
@@ -96,11 +97,23 @@ var (
 )
 
 func init() {
-	if version != "" && build != "" {
-		log.Infof("IkaGo-client %s-%s\n\n", version, build)
-	} else {
-		log.Infof("IkaGo-client %s%s\n\n", version, build)
+	versionInfo := ""
+	if version != "" {
+		versionInfo = versionInfo + version
 	}
+	if version != "" && build != "" {
+		versionInfo = versionInfo + "-"
+	}
+	if build != "" {
+		versionInfo = versionInfo + build
+	}
+	if versionInfo != "" && commit != "" {
+		versionInfo = versionInfo + " "
+	}
+	if commit != "" {
+		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
+	}
+	log.Infof("IkaGo-client %s\n\n", versionInfo)
 
 	// Parse arguments
 	flag.Parse()
