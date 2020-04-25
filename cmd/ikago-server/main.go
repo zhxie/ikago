@@ -67,6 +67,8 @@ var (
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
 	argMTU            = flag.Int("mtu", 0, "MTU.")
+	argListenMTU      = flag.Int("listen-mtu", 0, "MTU of devices for listening.")
+	argUpMTU          = flag.Int("upstream-mtu", 0, "MTU of device for routing upstream to.")
 	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
 	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
 	argKCPSendWindow  = flag.Int("kcp-sndwnd", kcp.IKCP_WND_SND, "KCP tuning option sndwnd.")
@@ -90,7 +92,8 @@ var (
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
 	crypt      crypto.Crypt
-	mtu        int
+	listenMTU  int
+	upMTU      int
 	isKCP      bool
 	kcpConfig  *config.KCPConfig
 )
@@ -180,11 +183,13 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			MTU:     *argMTU,
-			Rule:    *argRule,
-			Verbose: *argVerbose,
-			Log:     *argLog,
-			Port:    *argPort,
+			MTU:       *argMTU,
+			ListenMTU: *argListenMTU,
+			UpMTU:     *argUpMTU,
+			Rule:      *argRule,
+			Verbose:   *argVerbose,
+			Log:       *argLog,
+			Port:      *argPort,
 		}
 	}
 
@@ -249,6 +254,16 @@ func main() {
 			log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
 		}
 	}
+	if cfg.ListenMTU < 576 || cfg.ListenMTU > pcap.MaxMTU {
+		if cfg.ListenMTU != 0 {
+			log.Fatalln(fmt.Errorf("listen mtu %d out of range", cfg.ListenMTU))
+		}
+	}
+	if cfg.UpMTU < 576 || cfg.UpMTU > pcap.MaxMTU {
+		if cfg.UpMTU != 0 {
+			log.Fatalln(fmt.Errorf("upstream mtu %d out of range", cfg.UpMTU))
+		}
+	}
 	if cfg.KCPConfig.MTU > 1500 {
 		log.Fatalln(fmt.Errorf("kcp mtu %d out of range", cfg.KCPConfig.MTU))
 	}
@@ -301,9 +316,19 @@ func main() {
 	}
 
 	// MTU
-	mtu = cfg.MTU
-	if mtu != pcap.MaxMTU {
-		log.Infof("Set MTU to %d Bytes\n", mtu)
+	listenMTU = cfg.MTU
+	upMTU = cfg.MTU
+	if cfg.ListenMTU != 0 {
+		listenMTU = cfg.ListenMTU
+	}
+	if cfg.UpMTU != 0 {
+		upMTU = cfg.UpMTU
+	}
+	if listenMTU != pcap.MaxMTU {
+		log.Infof("Set listen MTU to %d Bytes\n", listenMTU)
+	}
+	if upMTU != pcap.MaxMTU {
+		log.Infof("Set upstream MTU to %d Bytes\n", listenMTU)
 	}
 
 	// KCP
@@ -405,15 +430,15 @@ func open() error {
 
 		if dev.IsLoop() {
 			if isKCP {
-				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt, mtu, kcpConfig)
+				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt, listenMTU, kcpConfig)
 			} else {
-				listener, err = pcap.Listen(dev, dev, port, crypt, mtu)
+				listener, err = pcap.Listen(dev, dev, port, crypt, listenMTU)
 			}
 		} else {
 			if isKCP {
-				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt, mtu, kcpConfig)
+				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt, listenMTU, kcpConfig)
 			} else {
-				listener, err = pcap.Listen(dev, gatewayDev, port, crypt, mtu)
+				listener, err = pcap.Listen(dev, gatewayDev, port, crypt, listenMTU)
 			}
 		}
 		if err != nil {
@@ -740,7 +765,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 	}
 
 	// Fragment
-	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(embIndicator.Payload()), mtu)
+	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, newNetworkLayer, newTransportLayer, gopacket.Payload(embIndicator.Payload()), upMTU)
 	if err != nil {
 		return fmt.Errorf("fragment: %w", err)
 	}

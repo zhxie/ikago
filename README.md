@@ -55,6 +55,10 @@ go run ./cmd/ikago-server -p [port]
 
 `-mtu`: (Optional) MTU.
 
+`-listen-mtu`: (Optional) MTU of devices for listening, traffic from client to sources and from server to clients will take this value. If this value is set, it will override `-mtu` in devices for listening.
+
+`-upstream-mtu`: (Optional) MTU of device for routing upstream to, traffic from client to server and from server to destinations will take this value. If this value is set, it will override `-mtu` in devices for routing upstream to.
+
 `-kcp`: (Optional) Enable KCP.
 
 `-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
