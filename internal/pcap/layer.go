@@ -45,9 +45,8 @@ func CreateIPv4Layer(srcIP, dstIP net.IP, id uint16, ttl uint8, transportLayer g
 		Version: 4,
 		IHL:     5,
 		// Length: 0,
-		Id:    id,
-		Flags: layers.IPv4DontFragment,
-		TTL:   ttl,
+		Id:  id,
+		TTL: ttl,
 		// Protocol: 0,
 		// Checksum: 0,
 		SrcIP: srcIP,
@@ -152,7 +151,7 @@ func SerializeRaw(layers ...gopacket.SerializableLayer) ([]byte, error) {
 func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *RawConn, dstIP net.IP, id uint16, hop uint8,
 	dstHardwareAddr net.HardwareAddr) (transportLayer, networkLayer, linkLayer gopacket.SerializableLayer, err error) {
 	var (
-		linkLayerType    gopacket.LayerType
+		linkLayerType gopacket.LayerType
 	)
 
 	// Create transport layer
