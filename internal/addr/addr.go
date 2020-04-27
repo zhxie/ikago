@@ -50,7 +50,11 @@ func ParseTCPAddr(s string) (*net.TCPAddr, error) {
 
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return nil, fmt.Errorf("invalid ip %s", ipStr)
+		addrs, err := net.LookupIP(ipStr)
+		if err != nil {
+			return nil, fmt.Errorf("lookup: %w", err)
+		}
+		ip = addrs[0]
 	}
 
 	port, err := strconv.ParseUint(portStr, 10, 16)

@@ -233,7 +233,7 @@ func main() {
 		log.Fatalln("Please provide sources by -r addresses.")
 	}
 	if cfg.Server == "" {
-		log.Fatalln("Please provide server by -s ip:port.")
+		log.Fatalln("Please provide server by -s address.")
 	}
 	if cfg.Gateway != "" {
 		gateway = net.ParseIP(cfg.Gateway)

@@ -377,7 +377,7 @@ func main() {
 
 	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev, gateway)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse: %w", err))
+		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", err))
 	}
 	if upDev == nil && gatewayDev == nil {
 		log.Fatalln(errors.New("cannot determine upstream device and gateway device"))

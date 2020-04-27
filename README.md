@@ -79,7 +79,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-r addresses`: Sources, use comma to separate multiple addresses. Packets with the same source's address will be proxied.
 
-`-s ip:port`: Server.
+`-s address`: Server.
 
 ### Server options
 

@@ -513,7 +513,7 @@ func (c *Conn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 			// Parse packet
 			indicator, err := ParsePacket(packet)
 			if err != nil {
-				ch <- tuple{err: fmt.Errorf("parse: %w", err)}
+				ch <- tuple{err: fmt.Errorf("parse packet: %w", err)}
 				return
 			}
 
@@ -548,7 +548,7 @@ func (c *Conn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 	// Parse packet
 	indicator, err := ParsePacket(tu.packet)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse: %w", err)
+		return nil, nil, fmt.Errorf("parse packet: %w", err)
 	}
 
 	switch t := indicator.TransportLayer().LayerType(); t {
