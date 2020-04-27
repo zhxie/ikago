@@ -39,9 +39,9 @@ go run ./cmd/ikago-server -p [port]
 
 ### Common options
 
-`-list-devices`: (Optional, exclusively) List all valid devices in current computer.
+`-list-devices`: (Optional, exclusive) List all valid devices in current computer.
 
-`-c`: (Optional, exclusively) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments, it will automatically read the configuration file `config.json` in the working directory if it exists.
+`-c`: (Optional, exclusive) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments, it will automatically read the configuration file `config.json` in the working directory if it exists.
 
 `-listen-devices devices`: (Optional) Devices for listening, use comma to separate multiple devices. If this value is not set, all valid devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
@@ -49,9 +49,9 @@ go run ./cmd/ikago-server -p [port]
 
 `-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
 
-`-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. For more about encryption, please refer to the [development documentation](/dev.md).
+`-method method`: (Optional, consistent) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. For more about encryption, please refer to the [development documentation](/dev.md).
 
-`-password password`: (Optional) Password of encryption, must be set only when method is not `plain`.
+`-password password`: (Optional, consistent) Password of encryption, must be set only when method is not `plain`.
 
 `-mtu`: (Optional) MTU.
 
@@ -59,11 +59,11 @@ go run ./cmd/ikago-server -p [port]
 
 `-upstream-mtu`: (Optional) MTU of device for routing upstream to, traffic from client to server and from server to destinations will take this value. If this value is set, it will override `-mtu` in devices for routing upstream to.
 
-`-kcp`: (Optional) Enable KCP.
+`-kcp`: (Optional, consistent) Enable KCP.
 
-`-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
+`-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional, consistent) KCP tuning options, available when KCP is enabled. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
 
-`-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options, available when KCP is enabled. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
+`-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional, consistent) KCP tuning options, available when KCP is enabled. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
 
 `-rule`: (Optional) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
 
