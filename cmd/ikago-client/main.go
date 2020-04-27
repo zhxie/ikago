@@ -42,6 +42,7 @@ var (
 	argListenDevs     = flag.String("listen-devices", "", "Devices for listening.")
 	argUpDev          = flag.String("upstream-device", "", "Device for routing upstream to.")
 	argGateway        = flag.String("gateway", "", "Gateway address.")
+	argMode           = flag.String("mode", "fast", "Mode.")
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
 	argMTU            = flag.Int("mtu", 0, "MTU.")
@@ -76,6 +77,7 @@ var (
 	listenDevs    []*pcap.Device
 	upDev         *pcap.Device
 	gatewayDev    *pcap.Device
+	isStable      bool
 	crypt         crypto.Crypt
 	listenMTU     int
 	upMTU         int
@@ -156,6 +158,7 @@ func main() {
 			ListenDevs: splitArg(*argListenDevs),
 			UpDev:      *argUpDev,
 			Gateway:    *argGateway,
+			Mode:       *argMode,
 			Method:     *argMethod,
 			Password:   *argPassword,
 			KCP:        *argKCP,
@@ -333,6 +336,18 @@ func main() {
 		log.Infof("Publish %s\n", publishIP.IP)
 	}
 
+	// Mode
+	switch cfg.Mode {
+	case "fast":
+		isStable = false
+		log.Infoln("Mode fast")
+	case "stable":
+		isStable = true
+		log.Infoln("Mode stable")
+	default:
+		log.Fatalln(fmt.Errorf("invalid mode %s", cfg.Mode))
+	}
+
 	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
@@ -345,25 +360,29 @@ func main() {
 
 	// MTU
 	listenMTU = cfg.MTU
-	upMTU = cfg.MTU
 	if cfg.ListenMTU != 0 {
 		listenMTU = cfg.ListenMTU
-	}
-	if cfg.UpMTU != 0 {
-		upMTU = cfg.UpMTU
 	}
 	if listenMTU != pcap.MaxMTU {
 		log.Infof("Set listen MTU to %d Bytes\n", listenMTU)
 	}
-	if upMTU != pcap.MaxMTU {
-		log.Infof("Set upstream MTU to %d Bytes\n", listenMTU)
+	if !isStable {
+		upMTU = cfg.MTU
+		if cfg.UpMTU != 0 {
+			upMTU = cfg.UpMTU
+		}
+		if upMTU != pcap.MaxMTU {
+			log.Infof("Set upstream MTU to %d Bytes\n", listenMTU)
+		}
 	}
 
 	// KCP
-	isKCP = cfg.KCP
-	kcpConfig = &cfg.KCPConfig
-	if isKCP {
-		log.Infoln("Enable KCP")
+	if !isStable {
+		isKCP = cfg.KCP
+		kcpConfig = &cfg.KCPConfig
+		if isKCP {
+			log.Infoln("Enable KCP")
+		}
 	}
 
 	if len(sources) == 1 {
@@ -490,7 +509,9 @@ func open() error {
 	}
 
 	// Handle for routing upstream
-	if isKCP {
+	if isStable {
+		upConn, err = net.DialTCP("tcp", &net.TCPAddr{IP: upDev.IPAddr().IP, Port: int(upPort)}, &net.TCPAddr{IP: serverIP, Port: int(serverPort)})
+	} else if isKCP {
 		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, upMTU, kcpConfig)
 	} else {
 		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, upMTU)

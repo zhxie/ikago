@@ -65,6 +65,7 @@ var (
 	argListenDevs     = flag.String("listen-devices", "", "Devices for listening.")
 	argUpDev          = flag.String("upstream-device", "", "Device for routing upstream to.")
 	argGateway        = flag.String("gateway", "", "Gateway address.")
+	argMode           = flag.String("mode", "fast", "Mode.")
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
 	argMTU            = flag.Int("mtu", 0, "MTU.")
@@ -92,6 +93,7 @@ var (
 	listenDevs []*pcap.Device
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
+	isStable   bool
 	crypt      crypto.Crypt
 	listenMTU  int
 	upMTU      int
@@ -181,6 +183,7 @@ func main() {
 			ListenDevs: splitArg(*argListenDevs),
 			UpDev:      *argUpDev,
 			Gateway:    *argGateway,
+			Mode:       *argMode,
 			Method:     *argMethod,
 			Password:   *argPassword,
 			KCP:        *argKCP,
@@ -318,6 +321,18 @@ func main() {
 		log.Infoln("Add firewall rule")
 	}
 
+	// Mode
+	switch cfg.Mode {
+	case "fast":
+		isStable = false
+		log.Infoln("Mode fast")
+	case "stable":
+		isStable = true
+		log.Infoln("Mode stable")
+	default:
+		log.Fatalln(fmt.Errorf("invalid mode %s", cfg.Mode))
+	}
+
 	// Crypt
 	crypt, err = crypto.ParseCrypt(cfg.Method, cfg.Password)
 	if err != nil {
@@ -329,26 +344,30 @@ func main() {
 	}
 
 	// MTU
-	listenMTU = cfg.MTU
-	upMTU = cfg.MTU
-	if cfg.ListenMTU != 0 {
-		listenMTU = cfg.ListenMTU
+	if !isStable {
+		listenMTU = cfg.MTU
+		if cfg.ListenMTU != 0 {
+			listenMTU = cfg.ListenMTU
+		}
+		if listenMTU != pcap.MaxMTU {
+			log.Infof("Set listen MTU to %d Bytes\n", listenMTU)
+		}
 	}
+	upMTU = cfg.MTU
 	if cfg.UpMTU != 0 {
 		upMTU = cfg.UpMTU
-	}
-	if listenMTU != pcap.MaxMTU {
-		log.Infof("Set listen MTU to %d Bytes\n", listenMTU)
 	}
 	if upMTU != pcap.MaxMTU {
 		log.Infof("Set upstream MTU to %d Bytes\n", listenMTU)
 	}
 
 	// KCP
-	isKCP = cfg.KCP
-	kcpConfig = &cfg.KCPConfig
-	if isKCP {
-		log.Infoln("Enable KCP")
+	if !isStable {
+		isKCP = cfg.KCP
+		kcpConfig = &cfg.KCPConfig
+		if isKCP {
+			log.Infoln("Enable KCP")
+		}
 	}
 
 	log.Infof("Proxy from :%d\n", cfg.Port)
@@ -442,13 +461,17 @@ func open() error {
 		var listener net.Listener
 
 		if dev.IsLoop() {
-			if isKCP {
+			if isStable {
+				listener, err = net.ListenTCP("tcp", &net.TCPAddr{IP: dev.IPAddr().IP, Port: int(port)})
+			} else if isKCP {
 				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt, listenMTU, kcpConfig)
 			} else {
 				listener, err = pcap.Listen(dev, dev, port, crypt, listenMTU)
 			}
 		} else {
-			if isKCP {
+			if isStable {
+				listener, err = net.ListenTCP("tcp", &net.TCPAddr{IP: dev.IPAddr().IP, Port: int(port)})
+			} else if isKCP {
 				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt, listenMTU, kcpConfig)
 			} else {
 				listener, err = pcap.Listen(dev, gatewayDev, port, crypt, listenMTU)

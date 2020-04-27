@@ -49,17 +49,19 @@ go run ./cmd/ikago-server -p [port]
 
 `-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
 
+`-mode mode`: (Optional, consistent) Mode, can be `fast`, `stable`. Default as `fast`. Mode `stable` will establish a full TCP connection between the client and the server which will improve stability but reduce performance.
+
 `-method method`: (Optional, consistent) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. For more about encryption, please refer to the [development documentation](/dev.md).
 
 `-password password`: (Optional, consistent) Password of encryption, must be set only when method is not `plain`.
 
 `-mtu`: (Optional) MTU.
 
-`-listen-mtu`: (Optional) MTU of devices for listening, traffic from client to sources and from server to clients will take this value. If this value is set, it will override `-mtu` in devices for listening.
+`-listen-mtu`: (Optional) MTU of devices for listening, traffic from client to sources and from server to clients will take this value. If this value is set, it will override `-mtu` in devices for listening. This option will be unavailable if mode `stable` is set on the server side.
 
-`-upstream-mtu`: (Optional) MTU of device for routing upstream to, traffic from client to server and from server to destinations will take this value. If this value is set, it will override `-mtu` in devices for routing upstream to.
+`-upstream-mtu`: (Optional) MTU of device for routing upstream to, traffic from client to server and from server to destinations will take this value. If this value is set, it will override `-mtu` in devices for routing upstream to. This option will be unavailable if mode `stable` is set on the client side.
 
-`-kcp`: (Optional, consistent) Enable KCP.
+`-kcp`: (Optional, consistent) Enable KCP. This option will be unavailable if mode `stable` is set.
 
 `-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional, consistent) KCP tuning options, available when KCP is enabled. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
 

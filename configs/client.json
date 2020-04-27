@@ -2,6 +2,7 @@
   "listen-devices": [],
   "upstream-device": "",
   "gateway": "",
+  "mode": "fast",
   "method": "plain",
   "password": "",
   "mtu": 0,
