@@ -12,8 +12,6 @@ This is the development documentation of IkaGo.
 
 ## Connection
 
-### FakeTCP
-
 Clients and server establish a FakeTCP connection at the beginning of transmission. All transmissions will use this connection.
 
 At the beginning of establishing the connection, the TCP 3-way handshaking is simulated. And the 3rd handshaking of ACK is the only packet with empty payload during the whole process of transmission.
@@ -26,8 +24,6 @@ Neither client nor server replies ACK passively.
 
 ## Between Client and Server
 
-### FakeTCP
-
 All packets transmitted must contain exactly a link layer, a network layer and a transport layer.
 
 Packets transmitted between clients and server will not be verified.
@@ -38,7 +34,7 @@ Transmission size information displayed in verbose log in the client is the size
 
 Transmission size information displayed in verbose log in the server is the size of network, transport and application layer in **reassembled** packets from destinations.
 
-#### Packet Structure
+### Packet Structure
 
 <p align="center">
   <img src="/assets/packet.jpg" alt="diagram">

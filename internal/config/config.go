@@ -14,7 +14,6 @@ type Config struct {
 	ListenDevs []string  `json:"listen-devices"`
 	UpDev      string    `json:"upstream-device"`
 	Gateway    string    `json:"gateway"`
-	Mode       string    `json:"mode"`
 	Method     string    `json:"method"`
 	Password   string    `json:"password"`
 	MTU        int       `json:"mtu"`
@@ -34,7 +33,6 @@ type Config struct {
 // NewConfig returns a new config.
 func NewConfig() *Config {
 	return &Config{
-		Mode:      "fast",
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
 		Sources:   make([]string, 0),
