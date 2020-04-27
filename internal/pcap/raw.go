@@ -20,6 +20,9 @@ func (err *timeoutError) Timeout() bool {
 // MaxMTU is the max transmission and receive unit in pcap raw conn.
 const MaxMTU = 1500
 
+// IPv4MaxSize is the max size of an IPv4 packet.
+const IPv4MaxSize = 65535
+
 // maxSnapLen is the max size of each packet in pcap raw conn.
 const maxSnapLen = 1600
 
