@@ -530,8 +530,8 @@ func open() error {
 		}
 	}()
 
-	b := make([]byte, pcap.MaxMTU)
 	for {
+		b := make([]byte, pcap.MaxMTU)
 		n, err := upConn.Read(b)
 		if err != nil {
 			if isClosed {

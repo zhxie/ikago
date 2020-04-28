@@ -497,8 +497,8 @@ func open() error {
 				log.Infof("Connect from client %s\n", conn.RemoteAddr().String())
 
 				go func() {
-					b := make([]byte, pcap.IPv4MaxSize)
 					for {
+						b := make([]byte, pcap.IPv4MaxSize)
 						n, err := conn.Read(b)
 						if err != nil {
 							if isClosed {
