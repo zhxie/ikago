@@ -497,8 +497,8 @@ func open() error {
 				log.Infof("Connect from client %s\n", conn.RemoteAddr().String())
 
 				go func() {
+					b := make([]byte, pcap.IPv4MaxSize)
 					for {
-						b := make([]byte, pcap.IPv4MaxSize)
 						n, err := conn.Read(b)
 						if err != nil {
 							if isClosed {
@@ -508,8 +508,10 @@ func open() error {
 							continue
 						}
 
+						newB := make([]byte, n)
+						copy(newB, b[:n])
 						c <- pcap.ConnBytes{
-							Bytes: b[:n],
+							Bytes: newB,
 							Conn:  conn,
 						}
 					}
