@@ -91,16 +91,19 @@ go run ./cmd/ikago-server -p [port]
    ```
    // Linux
    // IkaGo-server
+   sysctl -w net.ipv4.ip_forward=0
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
    // IkaGo-client with proxy ARP
+   sysctl -w net.ipv4.ip_forward=0
    iptables -A OUTPUT -s server_ip/32 -p tcp --dport server_port -j DROP
-   
+
    // macOS, FreeBSD
    // IkaGo-client with proxy ARP
+   sysctl -w net.inet.ip.forwarding=0
    echo "block drop proto tcp from any to server_ip port server_port" >> ./pf.conf
    pfctl -f ./pf.conf
    pfctl -e
-   
+
    // Windows (You may not have to)
    // IkaGo-client with proxy ARP
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=in remoteip=server_ip/32 remoteport=server_port action=block
