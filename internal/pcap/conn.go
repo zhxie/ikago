@@ -74,8 +74,13 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 	if err != nil {
 		return nil, fmt.Errorf("parse filter %s: %w", dstAddr, err)
 	}
+	dstIP := &net.IPAddr{IP: dstAddr.IP}
+	filter2, err := addr.SrcBPFFilter(dstIP)
+	if err != nil {
+		return nil, fmt.Errorf("parse filter %s: %w", dstIP, err)
+	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && dst port %d && %s", srcAddr.Port, filter))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && ((tcp && dst port %d && %s) || ((ip[6:2] & 0x1fff) != 0 && %s))", srcAddr.Port, filter, filter2))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -101,8 +106,13 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 	if err != nil {
 		return nil, fmt.Errorf("parse filter %s: %w", dstAddr, err)
 	}
+	dstIP := &net.IPAddr{IP: dstAddr.IP}
+	filter2, err := addr.SrcBPFFilter(dstIP)
+	if err != nil {
+		return nil, fmt.Errorf("parse filter %s: %w", dstIP, err)
+	}
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && tcp && dst port %d && %s", srcAddr.Port, filter))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && ((tcp && dst port %d && %s) || ((ip[6:2] & 0x1fff) != 0 && %s))", srcAddr.Port, filter, filter2))
 	if err != nil {
 		return nil, fmt.Errorf("create raw connection: %w", err)
 	}
@@ -476,7 +486,6 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 	}
 
 	// TCP Ack, always use the expected one
-	log.Infof("Seq: #%d, Size: %d\n", packet.TransportLayer().(*layers.TCP).Seq, uint32(len(packet.ApplicationLayer().LayerContents())))
 	expectedAck := packet.TransportLayer().(*layers.TCP).Seq + uint32(len(packet.ApplicationLayer().LayerContents()))
 	if expectedAck > client.ack || (4294967295-packet.TransportLayer().(*layers.TCP).Seq < uint32(len(packet.ApplicationLayer().LayerContents()))) {
 		client.ack = expectedAck
