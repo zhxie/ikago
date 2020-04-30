@@ -475,8 +475,12 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 		}
 	}
 
-	// TCP Ack
-	client.ack = client.ack + uint32(len(packet.ApplicationLayer().LayerContents()))
+	// TCP Ack, always use the expected one
+	log.Infof("Seq: #%d, Size: %d\n", packet.TransportLayer().(*layers.TCP).Seq, uint32(len(packet.ApplicationLayer().LayerContents())))
+	expectedAck := packet.TransportLayer().(*layers.TCP).Seq + uint32(len(packet.ApplicationLayer().LayerContents()))
+	if expectedAck > client.ack || (4294967295-packet.TransportLayer().(*layers.TCP).Seq < uint32(len(packet.ApplicationLayer().LayerContents()))) {
+		client.ack = expectedAck
+	}
 
 	// Decrypt
 	contents, err := client.crypt.Decrypt(packet.ApplicationLayer().LayerContents())
