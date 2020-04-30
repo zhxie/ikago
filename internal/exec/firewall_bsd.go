@@ -15,7 +15,7 @@ func addGlobalFirewallRule() error {
 
 func addSpecificFirewallRule(ip net.IP, port uint16) error {
 	routeCmd := exec.Command("sysctl", "-w", "net.inet.ip.forwarding=0")
-	_, err = routeCmd.CombinedOutput()
+	_, err := routeCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("exec sysctl: %w", err)
 	}
