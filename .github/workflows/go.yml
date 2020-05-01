@@ -41,5 +41,10 @@ jobs:
 
     - name: Build
       run: |
-        go build -v ./cmd/ikago-client
-        go build -v ./cmd/ikago-server
+        ./build.sh
+
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: ikago-client
+        path: ikago-client
