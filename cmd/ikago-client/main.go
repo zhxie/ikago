@@ -68,20 +68,19 @@ var (
 )
 
 var (
-	publishIP     *net.IPAddr
-	upPort        uint16
-	sources       []*net.IPAddr
-	serverIP      net.IP
-	serverPort    uint16
-	listenDevs    []*pcap.Device
-	upDev         *pcap.Device
-	gatewayDev    *pcap.Device
-	crypt         crypto.Crypt
-	listenMTU     int
-	upMTU         int
-	isKCP         bool
-	kcpConfig     *config.KCPConfig
-	dummyListener net.Listener
+	publishIP  *net.IPAddr
+	upPort     uint16
+	sources    []*net.IPAddr
+	serverIP   net.IP
+	serverPort uint16
+	listenDevs []*pcap.Device
+	upDev      *pcap.Device
+	gatewayDev *pcap.Device
+	crypt      crypto.Crypt
+	listenMTU  int
+	upMTU      int
+	isKCP      bool
+	kcpConfig  *config.KCPConfig
 )
 
 var (
@@ -418,9 +417,6 @@ func main() {
 	go func() {
 		<-sig
 		closeAll()
-		if dummyListener != nil {
-			dummyListener.Close()
-		}
 		log.Close()
 		os.Exit(0)
 	}()
