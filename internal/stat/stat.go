@@ -39,6 +39,7 @@ func (manager *TrafficManager) Indicator(node string) (*TrafficIndicator, error)
 func (manager *TrafficManager) Add(node string, size uint) {
 	indicator, ok := manager.indicators[node]
 	if !ok {
+		manager.nodes = append(manager.nodes, node)
 		indicator = &TrafficIndicator{}
 		manager.indicators[node] = indicator
 		log.Verbosef("Track new traffic from %s\n", node)
