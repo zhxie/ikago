@@ -46,5 +46,5 @@ jobs:
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2
       with:
-        name: ikago-client
-        path: ikago-client
+        name: ikago_latest_${{ os }}
+        path: ikago-*
