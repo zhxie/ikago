@@ -104,7 +104,7 @@ var (
 	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
-	defrag       *pcap.Defragmenter
+	defrag       pcap.Defragmenter
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -152,7 +152,7 @@ func init() {
 
 	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
-	defrag = pcap.NewDefragmenter()
+	defrag = pcap.NewEasyDefragmenter()
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)

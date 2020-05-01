@@ -89,7 +89,7 @@ var (
 	listenConns []*pcap.RawConn
 	upConn      net.Conn
 	c           chan pcap.ConnPacket
-	defrag      *pcap.Defragmenter
+	defrag      pcap.Defragmenter
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
 	listenStats *stat.TrafficManager
@@ -131,7 +131,7 @@ func init() {
 
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
-	defrag = pcap.NewDefragmenter()
+	defrag = pcap.NewEasyDefragmenter()
 	nat = make(map[string]*natIndicator)
 	listenStats = stat.NewTrafficManager()
 	upStats = stat.NewTrafficManager()

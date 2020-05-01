@@ -1,24 +1,176 @@
 package pcap
 
 import (
+	"errors"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/ip4defrag"
 	"github.com/google/gopacket/layers"
+	"sort"
 )
 
-// Defragmenter is a machine defragments packets.
-type Defragmenter struct {
-	defragmenter *ip4defrag.IPv4Defragmenter
+type fragIndicator struct {
+	length uint16
+	offset uint16
+	frags  []*PacketIndicator
 }
 
-// NewDefragmenter returns a new defragmenter.
-func NewDefragmenter() *Defragmenter {
-	return &Defragmenter{defragmenter: ip4defrag.NewIPv4Defragmenter()}
+func newFragIndicator() *fragIndicator {
+	return &fragIndicator{
+		frags: make([]*PacketIndicator, 0),
+	}
+}
+
+func (indicator *fragIndicator) append(ind *PacketIndicator) {
+	indicator.frags = append(indicator.frags, ind)
+
+	if ind.MoreFragments() {
+		indicator.length = indicator.length + uint16(len(ind.NetworkPayload()))
+	} else {
+		// Final fragment
+		indicator.offset = ind.FragOffset()
+	}
+
+	// Sort
+	if len(indicator.frags) <= 1 {
+		return
+	}
+	sort.Slice(indicator.frags, func(i, j int) bool {
+		return indicator.frags[i].FragOffset() < indicator.frags[j].FragOffset()
+	})
+}
+
+func (indicator *fragIndicator) isCompleted() bool {
+	return indicator.length/8 == indicator.offset
+}
+
+func (indicator *fragIndicator) concatenate() (*PacketIndicator, error) {
+	var (
+		err             error
+		newNetworkLayer gopacket.NetworkLayer
+		contents        []byte
+		data            []byte
+		ind             *PacketIndicator
+	)
+
+	if !indicator.isCompleted() {
+		return nil, errors.New("incomplete fragments")
+	}
+
+	// Create new network layer
+	switch t := indicator.frags[0].NetworkLayer().LayerType(); t {
+	case layers.LayerTypeIPv4:
+		ipv4Layer := indicator.frags[0].IPv4Layer()
+		temp := *ipv4Layer
+		newNetworkLayer = &temp
+
+		FlagIPv4Layer(newNetworkLayer.(*layers.IPv4), false, false, 0)
+	default:
+		return nil, fmt.Errorf("network layer type %s not support", t)
+	}
+
+	// Concatenate network payloads
+	contents = make([]byte, 0)
+	for _, frag := range indicator.frags {
+		contents = append(contents, frag.NetworkPayload()...)
+	}
+
+	// Serialize
+	if indicator.frags[0].LinkLayer() == nil {
+		data, err = Serialize(newNetworkLayer.(gopacket.SerializableLayer),
+			gopacket.Payload(contents))
+	} else {
+		data, err = Serialize(indicator.frags[0].LinkLayer().(gopacket.SerializableLayer),
+			newNetworkLayer.(gopacket.SerializableLayer),
+			gopacket.Payload(contents))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("serialize: %w", err)
+	}
+
+	// Parse packet
+	if indicator.frags[0].LinkLayer() == nil {
+		ind, err = ParseEmbPacket(data)
+	} else {
+		var packet gopacket.Packet
+
+		packet, err = ParseRawPacket(data)
+		if err != nil {
+			return nil, fmt.Errorf("parse packet: %w", err)
+		}
+
+		ind, err = ParsePacket(packet)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parse packet: %w", err)
+	}
+
+	return ind, nil
+}
+
+type fragFlow struct {
+	id  uint16
+	src string
+}
+
+// Defragmenter is a machine defragments packets.
+type Defragmenter interface {
+	Append(ind *PacketIndicator) (*PacketIndicator, error)
+}
+
+// EasyDefragmenter is a machine defragments packets which also accepts non-standard packets.
+type EasyDefragmenter struct {
+	frags map[fragFlow]*fragIndicator
+}
+
+// NewEasyDefragmenter returns a new easy defragmenter.
+func NewEasyDefragmenter() *EasyDefragmenter {
+	return &EasyDefragmenter{frags: make(map[fragFlow]*fragIndicator)}
 }
 
 // Append adds a fragment to the defragmenter.
-func (defrag *Defragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
+func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
+	if !ind.IsFrag() {
+		return ind, nil
+	}
+
+	fragFlow := fragFlow{
+		id:  ind.NetworkId(),
+		src: ind.SrcIP().String(),
+	}
+	fragIndicator, ok := defrag.frags[fragFlow]
+	if !ok || fragIndicator == nil {
+		fragIndicator = newFragIndicator()
+		defrag.frags[fragFlow] = fragIndicator
+	}
+
+	fragIndicator.append(ind)
+
+	if !fragIndicator.isCompleted() {
+		return nil, nil
+	}
+
+	// Concatenate fragments
+	indicator, err := fragIndicator.concatenate()
+	if err != nil {
+		return nil, fmt.Errorf("concatenate: %w", err)
+	}
+
+	return indicator, nil
+}
+
+// StrictDefragmenter is a machine defragments packets which drops invalid packets.
+type StrictDefragmenter struct {
+	defragmenter *ip4defrag.IPv4Defragmenter
+}
+
+// NewStrictDefragmenter returns a new strict defragmenter.
+func NewStrictDefragmenter() *StrictDefragmenter {
+	return &StrictDefragmenter{defragmenter: ip4defrag.NewIPv4Defragmenter()}
+}
+
+// Append adds a fragment to the defragmenter.
+func (defrag *StrictDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
 	if !ind.IsFrag() {
 		return ind, nil
 	}

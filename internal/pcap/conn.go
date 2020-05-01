@@ -24,7 +24,7 @@ type clientIndicator struct {
 // Conn is a packet pcap network connection add fake TCP header to all traffic.
 type Conn struct {
 	conn          *RawConn
-	defrag        *Defragmenter
+	defrag        Defragmenter
 	srcPort       uint16
 	dstAddr       *net.TCPAddr
 	crypt         crypto.Crypt
@@ -39,7 +39,7 @@ type Conn struct {
 
 func newConn() *Conn {
 	return &Conn{
-		defrag:  NewDefragmenter(),
+		defrag:  NewEasyDefragmenter(),
 		mtu:     MaxMTU,
 		clients: make(map[string]*clientIndicator),
 	}
