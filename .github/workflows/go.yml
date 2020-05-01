@@ -10,7 +10,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest, macos-latest]
     steps:
 
     - name: Set up Go 1.13
@@ -20,6 +20,7 @@ jobs:
       id: go
     
     - name: Set up libpcap-dev
+      if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libpcap-dev -y
 
     - name: Check out code into the Go module directory
