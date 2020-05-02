@@ -23,6 +23,7 @@
   "rule": false,
   "verbose": false,
   "log": "",
+  "monitor": 0,
 
   "port": 18081
 }

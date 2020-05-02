@@ -14,7 +14,9 @@ import (
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"ikago/internal/stat"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -54,9 +56,10 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 const keepAlive float64 = 30 // seconds
 
 var (
-	version = ""
-	build   = ""
-	commit  = ""
+	version     = ""
+	build       = ""
+	commit      = ""
+	versionInfo string
 )
 
 var (
@@ -84,6 +87,7 @@ var (
 	argRule           = flag.Bool("rule", false, "Add firewall rule.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
+	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
 	argPort           = flag.Int("p", 0, "Port for listening.")
 )
 
@@ -114,12 +118,10 @@ var (
 	patMap       map[quintuple]uint16
 	natLock      sync.RWMutex
 	nat          map[pcap.NATGuide]*natIndicator
-	listenStats  *stat.TrafficManager
-	upStats      *stat.TrafficManager
+	monitor      *stat.TrafficMonitor
 )
 
 func init() {
-	versionInfo := ""
 	if version != "" {
 		versionInfo = versionInfo + version
 	}
@@ -135,7 +137,8 @@ func init() {
 	if commit != "" {
 		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
 	}
-	log.Infof("IkaGo-server %s\n\n", versionInfo)
+	versionInfo = "IkaGo-server " + version
+	log.Infof("%s\n\n", versionInfo)
 
 	// Parse arguments
 	flag.Parse()
@@ -158,8 +161,6 @@ func init() {
 	icmpv4IdPool = make([]time.Time, 65536)
 	patMap = make(map[quintuple]uint16)
 	nat = make(map[pcap.NATGuide]*natIndicator)
-	listenStats = stat.NewTrafficManager()
-	upStats = stat.NewTrafficManager()
 }
 
 func main() {
@@ -202,6 +203,7 @@ func main() {
 			Rule:      *argRule,
 			Verbose:   *argVerbose,
 			Log:       *argLog,
+			Monitor:   *argMonitor,
 			Port:      *argPort,
 		}
 	}
@@ -301,6 +303,9 @@ func main() {
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
 	}
+	if cfg.Monitor < 0 || cfg.Monitor > 65535 {
+		log.Fatalln(fmt.Errorf("monitor port %d out of range", cfg.Monitor))
+	}
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("listen port %d out of range", cfg.Port))
 	}
@@ -349,6 +354,36 @@ func main() {
 	kcpConfig = &cfg.KCPConfig
 	if isKCP {
 		log.Infoln("Enable KCP")
+	}
+
+	// Monitor
+	if cfg.Monitor != 0 {
+		if cfg.Monitor == int(port) {
+			log.Fatalln(fmt.Errorf("same monitor port with listen port"))
+		}
+
+		monitor = stat.NewTrafficMonitor()
+
+		go func() {
+			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+				_, err := io.WriteString(w, fmt.Sprintf("%s\n\n", versionInfo))
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+					return
+				}
+
+				_, err = io.WriteString(w, monitor.VerboseString())
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+				}
+			})
+			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
+			if err != nil {
+				log.Fatalln(fmt.Errorf("monitor: %w", err))
+			}
+		}()
+
+		log.Infof("Monitor on :%d\n", cfg.Monitor)
 	}
 
 	log.Infof("Proxy from :%d\n", cfg.Port)
@@ -559,26 +594,6 @@ func closeAll() {
 	}
 	if upConn != nil {
 		upConn.Close()
-	}
-
-	// Statistics
-	log.Infof("\nOutbound statistics:\n")
-	for _, node := range listenStats.Nodes() {
-		indicator, err := listenStats.Indicator(node)
-		if err != nil {
-			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
-		}
-
-		log.Infof("%s: %s\n", node, indicator.String())
-	}
-	log.Infof("\nInbound statistics:\n")
-	for _, node := range upStats.Nodes() {
-		indicator, err := upStats.Indicator(node)
-		if err != nil {
-			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
-		}
-
-		log.Infof("%s: %s\n", node, indicator.String())
 	}
 }
 
@@ -865,7 +880,9 @@ func handleListen(contents []byte, conn net.Conn) error {
 	}
 
 	// Statistics
-	listenStats.Add(conn.RemoteAddr().String(), uint(embIndicator.Size()))
+	if monitor != nil {
+		monitor.Add(conn.RemoteAddr().String(), stat.DirectionOut, uint(embIndicator.Size()))
+	}
 
 	return nil
 }
@@ -1059,7 +1076,9 @@ func handleUpstream(packet gopacket.Packet) error {
 
 	// Statistics
 	size := indicator.MTU()
-	upStats.Add(ni.conn.RemoteAddr().String(), uint(size))
+	if monitor != nil {
+		monitor.Add(ni.conn.RemoteAddr().String(), stat.DirectionIn, uint(size))
+	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s (%d Bytes)\n",
 		indicator.TransportProtocol(), ni.embSrc.String(), ni.src.String(), indicator.Src(), size)

@@ -14,8 +14,10 @@ import (
 	"ikago/internal/log"
 	"ikago/internal/pcap"
 	"ikago/internal/stat"
+	"io"
 	"math/rand"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -31,9 +33,10 @@ type natIndicator struct {
 }
 
 var (
-	version = ""
-	build   = ""
-	commit  = ""
+	version     = ""
+	build       = ""
+	commit      = ""
+	versionInfo string
 )
 
 var (
@@ -61,6 +64,7 @@ var (
 	argRule           = flag.Bool("rule", false, "Add firewall rule.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
+	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argSources        = flag.String("r", "", "Sources.")
@@ -91,12 +95,10 @@ var (
 	defrag      pcap.Defragmenter
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
-	listenStats *stat.TrafficManager
-	upStats     *stat.TrafficManager
+	monitor     *stat.TrafficMonitor
 )
 
 func init() {
-	versionInfo := ""
 	if version != "" {
 		versionInfo = versionInfo + version
 	}
@@ -112,7 +114,8 @@ func init() {
 	if commit != "" {
 		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
 	}
-	log.Infof("IkaGo-client %s\n\n", versionInfo)
+	versionInfo = "IkaGo-client " + versionInfo
+	log.Infof("%s\n\n", versionInfo)
 
 	// Parse arguments
 	flag.Parse()
@@ -132,8 +135,6 @@ func init() {
 	c = make(chan pcap.ConnPacket, 1000)
 	defrag = pcap.NewEasyDefragmenter()
 	nat = make(map[string]*natIndicator)
-	listenStats = stat.NewTrafficManager()
-	upStats = stat.NewTrafficManager()
 }
 
 func main() {
@@ -176,6 +177,7 @@ func main() {
 			Rule:      *argRule,
 			Verbose:   *argVerbose,
 			Log:       *argLog,
+			Monitor:   *argMonitor,
 			Publish:   *argPublish,
 			Port:      *argUpPort,
 			Sources:   splitArg(*argSources),
@@ -281,6 +283,9 @@ func main() {
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
 	}
+	if cfg.Monitor < 0 || cfg.Monitor > 65535 {
+		log.Fatalln(fmt.Errorf("monitor port %d out of range", cfg.Monitor))
+	}
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.Port))
 	}
@@ -288,8 +293,10 @@ func main() {
 	// Randomize upstream port
 	if cfg.Port == 0 {
 		s := rand.NewSource(time.Now().UnixNano())
-		r := rand.New(s)
-		cfg.Port = 49152 + r.Intn(16384)
+		for cfg.Port == 0 || cfg.Port == cfg.Monitor {
+			r := rand.New(s)
+			cfg.Port = 49152 + r.Intn(16384)
+		}
 	}
 	upPort = uint16(cfg.Port)
 
@@ -363,6 +370,36 @@ func main() {
 	kcpConfig = &cfg.KCPConfig
 	if isKCP {
 		log.Infoln("Enable KCP")
+	}
+
+	// Monitor
+	if cfg.Monitor != 0 {
+		if cfg.Monitor == int(upPort) {
+			log.Fatalln(fmt.Errorf("same monitor port with upstream port"))
+		}
+
+		monitor = stat.NewTrafficMonitor()
+
+		go func() {
+			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+				_, err := io.WriteString(w, fmt.Sprintf("%s\n\n", versionInfo))
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+					return
+				}
+
+				_, err = io.WriteString(w, monitor.VerboseString())
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+				}
+			})
+			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
+			if err != nil {
+				log.Fatalln(fmt.Errorf("monitor: %w", err))
+			}
+		}()
+
+		log.Infof("Monitor on :%d\n", cfg.Monitor)
 	}
 
 	if len(sources) == 1 {
@@ -556,26 +593,6 @@ func closeAll() {
 	if upConn != nil {
 		upConn.Close()
 	}
-
-	// Statistics
-	log.Infof("\nOutbound statistics:\n")
-	for _, node := range listenStats.Nodes() {
-		indicator, err := listenStats.Indicator(node)
-		if err != nil {
-			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
-		}
-
-		log.Infof("%s: %s\n", node, indicator.String())
-	}
-	log.Infof("\nInbound statistics:\n")
-	for _, node := range upStats.Nodes() {
-		indicator, err := upStats.Indicator(node)
-		if err != nil {
-			log.Errorln(fmt.Errorf("statistics %s: %w", node, err))
-		}
-
-		log.Infof("%s: %s\n", node, indicator.String())
-	}
 }
 
 func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
@@ -719,7 +736,9 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 	// Statistics
 	size := indicator.MTU()
-	listenStats.Add(indicator.SrcIP().String(), uint(size))
+	if monitor != nil {
+		monitor.Add(indicator.SrcIP().String(), stat.DirectionOut, uint(size))
+	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
 		indicator.TransportProtocol(), indicator.Src().String(), indicator.Dst().String(), size)
@@ -818,7 +837,9 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Statistics
-	upStats.Add(embIndicator.DstIP().String(), uint(embIndicator.Size()))
+	if monitor != nil {
+		monitor.Add(embIndicator.DstIP().String(), stat.DirectionIn, uint(embIndicator.Size()))
+	}
 
 	return nil
 }

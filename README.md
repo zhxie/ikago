@@ -71,6 +71,8 @@ go run ./cmd/ikago-server -p [port]
 
 `-log path`: (Optional) Log.
 
+`-monitor port`: (Optional) Port for monitoring. If this value is set, IkaGo will server HTTP server on `localhost:port` and print statistics on it.
+
 ### Client options
 
 `-publish addresses`: (Optional) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.

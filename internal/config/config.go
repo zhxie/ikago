@@ -24,6 +24,7 @@ type Config struct {
 	Rule       bool      `json:"rule"`
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`
+	Monitor    int       `json:"monitor"`
 	Port       int       `json:"port"`
 	Publish    string    `json:"publish"`
 	Sources    []string  `json:"sources"`
