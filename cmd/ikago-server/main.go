@@ -137,7 +137,7 @@ func init() {
 	if commit != "" {
 		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
 	}
-	versionInfo = "IkaGo-server " + version
+	versionInfo = "IkaGo-server " + versionInfo
 	log.Infof("%s\n\n", versionInfo)
 
 	// Parse arguments
