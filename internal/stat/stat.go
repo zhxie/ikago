@@ -10,10 +10,10 @@ import (
 
 // TrafficIndicator describes traffic statistics.
 type TrafficIndicator struct {
-	count  uint
-	size   uint
-	appear time.Time
-	update time.Time
+	count    uint
+	size     uint
+	appear   time.Time
+	lastSeen time.Time
 }
 
 // Count returns the count of data.
@@ -31,16 +31,16 @@ func (indicator *TrafficIndicator) Appear() time.Time {
 	return indicator.appear
 }
 
-// Update returns the last update time of data.
-func (indicator *TrafficIndicator) Update() time.Time {
-	return indicator.update
+// LastSeen returns the last seen time of data.
+func (indicator *TrafficIndicator) LastSeen() time.Time {
+	return indicator.lastSeen
 }
 
 // Add adds a data of traffic.
 func (indicator *TrafficIndicator) Add(size uint) {
 	indicator.count++
 	indicator.size = indicator.size + size
-	indicator.update = time.Now()
+	indicator.lastSeen = time.Now()
 }
 
 func (indicator *TrafficIndicator) String() string {
@@ -52,7 +52,7 @@ func (indicator *TrafficIndicator) VerboseString() string {
 	appear := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
 		indicator.appear.Year(), indicator.appear.Month(), indicator.appear.Day(), indicator.appear.Hour(), indicator.appear.Minute(), indicator.appear.Second())
 	update := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
-		indicator.update.Year(), indicator.update.Month(), indicator.update.Day(), indicator.update.Hour(), indicator.update.Minute(), indicator.update.Second())
+		indicator.lastSeen.Year(), indicator.lastSeen.Month(), indicator.lastSeen.Day(), indicator.lastSeen.Hour(), indicator.lastSeen.Minute(), indicator.lastSeen.Second())
 
 	return fmt.Sprintf("%d Bytes (%d packets) (%s/%s)", indicator.size, indicator.count, appear, update)
 }
