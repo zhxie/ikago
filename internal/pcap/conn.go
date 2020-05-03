@@ -21,6 +21,8 @@ type clientIndicator struct {
 	ack   uint32
 }
 
+const keepFragments time.Duration = 30 * time.Second
+
 // Conn is a packet pcap network connection add fake TCP header to all traffic.
 type Conn struct {
 	conn          *RawConn
@@ -38,11 +40,13 @@ type Conn struct {
 }
 
 func newConn() *Conn {
-	return &Conn{
+	conn := &Conn{
 		defrag:  NewEasyDefragmenter(),
 		mtu:     MaxMTU,
 		clients: make(map[string]*clientIndicator),
 	}
+	conn.defrag.SetDeadline(keepFragments)
+	return conn
 }
 
 // Dial acts like Dial for pcap networks.

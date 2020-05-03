@@ -7,12 +7,14 @@ import (
 	"github.com/google/gopacket/ip4defrag"
 	"github.com/google/gopacket/layers"
 	"sort"
+	"time"
 )
 
 type fragIndicator struct {
-	length uint16
-	offset uint16
-	frags  []*PacketIndicator
+	length   uint16
+	offset   uint16
+	frags    []*PacketIndicator
+	lastSeen time.Time
 }
 
 func newFragIndicator() *fragIndicator {
@@ -23,6 +25,7 @@ func newFragIndicator() *fragIndicator {
 
 func (indicator *fragIndicator) append(ind *PacketIndicator) {
 	indicator.frags = append(indicator.frags, ind)
+	indicator.lastSeen = time.Now()
 
 	if ind.MoreFragments() {
 		indicator.length = indicator.length + uint16(len(ind.NetworkPayload()))
@@ -115,12 +118,16 @@ type fragFlow struct {
 
 // Defragmenter is a machine defragments packets.
 type Defragmenter interface {
+	// Append adds a fragment to the defragmenter.
 	Append(ind *PacketIndicator) (*PacketIndicator, error)
+	// SetDeadline sets the deadline associated with the fragments.
+	SetDeadline(t time.Duration)
 }
 
 // EasyDefragmenter is a machine defragments packets which also accepts non-standard packets.
 type EasyDefragmenter struct {
-	frags map[fragFlow]*fragIndicator
+	frags    map[fragFlow]*fragIndicator
+	deadline time.Duration
 }
 
 // NewEasyDefragmenter returns a new easy defragmenter.
@@ -128,7 +135,6 @@ func NewEasyDefragmenter() *EasyDefragmenter {
 	return &EasyDefragmenter{frags: make(map[fragFlow]*fragIndicator)}
 }
 
-// Append adds a fragment to the defragmenter.
 func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
 	if !ind.IsFrag() {
 		return ind, nil
@@ -140,6 +146,12 @@ func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, 
 	}
 	fragIndicator, ok := defrag.frags[fragFlow]
 	if !ok || fragIndicator == nil {
+		fragIndicator = newFragIndicator()
+		defrag.frags[fragFlow] = fragIndicator
+	}
+
+	// Replace old fragments
+	if defrag.deadline > 0 && time.Now().Sub(fragIndicator.lastSeen) > defrag.deadline {
 		fragIndicator = newFragIndicator()
 		defrag.frags[fragFlow] = fragIndicator
 	}
@@ -159,9 +171,14 @@ func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, 
 	return indicator, nil
 }
 
+func (defrag *EasyDefragmenter) SetDeadline(t time.Duration) {
+	defrag.deadline = t
+}
+
 // StrictDefragmenter is a machine defragments packets which drops invalid packets.
 type StrictDefragmenter struct {
 	defragmenter *ip4defrag.IPv4Defragmenter
+	deadline     time.Duration
 }
 
 // NewStrictDefragmenter returns a new strict defragmenter.
@@ -169,10 +186,14 @@ func NewStrictDefragmenter() *StrictDefragmenter {
 	return &StrictDefragmenter{defragmenter: ip4defrag.NewIPv4Defragmenter()}
 }
 
-// Append adds a fragment to the defragmenter.
 func (defrag *StrictDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
 	if !ind.IsFrag() {
 		return ind, nil
+	}
+
+	// Discard old fragments
+	if defrag.deadline > 0 {
+		defrag.defragmenter.DiscardOlderThan(time.Now().Add(-defrag.deadline))
 	}
 
 	layer, err := defrag.defragmenter.DefragIPv4(ind.IPv4Layer())
@@ -196,6 +217,10 @@ func (defrag *StrictDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator
 	}
 
 	return indicator, nil
+}
+
+func (defrag *StrictDefragmenter) SetDeadline(t time.Duration) {
+	defrag.deadline = t
 }
 
 // CreateFragmentPackets creates fragments by given layers and fragment size.
