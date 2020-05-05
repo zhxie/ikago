@@ -106,7 +106,7 @@ var (
 	listeners    []net.Listener
 	upConn       *pcap.RawConn
 	c            chan pcap.ConnBytes
-	stater       *pcap.FragStater
+	defrag       *pcap.EasyDefragmenter
 	nextTCPPort  uint16
 	tcpPortPool  []time.Time
 	nextUDPPort  uint16
@@ -153,8 +153,8 @@ func init() {
 
 	listeners = make([]net.Listener, 0)
 	c = make(chan pcap.ConnBytes, 1000)
-	stater = pcap.NewFragStater()
-	stater.SetDeadline(keepFragments)
+	defrag = pcap.NewEasyDefragmenter()
+	defrag.SetDeadline(keepFragments)
 	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
@@ -874,7 +874,7 @@ func handleUpstream(packet gopacket.Packet) error {
 	var (
 		err               error
 		indicator         *pcap.PacketIndicator
-		guide             pcap.NATGuide
+		frags             []*pcap.PacketIndicator
 		ni                *natIndicator
 		embTransportLayer gopacket.Layer
 		embNetworkLayer   gopacket.NetworkLayer
@@ -887,22 +887,19 @@ func handleUpstream(packet gopacket.Packet) error {
 		return fmt.Errorf("parse packet: %w", err)
 	}
 
-	// NAT
-	if indicator.IsFrag() {
-		headIndicator := stater.Resolve(indicator)
-		if headIndicator == nil {
-			return nil
-		}
+	// Handle fragments
+	indicator, frags, err = defrag.AppendOriginal(indicator)
+	if err != nil {
+		return fmt.Errorf("defrag: %w", err)
+	}
+	if indicator == nil {
+		return nil
+	}
 
-		guide = pcap.NATGuide{
-			Src:      headIndicator.NATDst().String(),
-			Protocol: indicator.TransportProtocol(),
-		}
-	} else {
-		guide = pcap.NATGuide{
-			Src:      indicator.NATDst().String(),
-			Protocol: indicator.TransportProtocol(),
-		}
+	// NAT
+	guide := pcap.NATGuide{
+		Src:      indicator.NATDst().String(),
+		Protocol: indicator.TransportLayer().LayerType(),
 	}
 	natLock.RLock()
 	ni, ok := nat[guide]
@@ -924,158 +921,161 @@ func handleUpstream(packet gopacket.Packet) error {
 		return fmt.Errorf("transport layer type %s not support", protocol)
 	}
 
-	// Create embedded transport layer
-	if indicator.TransportLayer() != nil {
-		switch t := indicator.TransportLayer().LayerType(); t {
-		case layers.LayerTypeTCP:
-			embTCPLayer := indicator.TCPLayer()
-			temp := *embTCPLayer
-			embTransportLayer = &temp
-
-			newEmbTCPLayer := embTransportLayer.(*layers.TCP)
-
-			newEmbTCPLayer.DstPort = layers.TCPPort(ni.embSrc.(*net.TCPAddr).Port)
-		case layers.LayerTypeUDP:
-			embUDPLayer := indicator.UDPLayer()
-			temp := *embUDPLayer
-			embTransportLayer = &temp
-
-			newEmbUDPLayer := embTransportLayer.(*layers.UDP)
-
-			newEmbUDPLayer.DstPort = layers.UDPPort(ni.embSrc.(*net.UDPAddr).Port)
-		case layers.LayerTypeICMPv4:
-			if indicator.ICMPv4Indicator().IsQuery() {
-				embICMPv4Layer := indicator.ICMPv4Indicator().ICMPv4Layer()
-				temp := *embICMPv4Layer
+	for _, frag := range frags {
+		// Create embedded transport layer
+		if frag.TransportLayer() != nil {
+			switch t := frag.TransportLayer().LayerType(); t {
+			case layers.LayerTypeTCP:
+				embTCPLayer := frag.TCPLayer()
+				temp := *embTCPLayer
 				embTransportLayer = &temp
 
-				newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
+				newEmbTCPLayer := embTransportLayer.(*layers.TCP)
 
-				newEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
-			} else {
-				embTransportLayer = indicator.ICMPv4Indicator().NewPureICMPv4Layer()
+				newEmbTCPLayer.DstPort = layers.TCPPort(ni.embSrc.(*net.TCPAddr).Port)
+			case layers.LayerTypeUDP:
+				embUDPLayer := frag.UDPLayer()
+				temp := *embUDPLayer
+				embTransportLayer = &temp
 
-				newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
+				newEmbUDPLayer := embTransportLayer.(*layers.UDP)
 
-				temp := *indicator.ICMPv4Indicator().EmbIPv4Layer()
-				newEmbEmbIPv4Layer := &temp
+				newEmbUDPLayer.DstPort = layers.UDPPort(ni.embSrc.(*net.UDPAddr).Port)
+			case layers.LayerTypeICMPv4:
+				if frag.ICMPv4Indicator().IsQuery() {
+					embICMPv4Layer := frag.ICMPv4Indicator().ICMPv4Layer()
+					temp := *embICMPv4Layer
+					embTransportLayer = &temp
 
-				newEmbEmbIPv4Layer.SrcIP = ni.embSrcIP()
+					newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
 
-				var (
-					err                     error
-					newEmbEmbTransportLayer gopacket.Layer
-				)
+					newEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
+				} else {
+					embTransportLayer = frag.ICMPv4Indicator().NewPureICMPv4Layer()
 
-				switch t := indicator.ICMPv4Indicator().EmbTransportLayer().LayerType(); t {
-				case layers.LayerTypeTCP:
-					temp := *indicator.ICMPv4Indicator().EmbTCPLayer()
-					newEmbEmbTransportLayer = &temp
+					newEmbICMPv4Layer := embTransportLayer.(*layers.ICMPv4)
 
-					newEmbEmbTCPLayer := newEmbEmbTransportLayer.(*layers.TCP)
+					temp := *frag.ICMPv4Indicator().EmbIPv4Layer()
+					newEmbEmbIPv4Layer := &temp
 
-					newEmbEmbTCPLayer.SrcPort = layers.TCPPort(ni.embSrc.(*net.TCPAddr).Port)
+					newEmbEmbIPv4Layer.SrcIP = ni.embSrcIP()
 
-					err = newEmbEmbTCPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
-				case layers.LayerTypeUDP:
-					temp := *indicator.ICMPv4Indicator().EmbUDPLayer()
-					newEmbEmbTransportLayer = &temp
+					var (
+						err                     error
+						newEmbEmbTransportLayer gopacket.Layer
+					)
 
-					newEmbEmbUDPLayer := newEmbEmbTransportLayer.(*layers.UDP)
+					switch t := frag.ICMPv4Indicator().EmbTransportLayer().LayerType(); t {
+					case layers.LayerTypeTCP:
+						temp := *frag.ICMPv4Indicator().EmbTCPLayer()
+						newEmbEmbTransportLayer = &temp
 
-					newEmbEmbUDPLayer.SrcPort = layers.UDPPort(ni.embSrc.(*net.UDPAddr).Port)
+						newEmbEmbTCPLayer := newEmbEmbTransportLayer.(*layers.TCP)
 
-					err = newEmbEmbUDPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
-				case layers.LayerTypeICMPv4:
-					temp := *indicator.ICMPv4Indicator().EmbICMPv4Layer()
-					newEmbEmbTransportLayer = &temp
+						newEmbEmbTCPLayer.SrcPort = layers.TCPPort(ni.embSrc.(*net.TCPAddr).Port)
 
-					if indicator.ICMPv4Indicator().IsEmbQuery() {
-						newEmbEmbICMPv4Layer := newEmbEmbTransportLayer.(*layers.ICMPv4)
+						err = newEmbEmbTCPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
+					case layers.LayerTypeUDP:
+						temp := *frag.ICMPv4Indicator().EmbUDPLayer()
+						newEmbEmbTransportLayer = &temp
 
-						newEmbEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
+						newEmbEmbUDPLayer := newEmbEmbTransportLayer.(*layers.UDP)
+
+						newEmbEmbUDPLayer.SrcPort = layers.UDPPort(ni.embSrc.(*net.UDPAddr).Port)
+
+						err = newEmbEmbUDPLayer.SetNetworkLayerForChecksum(newEmbEmbIPv4Layer)
+					case layers.LayerTypeICMPv4:
+						temp := *frag.ICMPv4Indicator().EmbICMPv4Layer()
+						newEmbEmbTransportLayer = &temp
+
+						if frag.ICMPv4Indicator().IsEmbQuery() {
+							newEmbEmbICMPv4Layer := newEmbEmbTransportLayer.(*layers.ICMPv4)
+
+							newEmbEmbICMPv4Layer.Id = ni.embSrc.(*addr.ICMPQueryAddr).Id
+						}
+					default:
+						return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("transport layer type %s not support", t))
 					}
-				default:
-					return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("transport layer type %s not support", t))
-				}
-				if err != nil {
-					return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
-				}
+					if err != nil {
+						return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("set network layer for checksum: %w", err))
+					}
 
-				payload, err := pcap.Serialize(newEmbEmbIPv4Layer, newEmbEmbTransportLayer.(gopacket.SerializableLayer))
-				if err != nil {
-					return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("serialize: %w", err))
-				}
+					payload, err := pcap.Serialize(newEmbEmbIPv4Layer, newEmbEmbTransportLayer.(gopacket.SerializableLayer))
+					if err != nil {
+						return fmt.Errorf("create embedded transport layer: %w", fmt.Errorf("serialize: %w", err))
+					}
 
-				newEmbICMPv4Layer.Payload = payload
+					newEmbICMPv4Layer.Payload = payload
+				}
+			default:
+				return fmt.Errorf("embedded transport layer type %s not support", t)
 			}
-		default:
-			return fmt.Errorf("embedded transport layer type %s not support", t)
 		}
-	}
 
-	// Create embedded network layer
-	switch t := indicator.NetworkLayer().LayerType(); t {
-	case layers.LayerTypeIPv4:
-		embIPv4Layer := indicator.IPv4Layer()
-		temp := *embIPv4Layer
-		embNetworkLayer = &temp
+		// Create embedded network layer
+		switch t := frag.NetworkLayer().LayerType(); t {
+		case layers.LayerTypeIPv4:
+			embIPv4Layer := frag.IPv4Layer()
+			temp := *embIPv4Layer
+			embNetworkLayer = &temp
 
-		newEmbIPv4Layer := embNetworkLayer.(*layers.IPv4)
+			newEmbIPv4Layer := embNetworkLayer.(*layers.IPv4)
 
-		newEmbIPv4Layer.DstIP = ni.embSrcIP()
-	default:
-		return fmt.Errorf("embedded network layer type %s not support", t)
-	}
-
-	// Set network layer for transport layer
-	if embTransportLayer != nil {
-		switch t := embTransportLayer.LayerType(); t {
-		case layers.LayerTypeTCP:
-			embTCPLayer := embTransportLayer.(*layers.TCP)
-
-			err = embTCPLayer.SetNetworkLayerForChecksum(embNetworkLayer)
-		case layers.LayerTypeUDP:
-			embUDPLayer := embTransportLayer.(*layers.UDP)
-
-			err = embUDPLayer.SetNetworkLayerForChecksum(embNetworkLayer)
-		case layers.LayerTypeICMPv4:
-			break
+			newEmbIPv4Layer.DstIP = ni.embSrcIP()
 		default:
-			return fmt.Errorf("embedded transport layer type %s not support", t)
+			return fmt.Errorf("embedded network layer type %s not support", t)
+		}
+
+		// Set network layer for transport layer
+		if embTransportLayer != nil {
+			switch t := embTransportLayer.LayerType(); t {
+			case layers.LayerTypeTCP:
+				embTCPLayer := embTransportLayer.(*layers.TCP)
+
+				err = embTCPLayer.SetNetworkLayerForChecksum(embNetworkLayer)
+			case layers.LayerTypeUDP:
+				embUDPLayer := embTransportLayer.(*layers.UDP)
+
+				err = embUDPLayer.SetNetworkLayerForChecksum(embNetworkLayer)
+			case layers.LayerTypeICMPv4:
+				break
+			default:
+				return fmt.Errorf("embedded transport layer type %s not support", t)
+			}
+			if err != nil {
+				return fmt.Errorf("set embedded network layer for checksum: %w", err)
+			}
+		}
+
+		// Serialize layers
+		if embTransportLayer == nil {
+			data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),
+				gopacket.Payload(frag.Payload()))
+		} else {
+			data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),
+				embTransportLayer.(gopacket.SerializableLayer),
+				gopacket.Payload(frag.Payload()))
 		}
 		if err != nil {
-			return fmt.Errorf("set embedded network layer for checksum: %w", err)
+			return fmt.Errorf("serialize: %w", err)
 		}
-	}
 
-	// Serialize layers
-	if embTransportLayer == nil {
-		data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(indicator.Payload()))
-	} else {
-		data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),
-			embTransportLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(indicator.Payload()))
-	}
-	if err != nil {
-		return fmt.Errorf("serialize: %w", err)
-	}
+		// Write packet data
+		_, err = ni.conn.Write(data)
+		if err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
 
-	// Write packet data
-	_, err = ni.conn.Write(data)
-	if err != nil {
-		return fmt.Errorf("write: %w", err)
-	}
+		// Statistics
+		size := frag.MTU()
+		if monitor != nil {
+			monitor.Add(ni.conn.RemoteAddr().String(), stat.DirectionIn, uint(size))
+		}
 
-	// Statistics
-	size := indicator.MTU()
-	if monitor != nil {
-		monitor.Add(ni.conn.RemoteAddr().String(), stat.DirectionIn, uint(size))
-	}
+		log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s (%d Bytes)\n",
+			frag.TransportProtocol(), ni.embSrc.String(), ni.src.String(), frag.Src(), size)
 
-	log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s (%d Bytes)\n",
-		indicator.TransportProtocol(), ni.embSrc.String(), ni.src.String(), indicator.Src(), size)
+	}
 
 	return nil
 }
