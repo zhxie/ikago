@@ -10,6 +10,65 @@ import (
 	"time"
 )
 
+type fragFlow struct {
+	id  uint16
+	src string
+}
+
+type fragState struct {
+	indicator *PacketIndicator
+	lastSeen  time.Time
+}
+
+func newFragState(indicator *PacketIndicator) *fragState {
+	return &fragState{
+		indicator: indicator,
+		lastSeen:  time.Now(),
+	}
+}
+
+// FragStater is a state machine of fragments recording the flow of fragments.
+type FragStater struct {
+	frags    map[fragFlow]*fragState
+	deadline time.Duration
+}
+
+// NewFragStater returns a new fragment state machine.
+func NewFragStater() *FragStater {
+	return &FragStater{frags: make(map[fragFlow]*fragState)}
+}
+
+// Resolve resolves a fragment and returns its associated packet with source and destination.
+func (stater *FragStater) Resolve(ind *PacketIndicator) *PacketIndicator {
+	if !ind.IsFrag() {
+		return ind
+	}
+
+	flow := fragFlow{
+		id:  ind.NetworkId(),
+		src: ind.SrcIP().String(),
+	}
+	if ind.FragOffset() == 0 {
+		stater.frags[flow] = newFragState(ind)
+	}
+	state, ok := stater.frags[flow]
+	if !ok || state == nil {
+		return nil
+	}
+
+	// Skip old state
+	if stater.deadline > 0 && time.Now().Sub(state.lastSeen) > stater.deadline {
+		return nil
+	}
+
+	return state.indicator
+}
+
+// SetDeadline sets the deadline associated with the fragments.
+func (stater *FragStater) SetDeadline(t time.Duration) {
+	stater.deadline = t
+}
+
 type fragIndicator struct {
 	length   uint16
 	offset   uint16
@@ -19,7 +78,8 @@ type fragIndicator struct {
 
 func newFragIndicator() *fragIndicator {
 	return &fragIndicator{
-		frags: make([]*PacketIndicator, 0),
+		frags:    make([]*PacketIndicator, 0),
+		lastSeen: time.Now(),
 	}
 }
 
@@ -111,11 +171,6 @@ func (indicator *fragIndicator) concatenate() (*PacketIndicator, error) {
 	return ind, nil
 }
 
-type fragFlow struct {
-	id  uint16
-	src string
-}
-
 // Defragmenter is a machine defragments packets.
 type Defragmenter interface {
 	// Append adds a fragment to the defragmenter.
@@ -140,20 +195,20 @@ func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, 
 		return ind, nil
 	}
 
-	fragFlow := fragFlow{
+	flow := fragFlow{
 		id:  ind.NetworkId(),
 		src: ind.SrcIP().String(),
 	}
-	fragIndicator, ok := defrag.frags[fragFlow]
+	fragIndicator, ok := defrag.frags[flow]
 	if !ok || fragIndicator == nil {
 		fragIndicator = newFragIndicator()
-		defrag.frags[fragFlow] = fragIndicator
+		defrag.frags[flow] = fragIndicator
 	}
 
 	// Replace old fragments
 	if defrag.deadline > 0 && time.Now().Sub(fragIndicator.lastSeen) > defrag.deadline {
 		fragIndicator = newFragIndicator()
-		defrag.frags[fragFlow] = fragIndicator
+		defrag.frags[flow] = fragIndicator
 	}
 
 	fragIndicator.append(ind)
@@ -161,6 +216,9 @@ func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, 
 	if !fragIndicator.isCompleted() {
 		return nil, nil
 	}
+
+	// Remove completed fragments
+	defrag.frags[flow] = nil
 
 	// Concatenate fragments
 	indicator, err := fragIndicator.concatenate()

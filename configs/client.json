@@ -5,8 +5,6 @@
   "method": "plain",
   "password": "",
   "mtu": 0,
-  "listen-mtu": 0,
-  "upstream-mtu": 0,
   "kcp": false,
   "kcp-tuning": {
     "mtu": 1400,

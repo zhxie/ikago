@@ -120,7 +120,7 @@ func (indicator *ICMPv4Indicator) IsQuery() bool {
 	}
 }
 
-// Id returns the ICMPv4 id.
+// Id returns the ICMPv4 Id.
 func (indicator *ICMPv4Indicator) Id() uint16 {
 	return indicator.layer.Id
 }

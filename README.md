@@ -53,11 +53,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-password password`: (Optional, consistent) Password of encryption, must be set only when method is not `plain`.
 
-`-mtu`: (Optional) MTU.
-
-`-listen-mtu`: (Optional) MTU of devices for listening, traffic from client to sources and from server to clients will take this value. If this value is set, it will override `-mtu` in devices for listening.
-
-`-upstream-mtu`: (Optional) MTU of device for routing upstream to, traffic from client to server and from server to destinations will take this value. If this value is set, it will override `-mtu` in devices for routing upstream to.
+`-mtu`: (Optional) MTU. MTU is set in traffic from clients/server to server/clients.
 
 `-kcp`: (Optional, consistent) Enable KCP.
 
