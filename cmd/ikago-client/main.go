@@ -197,7 +197,7 @@ func main() {
 				ex = "path_to_ikago"
 			}
 
-			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, run")
+			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, please run")
 			log.Infof("  sudo setcap cap_net_raw+ep \"%s\"\n", ex)
 			log.Infoln("  before opening IkaGo, or just run as root with sudo.")
 		}
@@ -205,7 +205,7 @@ func main() {
 		break
 	default:
 		if os.Geteuid() != 0 {
-			log.Fatalln("Please run IkaGo as root with sudo.")
+			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, please run IkaGo as root with sudo.")
 		}
 	}
 
@@ -304,7 +304,7 @@ func main() {
 	if cfg.Rule {
 		err := exec.AddSpecificFirewallRule(serverIP, serverPort)
 		if err != nil {
-			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
+			log.Errorln(fmt.Errorf("add firewall rule: %w", err))
 		}
 
 		log.Infoln("Add firewall rule")
@@ -368,7 +368,7 @@ func main() {
 			})
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
-				log.Fatalln(fmt.Errorf("monitor: %w", err))
+				log.Errorln(fmt.Errorf("monitor: %w", err))
 			}
 		}()
 
@@ -634,7 +634,10 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 }
 
 func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
-	var hardwareAddr net.HardwareAddr
+	var (
+		hardwareAddr net.HardwareAddr
+		data         []byte
+	)
 
 	// Parse packet
 	indicator, err := pcap.ParsePacket(packet)
@@ -654,8 +657,12 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	// Record source hardware address
 	hardwareAddr = indicator.SrcHardwareAddr()
 
+	data = make([]byte, 0)
+	data = append(data, packet.NetworkLayer().LayerContents()...)
+	data = append(data, packet.NetworkLayer().LayerPayload()...)
+
 	// Write packet data
-	_, err = upConn.Write(packet.LinkLayer().LayerPayload())
+	_, err = upConn.Write(data)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}

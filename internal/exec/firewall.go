@@ -2,7 +2,6 @@ package exec
 
 import (
 	"fmt"
-	"ikago/internal/log"
 	"net"
 	"runtime"
 )
@@ -29,8 +28,6 @@ func AddSpecificFirewallRule(ip net.IP, port uint16) error {
 	var err error
 
 	switch t := runtime.GOOS; t {
-	case "windows":
-		log.Infof("Skip adding firewall rule on %s\n", t)
 	case "darwin", "freebsd":
 		err = addSpecificFirewallRule(ip, port)
 	case "linux":
