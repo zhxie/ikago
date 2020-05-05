@@ -223,7 +223,7 @@ func main() {
 				ex = "path_to_ikago"
 			}
 
-			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, run")
+			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, please run")
 			log.Infof("  sudo setcap cap_net_raw+ep \"%s\"\n", ex)
 			log.Infoln("  before opening IkaGo, or just run as root with sudo.")
 		}
@@ -231,7 +231,7 @@ func main() {
 		break
 	default:
 		if os.Geteuid() != 0 {
-			log.Fatalln("Please run IkaGo as root with sudo.")
+			log.Infoln("You are running IkaGo as non-root, if IkaGo does not work, please run IkaGo as root with sudo.")
 		}
 	}
 
@@ -306,7 +306,7 @@ func main() {
 			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
 		}
 
-		log.Infoln("Add firewall rule")
+		log.Errorln("Add firewall rule")
 	}
 
 	// Crypt
@@ -355,7 +355,7 @@ func main() {
 			})
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
-				log.Fatalln(fmt.Errorf("monitor: %w", err))
+				log.Errorln(fmt.Errorf("monitor: %w", err))
 			}
 		}()
 
@@ -775,11 +775,11 @@ func handleListen(contents []byte, conn net.Conn) error {
 
 	// Serialize layers
 	if newTransportLayer == nil {
-		data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
 			newNetworkLayer.(gopacket.SerializableLayer),
 			gopacket.Payload(embIndicator.Payload()))
 	} else {
-		data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+		data, err = pcap.Serialize(newLinkLayer.(gopacket.SerializableLayer),
 			newNetworkLayer.(gopacket.SerializableLayer),
 			newTransportLayer.(gopacket.SerializableLayer),
 			gopacket.Payload(embIndicator.Payload()))
