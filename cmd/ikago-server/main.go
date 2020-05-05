@@ -155,6 +155,7 @@ func init() {
 	c = make(chan pcap.ConnBytes, 1000)
 	stater = pcap.NewFragStater()
 	stater.SetDeadline(keepFragments)
+	tcpPortPool = make([]time.Time, 16384)
 	udpPortPool = make([]time.Time, 16384)
 	icmpv4IdPool = make([]time.Time, 65536)
 	patMap = make(map[quintuple]uint16)
@@ -1050,9 +1051,12 @@ func handleUpstream(packet gopacket.Packet) error {
 
 	// Serialize layers
 	if embTransportLayer == nil {
-		data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer), embTransportLayer.(gopacket.SerializableLayer), gopacket.Payload(indicator.Payload()))
+		data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),
+			gopacket.Payload(indicator.Payload()))
 	} else {
-		data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer), gopacket.Payload(indicator.Payload()))
+		data, err = pcap.Serialize(embNetworkLayer.(gopacket.SerializableLayer),
+			embTransportLayer.(gopacket.SerializableLayer),
+			gopacket.Payload(indicator.Payload()))
 	}
 	if err != nil {
 		return fmt.Errorf("serialize: %w", err)
