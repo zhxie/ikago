@@ -10,19 +10,19 @@ import (
 
 // TrafficIndicator describes traffic statistics.
 type TrafficIndicator struct {
-	count    uint
-	size     uint
+	count    uint64
+	size     uint64
 	appear   time.Time
 	lastSeen time.Time
 }
 
 // Count returns the count of data.
-func (indicator *TrafficIndicator) Count() uint {
+func (indicator *TrafficIndicator) Count() uint64 {
 	return indicator.count
 }
 
 // Size returns the size of data.
-func (indicator *TrafficIndicator) Size() uint {
+func (indicator *TrafficIndicator) Size() uint64 {
 	return indicator.size
 }
 
@@ -39,12 +39,12 @@ func (indicator *TrafficIndicator) LastSeen() time.Time {
 // Add adds a data of traffic.
 func (indicator *TrafficIndicator) Add(size uint) {
 	indicator.count++
-	indicator.size = indicator.size + size
+	indicator.size = indicator.size + uint64(size)
 	indicator.lastSeen = time.Now()
 }
 
 func (indicator *TrafficIndicator) String() string {
-	return fmt.Sprintf("%d Bytes (%d packets)", indicator.size, indicator.count)
+	return fmt.Sprintf("%s (%d packets)", formatSize(indicator.size), indicator.count)
 }
 
 // VerboseString prints string with verbose contents.
@@ -54,7 +54,7 @@ func (indicator *TrafficIndicator) VerboseString() string {
 	update := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
 		indicator.lastSeen.Year(), indicator.lastSeen.Month(), indicator.lastSeen.Day(), indicator.lastSeen.Hour(), indicator.lastSeen.Minute(), indicator.lastSeen.Second())
 
-	return fmt.Sprintf("%d Bytes (%d packets) (%s/%s)", indicator.size, indicator.count, appear, update)
+	return fmt.Sprintf("%s (%d packets) (%s/%s)", formatSize(indicator.size), indicator.count, appear, update)
 }
 
 // TrafficManager describes traffic statistics from and to different nodes.
@@ -113,4 +113,16 @@ func (manager *TrafficManager) addTotal(size uint) {
 	indicator, _ := manager.indicators["total"]
 	manager.indicatorsLock.Unlock()
 	indicator.Add(size)
+}
+
+func formatSize(b uint64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%d Bytes", b)
+	} else if b < 1048576 {
+		return fmt.Sprintf("%.2f KB", float32(b)/1024)
+	} else if b < 1073741824 {
+		return fmt.Sprintf("%.2f MB", float32(b)/1048576)
+	}
+
+	return fmt.Sprintf("%.2f GB", float32(b)/1073741824)
 }
