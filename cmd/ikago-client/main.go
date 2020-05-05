@@ -305,9 +305,9 @@ func main() {
 		err := exec.AddSpecificFirewallRule(serverIP, serverPort)
 		if err != nil {
 			log.Errorln(fmt.Errorf("add firewall rule: %w", err))
+		} else {
+			log.Infoln("Add firewall rule")
 		}
-
-		log.Infoln("Add firewall rule")
 	}
 
 	// Publish
