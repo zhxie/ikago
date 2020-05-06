@@ -6,6 +6,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/ip4defrag"
 	"github.com/google/gopacket/layers"
+	"ikago/internal/log"
 	"sort"
 	"time"
 )
@@ -137,42 +138,9 @@ func NewEasyDefragmenter() *EasyDefragmenter {
 }
 
 func (defrag *EasyDefragmenter) Append(ind *PacketIndicator) (*PacketIndicator, error) {
-	if !ind.IsFrag() {
-		return ind, nil
-	}
+	indicator, _, err := defrag.AppendOriginal(ind)
 
-	flow := fragFlow{
-		id:  ind.NetworkId(),
-		src: ind.SrcIP().String(),
-	}
-	fragIndicator, ok := defrag.frags[flow]
-	if !ok || fragIndicator == nil {
-		fragIndicator = newFragIndicator()
-		defrag.frags[flow] = fragIndicator
-	}
-
-	// Replace old fragments
-	if defrag.deadline > 0 && time.Now().Sub(fragIndicator.lastSeen) > defrag.deadline {
-		fragIndicator = newFragIndicator()
-		defrag.frags[flow] = fragIndicator
-	}
-
-	fragIndicator.append(ind)
-
-	if !fragIndicator.isCompleted() {
-		return nil, nil
-	}
-
-	// Remove completed fragments
-	defrag.frags[flow] = nil
-
-	// Concatenate fragments
-	indicator, err := fragIndicator.concatenate()
-	if err != nil {
-		return nil, fmt.Errorf("concatenate: %w", err)
-	}
-
-	return indicator, nil
+	return indicator, err
 }
 
 // AppendOriginal adds a fragment to the defragmenter and returns packets with and without defragmentation.
@@ -193,6 +161,7 @@ func (defrag *EasyDefragmenter) AppendOriginal(ind *PacketIndicator) (*PacketInd
 
 	// Replace old fragments
 	if defrag.deadline > 0 && time.Now().Sub(fragIndicator.lastSeen) > defrag.deadline {
+		log.Verbosef("Recycle fragments %d from %s\n", flow.id, flow.src)
 		fragIndicator = newFragIndicator()
 		defrag.frags[flow] = fragIndicator
 	}

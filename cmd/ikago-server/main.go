@@ -53,8 +53,8 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 	}
 }
 
-const keepAlive float64 = 30                         // seconds
-const keepFragments time.Duration = 30 * time.Second // seconds
+const keepAlive time.Duration = 30 * time.Second
+const keepFragments time.Duration = 30 * time.Second
 
 var (
 	version     = ""
@@ -1093,7 +1093,10 @@ func dist(t gopacket.LayerType) (uint16, error) {
 
 			// Check if the port is alive
 			last := tcpPortPool[s]
-			if now.Sub(last).Seconds() > keepAlive {
+			if now.Sub(last) > keepAlive {
+				if !last.IsZero() {
+					log.Verbosef("Recycle %s port %d\n", t, 49152+s)
+				}
 				return 49152 + s, nil
 			}
 		}
@@ -1106,7 +1109,10 @@ func dist(t gopacket.LayerType) (uint16, error) {
 
 			// Check if the port is alive
 			last := udpPortPool[s]
-			if now.Sub(last).Seconds() > keepAlive {
+			if now.Sub(last) > keepAlive {
+				if !last.IsZero() {
+					log.Verbosef("Recycle %s port %d\n", t, 49152+s)
+				}
 				return 49152 + s, nil
 			}
 		}
@@ -1119,7 +1125,10 @@ func dist(t gopacket.LayerType) (uint16, error) {
 
 			// Check if the Id is alive
 			last := icmpv4IdPool[s]
-			if now.Sub(last).Seconds() > keepAlive {
+			if now.Sub(last) > keepAlive {
+				if !last.IsZero() {
+					log.Verbosef("Recycle %s ID %d\n", t, s)
+				}
 				return s, nil
 			}
 		}
