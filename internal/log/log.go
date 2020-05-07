@@ -3,10 +3,12 @@ package log
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
-	"time"
 )
+
+const warnLogFileSize int64 = 200 * 1024 * 1024
 
 var (
 	allowVerbose bool
@@ -15,7 +17,7 @@ var (
 var (
 	outLogger *logger
 	errLogger *logger
-	logLogger *logger
+	logLogger *log.Logger
 )
 
 type logger struct {
@@ -28,27 +30,17 @@ func (l *logger) output(s string) error {
 	_, err := l.out.Write([]byte(s))
 	l.lock.Unlock()
 
-	return err
-}
+	if logLogger != nil {
+		logLogger.Output(2, s)
+	}
 
-func (l *logger) outputWithTime(s string) error {
-	t := time.Now()
-	return l.output(fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d] %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), s))
+	return err
 }
 
 func init() {
 	allowVerbose = false
 	outLogger = &logger{out: os.Stdout}
 	errLogger = &logger{out: os.Stderr}
-}
-
-// Close closes the logger.
-func Close() error {
-	if logLogger != nil {
-		return logLogger.out.(*os.File).Close()
-	}
-
-	return nil
 }
 
 // SetVerbose sets the state if verbose message is allowed to print.
@@ -58,19 +50,22 @@ func SetVerbose(allow bool) {
 
 // SetLog sets the path of log file.
 func SetLog(path string) error {
-	if logLogger != nil {
-		err := logLogger.out.(*os.File).Close()
-		if err != nil {
-			return fmt.Errorf("close: %w", err)
-		}
-	}
-
 	if path != "" {
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 755)
 		if err != nil {
 			return fmt.Errorf("open: %w", err)
 		}
-		logLogger = &logger{out: file}
+
+		stat, err := file.Stat()
+		if err != nil {
+			return fmt.Errorf("stat: %w", err)
+		}
+
+		if stat.Size() > warnLogFileSize {
+			Infof("The log file is too large. You may delete %s manually to save disk space.\n", path)
+		}
+
+		logLogger = log.New(file, "", log.LstdFlags)
 	}
 
 	return nil
@@ -83,8 +78,8 @@ func Verbosef(format string, v ...interface{}) {
 	if allowVerbose {
 		outLogger.output(s)
 	}
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
+	if !allowVerbose {
+		logLogger.Output(2, s)
 	}
 }
 
@@ -95,8 +90,8 @@ func Verbose(v ...interface{}) {
 	if allowVerbose {
 		outLogger.output(s)
 	}
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
+	if !allowVerbose {
+		logLogger.Output(2, s)
 	}
 }
 
@@ -107,69 +102,39 @@ func Verboseln(v ...interface{}) {
 	if allowVerbose {
 		outLogger.output(s)
 	}
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
+	if !allowVerbose {
+		logLogger.Output(2, s)
 	}
 }
 
 // Infof prints message to the stdout. Arguments are handled in the manner of fmt.Printf.
 func Infof(format string, v ...interface{}) {
-	s := fmt.Sprintf(format, v...)
-
-	outLogger.output(s)
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
-	}
+	outLogger.output(fmt.Sprintf(format, v...))
 }
 
 // Info prints message to the stdout. Arguments are handled in the manner of fmt.Print.
 func Info(v ...interface{}) {
-	s := fmt.Sprint(v...)
-
-	outLogger.output(s)
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
-	}
+	outLogger.output(fmt.Sprint(v...))
 }
 
 // Infoln prints message to the stdout. Arguments are handled in the manner of fmt.Println.
 func Infoln(v ...interface{}) {
-	s := fmt.Sprintln(v...)
-
-	outLogger.output(s)
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
-	}
+	outLogger.output(fmt.Sprintln(v...))
 }
 
 // Errorf prints message to the stderr. Arguments are handled in the manner of fmt.Printf.
 func Errorf(format string, v ...interface{}) {
-	s := fmt.Sprintf(format, v...)
-
-	errLogger.output(s)
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
-	}
+	errLogger.output(fmt.Sprintf(format, v...))
 }
 
 // Error prints message to the stderr. Arguments are handled in the manner of fmt.Print.
 func Error(v ...interface{}) {
-	s := fmt.Sprint(v...)
-
-	errLogger.output(s)
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
-	}
+	errLogger.output(fmt.Sprint(v...))
 }
 
 // Errorln prints message to the stderr. Arguments are handled in the manner of fmt.Printf.
 func Errorln(v ...interface{}) {
-	s := fmt.Sprintln(v...)
-
-	errLogger.output(s)
-	if logLogger != nil {
-		logLogger.outputWithTime(s)
-	}
+	errLogger.output(fmt.Sprintln(v...))
 }
 
 // Fatalf prints message to the stderr, and ends with os.Exit(1). Arguments are handled in the manner of fmt.Printf.

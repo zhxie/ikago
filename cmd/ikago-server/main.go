@@ -407,7 +407,6 @@ func main() {
 	go func() {
 		<-sig
 		closeAll()
-		log.Close()
 		os.Exit(0)
 	}()
 
@@ -438,7 +437,7 @@ func open() error {
 	if len(listenDevs) == 1 {
 		log.Infof("Listen on %s\n", listenDevs[0].String())
 	} else {
-		log.Infoln("Listen on:")
+		log.Infoln("Listen on:\n")
 		for _, dev := range listenDevs {
 			log.Infof("  %s\n", dev.String())
 		}
