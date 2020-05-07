@@ -180,7 +180,7 @@ func main() {
 	}
 
 	// Log
-	log.SetVerbose(cfg.Verbose)
+	log.SetVerbose(cfg.Verbose || *argVerbose)
 	err = log.SetLog(cfg.Log)
 	if err != nil {
 		log.Fatalln(fmt.Errorf("log %s: %w", cfg.Log, err))

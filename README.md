@@ -41,7 +41,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-list-devices`: (Optional, exclusive) List all valid devices in current computer.
 
-`-c`: (Optional, exclusive) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments, it will automatically read the configuration file `config.json` in the working directory if it exists.
+`-c`: (Optional, exclusive) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments except `-v`, it will automatically read the configuration file `config.json` in the working directory if it exists.
 
 `-listen-devices devices`: (Optional) Devices for listening, use comma to separate multiple devices. If this value is not set, all valid devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
@@ -63,7 +63,7 @@ go run ./cmd/ikago-server -p [port]
 
 `-rule`: (Optional) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
 
-`-v`: (Optional) Print verbose messages.
+`-v`: (Optional) Print verbose messages. Either `-v` or `verbose` in configuration file is set `true`, IkaGo will print verbose messages.
 
 `-log path`: (Optional) Log.
 
