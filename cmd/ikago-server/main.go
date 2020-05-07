@@ -95,6 +95,7 @@ var (
 	listenDevs []*pcap.Device
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
+	isTCP      bool
 	crypt      crypto.Crypt
 	mtu        int
 	isKCP      bool
@@ -183,6 +184,7 @@ func main() {
 			Gateway:    *argGateway,
 			Method:     *argMethod,
 			Password:   *argPassword,
+			MTU:        *argMTU,
 			KCP:        *argKCP,
 			KCPConfig: config.KCPConfig{
 				MTU:         *argKCPMTU,
@@ -196,7 +198,6 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			MTU:     *argMTU,
 			Rule:    *argRule,
 			Verbose: *argVerbose,
 			Log:     *argLog,
@@ -308,6 +309,15 @@ func main() {
 		}
 
 		log.Errorln("Add firewall rule")
+	}
+
+	// TCP
+	isTCP = cfg.TCP
+	if isTCP {
+		cfg.Method = "plain"
+		cfg.MTU = 0
+		cfg.KCP = false
+		log.Infoln("Enable standard TCP (experimental)")
 	}
 
 	// Crypt
@@ -452,17 +462,21 @@ func open() error {
 		var err error
 		var listener net.Listener
 
-		if dev.IsLoop() {
-			if isKCP {
-				listener, err = pcap.ListenWithKCP(dev, dev, port, crypt, mtu, kcpConfig)
-			} else {
-				listener, err = pcap.Listen(dev, dev, port, crypt, mtu)
-			}
+		if isTCP {
+			listener, err = net.Listen("tcp", fmt.Sprintf("%s:%d", dev.IPAddr().IP, port))
 		} else {
-			if isKCP {
-				listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt, mtu, kcpConfig)
+			if dev.IsLoop() {
+				if isKCP {
+					listener, err = pcap.ListenWithKCP(dev, dev, port, crypt, mtu, kcpConfig)
+				} else {
+					listener, err = pcap.Listen(dev, dev, port, crypt, mtu)
+				}
 			} else {
-				listener, err = pcap.Listen(dev, gatewayDev, port, crypt, mtu)
+				if isKCP {
+					listener, err = pcap.ListenWithKCP(dev, gatewayDev, port, crypt, mtu, kcpConfig)
+				} else {
+					listener, err = pcap.Listen(dev, gatewayDev, port, crypt, mtu)
+				}
 			}
 		}
 		if err != nil {

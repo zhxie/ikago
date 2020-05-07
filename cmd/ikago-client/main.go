@@ -78,6 +78,7 @@ var (
 	listenDevs []*pcap.Device
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
+	isTCP      bool
 	crypt      crypto.Crypt
 	mtu        int
 	isKCP      bool
@@ -153,6 +154,7 @@ func main() {
 			Gateway:    *argGateway,
 			Method:     *argMethod,
 			Password:   *argPassword,
+			MTU:        *argMTU,
 			KCP:        *argKCP,
 			KCPConfig: config.KCPConfig{
 				MTU:         *argKCPMTU,
@@ -166,7 +168,6 @@ func main() {
 				Resend:      *argKCPResend,
 				NC:          *argKCPNC,
 			},
-			MTU:     *argMTU,
 			Rule:    *argRule,
 			Verbose: *argVerbose,
 			Log:     *argLog,
@@ -320,6 +321,15 @@ func main() {
 	}
 	if publishIP != nil {
 		log.Infof("Publish %s\n", publishIP.IP)
+	}
+
+	// TCP
+	isTCP = cfg.TCP
+	if isTCP {
+		cfg.Method = "plain"
+		cfg.MTU = 0
+		cfg.KCP = false
+		log.Infoln("Enable standard TCP (experimental)")
 	}
 
 	// Crypt
@@ -498,7 +508,9 @@ func open() error {
 	}
 
 	// Handle for routing upstream
-	if isKCP {
+	if isTCP {
+		upConn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", serverIP, serverPort))
+	} else if isKCP {
 		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, kcpConfig)
 	} else {
 		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu)

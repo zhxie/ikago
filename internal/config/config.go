@@ -14,6 +14,7 @@ type Config struct {
 	ListenDevs []string  `json:"listen-devices"`
 	UpDev      string    `json:"upstream-device"`
 	Gateway    string    `json:"gateway"`
+	TCP        bool      `json:"tcp"`
 	Method     string    `json:"method"`
 	Password   string    `json:"password"`
 	MTU        int       `json:"mtu"`
