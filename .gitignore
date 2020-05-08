@@ -11,6 +11,9 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Manifests
+*.syso
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
@@ -23,6 +26,9 @@
 # Bin and library directories
 bin/
 lib/
+
+# Design directories
+design/
 
 # Log files
 *.log
