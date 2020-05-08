@@ -1,8 +1,10 @@
 package stat
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // Direction describes the direction of the traffic.
@@ -17,86 +19,113 @@ const (
 
 // TrafficMonitor describes inbound and outbound traffic statistics in different nodes.
 type TrafficMonitor struct {
-	inManager  *TrafficManager
-	outManager *TrafficManager
+	lock             sync.RWMutex
+	localInManager   *TrafficManager
+	localOutManager  *TrafficManager
+	remoteInManager  *TrafficManager
+	remoteOutManager *TrafficManager
 }
 
 // NewTrafficMonitor returns a new traffic monitor.
 func NewTrafficMonitor() *TrafficMonitor {
 	return &TrafficMonitor{
-		inManager:  NewTrafficManager(),
-		outManager: NewTrafficManager(),
+		localInManager:  NewTrafficManager(),
+		localOutManager: NewTrafficManager(),
 	}
 }
 
 // Add adds a data of traffic to a node.
-func (manager *TrafficMonitor) Add(node string, direction Direction, size uint) {
+func (monitor *TrafficMonitor) Add(node string, direction Direction, size uint) {
+	monitor.lock.Lock()
+	defer monitor.lock.Unlock()
+
 	switch direction {
 	case DirectionIn:
-		manager.inManager.Add(node, size)
+		monitor.localInManager.Add(node, size)
 	case DirectionOut:
-		manager.outManager.Add(node, size)
+		monitor.localOutManager.Add(node, size)
 	default:
 		panic(fmt.Errorf("direction %d out of range", direction))
 	}
 }
 
-func (manager TrafficMonitor) String() string {
-	sb := strings.Builder{}
+// AddBidirectional adds a data of traffic to both local and remote nodes.
+func (monitor *TrafficMonitor) AddBidirectional(local string, remote string, direction Direction, size uint) {
+	monitor.lock.Lock()
+	defer monitor.lock.Unlock()
 
-	sb.WriteString("Outbound statistics:\n")
-	for _, node := range manager.outManager.Nodes() {
-		indicator, err := manager.outManager.Indicator(node)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("%s", fmt.Errorf("statistics: %s: %w", node, err)))
+	switch direction {
+	case DirectionIn:
+		monitor.localInManager.Add(local, size)
+
+		if monitor.remoteInManager == nil {
+			monitor.remoteInManager = NewTrafficManager()
 		}
+		monitor.remoteInManager.Add(remote, size)
+	case DirectionOut:
+		monitor.localOutManager.Add(local, size)
 
-		sb.WriteString(fmt.Sprintf("%s: %s", node, indicator))
-
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString("Inbound statistics:\n")
-	for _, node := range manager.inManager.Nodes() {
-		indicator, err := manager.inManager.Indicator(node)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("%s", fmt.Errorf("statistics: %s: %w", node, err)))
+		if monitor.remoteOutManager == nil {
+			monitor.remoteOutManager = NewTrafficManager()
 		}
-
-		sb.WriteString(fmt.Sprintf("%s: %s", node, indicator))
-
-		sb.WriteString("\n")
+		monitor.remoteOutManager.Add(remote, size)
+	default:
+		panic(fmt.Errorf("direction %d out of range", direction))
 	}
-
-	return sb.String()
 }
 
-// VerboseString prints string with verbose contents.
-func (manager TrafficMonitor) VerboseString() string {
-	sb := strings.Builder{}
+func (monitor *TrafficMonitor) MarshalJSON() ([]byte, error) {
+	monitor.lock.RLock()
+	monitor.lock.RUnlock()
 
-	sb.WriteString("Outbound statistics:\n")
-	for _, node := range manager.outManager.Nodes() {
-		indicator, err := manager.outManager.Indicator(node)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("%s", fmt.Errorf("statistics: %s: %w", node, err)))
-		}
-
-		sb.WriteString(fmt.Sprintf("%s: %s", node, indicator.VerboseString()))
-
-		sb.WriteString("\n")
+	type UnidirectionalTrafficMonitor struct {
+		InManager  *TrafficManager `json:"in"`
+		OutManager *TrafficManager `json:"out"`
 	}
 
-	sb.WriteString("\nInbound statistics:\n")
-	for _, node := range manager.inManager.Nodes() {
-		indicator, err := manager.inManager.Indicator(node)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("%s", fmt.Errorf("statistics: %s: %w", node, err)))
-		}
+	return json.Marshal(&struct {
+		Local  *UnidirectionalTrafficMonitor `json:"local"`
+		Remote *UnidirectionalTrafficMonitor `json:"remote"`
+	}{
+		Local: &UnidirectionalTrafficMonitor{
+			InManager:  monitor.localInManager,
+			OutManager: monitor.localOutManager,
+		},
+		Remote: &UnidirectionalTrafficMonitor{
+			InManager:  monitor.remoteInManager,
+			OutManager: monitor.remoteOutManager,
+		},
+	})
+}
 
-		sb.WriteString(fmt.Sprintf("%s: %s", node, indicator.VerboseString()))
+func (monitor *TrafficMonitor) String() string {
+	monitor.lock.RLock()
+	defer monitor.lock.RUnlock()
+
+	sb := strings.Builder{}
+
+	sb.WriteString("Local:\n")
+
+	sb.WriteString("Outbound statistics:\n")
+	sb.WriteString(monitor.localOutManager.String())
+
+	sb.WriteString("\n")
+
+	sb.WriteString("Inbound statistics:\n")
+	sb.WriteString(monitor.localInManager.String())
+
+	sb.WriteString("\n")
+
+	if monitor.remoteOutManager != nil || monitor.remoteInManager != nil {
+		sb.WriteString("Remote:\n")
+
+		sb.WriteString("Outbound statistics:\n")
+		sb.WriteString(monitor.remoteOutManager.String())
 
 		sb.WriteString("\n")
+
+		sb.WriteString("Inbound statistics:\n")
+		sb.WriteString(monitor.remoteInManager.String())
 	}
 
 	return sb.String()

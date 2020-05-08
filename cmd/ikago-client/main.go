@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -31,6 +32,8 @@ type natIndicator struct {
 	srcHardwareAddr net.HardwareAddr
 	conn            *pcap.RawConn
 }
+
+const name string = "IkaGo-client"
 
 var (
 	version     = ""
@@ -111,8 +114,7 @@ func init() {
 	if commit != "" {
 		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
 	}
-	versionInfo = "IkaGo-client " + versionInfo
-	log.Infof("%s\n\n", versionInfo)
+	log.Infof("%s %s\n\n", name, versionInfo)
 
 	// Parse arguments
 	flag.Parse()
@@ -365,17 +367,39 @@ func main() {
 
 		go func() {
 			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-				_, err := io.WriteString(w, fmt.Sprintf("%s\n\n", versionInfo))
+				_, err := io.WriteString(w, fmt.Sprintf("%s %s\n\n", name, versionInfo))
 				if err != nil {
 					log.Errorln(fmt.Errorf("monitor: %w", err))
 					return
 				}
 
-				_, err = io.WriteString(w, monitor.VerboseString())
+				_, err = io.WriteString(w, monitor.String())
 				if err != nil {
 					log.Errorln(fmt.Errorf("monitor: %w", err))
 				}
 			})
+
+			http.HandleFunc("/json", func(w http.ResponseWriter, req *http.Request) {
+				b, err := json.Marshal(&struct {
+					Name    string               `json:"name"`
+					Version string               `json:"version"`
+					Monitor *stat.TrafficMonitor `json:"monitor"`
+				}{
+					Name:    name,
+					Version: versionInfo,
+					Monitor: monitor,
+				})
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+					return
+				}
+
+				_, err = io.WriteString(w, string(b))
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+				}
+			})
+
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
 				log.Errorln(fmt.Errorf("monitor: %w", err))
@@ -692,7 +716,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	// Statistics
 	size := indicator.MTU()
 	if monitor != nil {
-		monitor.Add(indicator.SrcIP().String(), stat.DirectionOut, uint(size))
+		monitor.AddBidirectional(indicator.SrcIP().String(), indicator.DstIP().String(), stat.DirectionOut, uint(size))
 	}
 
 	log.Verbosef("Redirect an outbound %s packet: %s -> %s (%d Bytes)\n",
@@ -764,7 +788,7 @@ func handleUpstream(contents []byte) error {
 
 	// Statistics
 	if monitor != nil {
-		monitor.Add(embIndicator.DstIP().String(), stat.DirectionIn, uint(embIndicator.Size()))
+		monitor.AddBidirectional(embIndicator.DstIP().String(), embIndicator.SrcIP().String(), stat.DirectionIn, uint(embIndicator.Size()))
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",

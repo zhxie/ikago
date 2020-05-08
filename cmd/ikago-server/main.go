@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -52,6 +53,8 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 		panic(fmt.Errorf("type %T not support", t))
 	}
 }
+
+const name string = "IkaGo-server"
 
 const keepAlive time.Duration = 30 * time.Second
 const keepFragments time.Duration = 30 * time.Second
@@ -136,8 +139,7 @@ func init() {
 	if commit != "" {
 		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
 	}
-	versionInfo = "IkaGo-server " + versionInfo
-	log.Infof("%s\n\n", versionInfo)
+	log.Infof("%s %s\n\n", name, versionInfo)
 
 	// Parse arguments
 	flag.Parse()
@@ -353,17 +355,39 @@ func main() {
 
 		go func() {
 			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-				_, err := io.WriteString(w, fmt.Sprintf("%s\n\n", versionInfo))
+				_, err := io.WriteString(w, fmt.Sprintf("%s %s\n\n", name, versionInfo))
 				if err != nil {
 					log.Errorln(fmt.Errorf("monitor: %w", err))
 					return
 				}
 
-				_, err = io.WriteString(w, monitor.VerboseString())
+				_, err = io.WriteString(w, monitor.String())
 				if err != nil {
 					log.Errorln(fmt.Errorf("monitor: %w", err))
 				}
 			})
+
+			http.HandleFunc("/json", func(w http.ResponseWriter, req *http.Request) {
+				b, err := json.Marshal(&struct {
+					Name    string               `json:"name"`
+					Version string               `json:"version"`
+					Monitor *stat.TrafficMonitor `json:"monitor"`
+				}{
+					Name:    name,
+					Version: versionInfo,
+					Monitor: monitor,
+				})
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+					return
+				}
+
+				_, err = io.WriteString(w, string(b))
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+				}
+			})
+
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
 				log.Errorln(fmt.Errorf("monitor: %w", err))

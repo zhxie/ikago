@@ -1,10 +1,11 @@
 package stat
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"ikago/internal/log"
-	"sync"
+	"strings"
 	"time"
 )
 
@@ -43,34 +44,36 @@ func (indicator *TrafficIndicator) Add(size uint) {
 	indicator.lastSeen = time.Now()
 }
 
-func (indicator *TrafficIndicator) String() string {
-	return fmt.Sprintf("%s (%d packets)", formatSize(indicator.size), indicator.count)
+func (indicator *TrafficIndicator) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Count    uint64 `json:"count"`
+		Size     uint64 `json:"size"`
+		Appear   int64  `json:"appear"`
+		LastSeen int64  `json:"lastSeen"`
+	}{
+		Count:    indicator.Count(),
+		Size:     indicator.Size(),
+		Appear:   indicator.Appear().Unix(),
+		LastSeen: indicator.LastSeen().Unix(),
+	})
 }
 
-// VerboseString prints string with verbose contents.
-func (indicator *TrafficIndicator) VerboseString() string {
-	appear := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
-		indicator.appear.Year(), indicator.appear.Month(), indicator.appear.Day(), indicator.appear.Hour(), indicator.appear.Minute(), indicator.appear.Second())
-	update := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
-		indicator.lastSeen.Year(), indicator.lastSeen.Month(), indicator.lastSeen.Day(), indicator.lastSeen.Hour(), indicator.lastSeen.Minute(), indicator.lastSeen.Second())
-
-	return fmt.Sprintf("%s (%d packets) (%s/%s)", formatSize(indicator.size), indicator.count, appear, update)
+func (indicator TrafficIndicator) String() string {
+	return fmt.Sprintf("%s (%d packets)", formatSize(indicator.Size()), indicator.Count())
 }
 
 // TrafficManager describes traffic statistics from and to different nodes.
 type TrafficManager struct {
-	nodes          []string
-	indicatorsLock sync.RWMutex
-	indicators     map[string]*TrafficIndicator
+	nodes      []string
+	indicators map[string]*TrafficIndicator
 }
 
 // NewTrafficManager returns a new traffic manager.
 func NewTrafficManager() *TrafficManager {
 	manager := &TrafficManager{
-		nodes:      append(make([]string, 0), "total"),
+		nodes:      make([]string, 0),
 		indicators: make(map[string]*TrafficIndicator),
 	}
-	manager.indicators["total"] = &TrafficIndicator{appear: time.Now()}
 	return manager
 }
 
@@ -81,9 +84,7 @@ func (manager *TrafficManager) Nodes() []string {
 
 // Indicator returns the traffic indicator of the given node.
 func (manager *TrafficManager) Indicator(node string) (*TrafficIndicator, error) {
-	manager.indicatorsLock.RLock()
 	indicator, ok := manager.indicators[node]
-	manager.indicatorsLock.RUnlock()
 	if !ok {
 		return nil, errors.New("untracked node")
 	}
@@ -93,25 +94,13 @@ func (manager *TrafficManager) Indicator(node string) (*TrafficIndicator, error)
 
 // Add adds a data of traffic to a node.
 func (manager *TrafficManager) Add(node string, size uint) {
-	manager.indicatorsLock.RLock()
 	indicator, ok := manager.indicators[node]
-	manager.indicatorsLock.RUnlock()
 	if !ok {
 		manager.nodes = append(manager.nodes, node)
 		indicator = &TrafficIndicator{appear: time.Now()}
-		manager.indicatorsLock.Lock()
 		manager.indicators[node] = indicator
-		manager.indicatorsLock.Unlock()
 		log.Verbosef("Track new traffic from %s\n", node)
 	}
-	indicator.Add(size)
-	manager.addTotal(size)
-}
-
-func (manager *TrafficManager) addTotal(size uint) {
-	manager.indicatorsLock.Lock()
-	indicator, _ := manager.indicators["total"]
-	manager.indicatorsLock.Unlock()
 	indicator.Add(size)
 }
 
@@ -125,4 +114,25 @@ func formatSize(b uint64) string {
 	}
 
 	return fmt.Sprintf("%.2f GB", float32(b)/1073741824)
+}
+
+func (manager TrafficManager) MarshalJSON() ([]byte, error) {
+	return json.Marshal(manager.indicators)
+}
+
+func (manager TrafficManager) String() string {
+	sb := strings.Builder{}
+
+	for _, node := range manager.Nodes() {
+		indicator, err := manager.Indicator(node)
+		if err != nil {
+			sb.WriteString(fmt.Sprintf("%s", fmt.Errorf("statistics: %s: %w", node, err)))
+		}
+
+		sb.WriteString(fmt.Sprintf("%s: %s", node, indicator))
+
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
