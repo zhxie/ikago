@@ -412,7 +412,7 @@ func main() {
 	if len(sources) == 1 {
 		log.Infof("Proxy %s through :%d to %s\n", sources[0], upPort, serverAddr)
 	} else {
-		log.Info("Proxy:\n")
+		log.Infoln("Proxy:")
 		for i, f := range sources {
 			if i != len(sources)-1 {
 				log.Infof("  %s\n", f)
@@ -480,7 +480,7 @@ func open() error {
 	if len(listenDevs) == 1 {
 		log.Infof("Listen on %s\n", listenDevs[0].String())
 	} else {
-		log.Infoln("Listen on:\n")
+		log.Infoln("Listen on:")
 		for _, dev := range listenDevs {
 			log.Infof("  %s\n", dev.String())
 		}
