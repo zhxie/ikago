@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>ikago-client</string>
 	<key>CFBundleIconFile</key>
-	<string>icon.icns</string>
+	<string>IkaGo</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.sketch.ikago</string>
 	<key>CFBundleName</key>
