@@ -3,10 +3,8 @@
 		"CompanyName": "Sketch",
 		"LegalCopyright": "Copyright © 2020 Sketch",
 		"FileDescription": "IkaGo is a proxy which helps bypassing UDP blocking, UDP QoS and NAT firewall written in Go.",
-		"FileVersion": "v0.3.0",
-		"ProductName": "IkaGo",
-		"ProductVersion": "v0.3.0"
+		"ProductName": "IkaGo"
 	},
-	"IconPath": "assets/icons/IkaGo.ico",
-	"ManifestPath": "build/main.exe.manifest"
+	"IconPath": "build/windows/IkaGo-client.ico",
+	"ManifestPath": "build/windows/IkaGo-client.manifest"
 }
