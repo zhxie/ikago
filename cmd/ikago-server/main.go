@@ -355,19 +355,6 @@ func main() {
 
 		go func() {
 			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-				_, err := io.WriteString(w, fmt.Sprintf("%s %s\n\n", name, versionInfo))
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-					return
-				}
-
-				_, err = io.WriteString(w, monitor.String())
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-				}
-			})
-
-			http.HandleFunc("/json", func(w http.ResponseWriter, req *http.Request) {
 				b, err := json.Marshal(&struct {
 					Name    string               `json:"name"`
 					Version string               `json:"version"`
@@ -381,6 +368,9 @@ func main() {
 					log.Errorln(fmt.Errorf("monitor: %w", err))
 					return
 				}
+
+				// Handle CORS
+				w.Header().Set("Access-Control-Allow-Origin", "*")
 
 				_, err = io.WriteString(w, string(b))
 				if err != nil {
