@@ -64,6 +64,7 @@ var (
 	build       = ""
 	commit      = ""
 	versionInfo string
+	startTime   time.Time
 )
 
 var (
@@ -140,6 +141,9 @@ func init() {
 		versionInfo = versionInfo + fmt.Sprintf("(%s)", commit)
 	}
 	log.Infof("%s %s\n\n", name, versionInfo)
+
+	// Start time
+	startTime = time.Now()
 
 	// Parse arguments
 	flag.Parse()
@@ -358,10 +362,12 @@ func main() {
 				b, err := json.Marshal(&struct {
 					Name    string               `json:"name"`
 					Version string               `json:"version"`
+					Time    int                  `json:"time"`
 					Monitor *stat.TrafficMonitor `json:"monitor"`
 				}{
 					Name:    name,
 					Version: versionInfo,
+					Time:    int(time.Now().Sub(startTime).Seconds()),
 					Monitor: monitor,
 				})
 				if err != nil {
