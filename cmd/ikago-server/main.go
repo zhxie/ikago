@@ -387,6 +387,37 @@ func main() {
 				}
 			})
 
+			http.HandleFunc("/dns", func(w http.ResponseWriter, req *http.Request) {
+				type IPName struct {
+					IP   string `json:"ip"`
+					Name string `json:"name"`
+				}
+
+				ipNames := make([]IPName, 0)
+				dnsLock.RLock()
+				for name, ip := range dns {
+					ipNames = append(ipNames, IPName{
+						IP:   ip.String(),
+						Name: name,
+					})
+				}
+				dnsLock.RUnlock()
+
+				b, err := json.Marshal(ipNames)
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+					return
+				}
+
+				// Handle CORS
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+
+				_, err = io.WriteString(w, string(b))
+				if err != nil {
+					log.Errorln(fmt.Errorf("monitor: %w", err))
+				}
+			})
+
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
 				log.Errorln(fmt.Errorf("monitor: %w", err))
