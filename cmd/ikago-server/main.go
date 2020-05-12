@@ -122,6 +122,8 @@ var (
 	natLock      sync.RWMutex
 	nat          map[pcap.NATGuide]*natIndicator
 	monitor      *stat.TrafficMonitor
+	dnsLock      sync.RWMutex
+	dns          map[string]net.IP
 )
 
 func init() {
@@ -167,6 +169,7 @@ func init() {
 	icmpv4IdPool = make([]time.Time, 65536)
 	patMap = make(map[quintuple]uint16)
 	nat = make(map[pcap.NATGuide]*natIndicator)
+	dns = make(map[string]net.IP)
 }
 
 func main() {
@@ -939,6 +942,21 @@ func handleUpstream(packet gopacket.Packet) error {
 	natLock.RUnlock()
 	if !ok {
 		return nil
+	}
+
+	// Record DNS
+	if indicator.DNSIndicator() != nil {
+		if indicator.DNSIndicator().IsResponse() {
+			name, ips := indicator.DNSIndicator().Answers()
+			if name != "" && len(ips) > 0 {
+				dnsLock.Lock()
+				for _, ip := range ips {
+					dns[name] = ip
+					log.Verbosef("Record DNS record %s = %s\n", name, ip)
+				}
+				dnsLock.Unlock()
+			}
+		}
 	}
 
 	// Keep alive

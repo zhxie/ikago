@@ -97,6 +97,8 @@ var (
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
 	monitor     *stat.TrafficMonitor
+	dnsLock     sync.RWMutex
+	dns         map[string]net.IP
 )
 
 func init() {
@@ -137,6 +139,7 @@ func init() {
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	nat = make(map[string]*natIndicator)
+	dns = make(map[string]net.IP)
 }
 
 func main() {
@@ -746,6 +749,21 @@ func handleUpstream(contents []byte) error {
 	natLock.RUnlock()
 	if !ok {
 		return fmt.Errorf("missing nat to %s", embIndicator.DstIP())
+	}
+
+	// Record DNS
+	if embIndicator.DNSIndicator() != nil {
+		if embIndicator.DNSIndicator().IsResponse() {
+			name, ips := embIndicator.DNSIndicator().Answers()
+			if name != "" && len(ips) > 0 {
+				dnsLock.Lock()
+				for _, ip := range ips {
+					dns[name] = ip
+					log.Verbosef("Record DNS record %s = %s\n", name, ip)
+				}
+				dnsLock.Unlock()
+			}
+		}
 	}
 
 	// Decide Loopback or Ethernet

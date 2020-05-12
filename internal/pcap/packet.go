@@ -41,6 +41,7 @@ type PacketIndicator struct {
 	transportLayer   gopacket.Layer
 	icmpv4Indicator  *ICMPv4Indicator
 	applicationLayer gopacket.ApplicationLayer
+	dnsIndicator     *DNSIndicator
 }
 
 // LinkLayer returns the link layer.
@@ -383,6 +384,11 @@ func (indicator *PacketIndicator) Dst() net.Addr {
 	}
 }
 
+// DNSIndicator returns the DNS indicator.
+func (indicator *PacketIndicator) DNSIndicator() *DNSIndicator {
+	return indicator.dnsIndicator
+}
+
 // NetworkPayload returns the payload of network layer, used for fragmentation.
 func (indicator *PacketIndicator) NetworkPayload() []byte {
 	if indicator.NetworkLayer() == nil {
@@ -419,6 +425,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		transportLayer   gopacket.Layer
 		icmpv4Indicator  *ICMPv4Indicator
 		applicationLayer gopacket.ApplicationLayer
+		dnsIndicator     *DNSIndicator
 	)
 
 	// Parse packet
@@ -503,6 +510,13 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		}
 	}
 
+	// Parse application layer
+	if applicationLayer != nil {
+		if applicationLayer.LayerType() == layers.LayerTypeDNS {
+			dnsIndicator, _ = ParseDNSLayer(applicationLayer.(*layers.DNS))
+		}
+	}
+
 	return &PacketIndicator{
 		packet:           packet,
 		linkLayer:        linkLayer,
@@ -510,6 +524,7 @@ func ParsePacket(packet gopacket.Packet) (*PacketIndicator, error) {
 		transportLayer:   transportLayer,
 		icmpv4Indicator:  icmpv4Indicator,
 		applicationLayer: applicationLayer,
+		dnsIndicator:     dnsIndicator,
 	}, nil
 }
 
