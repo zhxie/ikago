@@ -123,7 +123,7 @@ var (
 	nat          map[pcap.NATGuide]*natIndicator
 	monitor      *stat.TrafficMonitor
 	dnsLock      sync.RWMutex
-	dns          map[string]net.IP
+	dns          map[string]string
 )
 
 func init() {
@@ -169,7 +169,7 @@ func init() {
 	icmpv4IdPool = make([]time.Time, 65536)
 	patMap = make(map[quintuple]uint16)
 	nat = make(map[pcap.NATGuide]*natIndicator)
-	dns = make(map[string]net.IP)
+	dns = make(map[string]string)
 }
 
 func main() {
@@ -395,9 +395,9 @@ func main() {
 
 				ipNames := make([]IPName, 0)
 				dnsLock.RLock()
-				for name, ip := range dns {
+				for ip, name := range dns {
 					ipNames = append(ipNames, IPName{
-						IP:   ip.String(),
+						IP:   ip,
 						Name: name,
 					})
 				}
@@ -975,21 +975,6 @@ func handleUpstream(packet gopacket.Packet) error {
 		return nil
 	}
 
-	// Record DNS
-	if indicator.DNSIndicator() != nil {
-		if indicator.DNSIndicator().IsResponse() {
-			name, ips := indicator.DNSIndicator().Answers()
-			if name != "" && len(ips) > 0 {
-				dnsLock.Lock()
-				for _, ip := range ips {
-					dns[name] = ip
-					log.Verbosef("Record DNS record %s = %s\n", name, ip)
-				}
-				dnsLock.Unlock()
-			}
-		}
-	}
-
 	// Keep alive
 	protocol := indicator.NATProtocol()
 	switch protocol {
@@ -1156,7 +1141,21 @@ func handleUpstream(packet gopacket.Packet) error {
 
 		log.Verbosef("Redirect an outbound %s packet: %s <- %s <- %s (%d Bytes)\n",
 			frag.TransportProtocol(), ni.embSrc.String(), ni.src.String(), frag.Src(), size)
+	}
 
+	// Record DNS
+	if indicator.DNSIndicator() != nil {
+		if indicator.DNSIndicator().IsResponse() {
+			name, ips := indicator.DNSIndicator().Answers()
+			if name != "" && len(ips) > 0 {
+				dnsLock.Lock()
+				for _, ip := range ips {
+					dns[ip.String()] = name
+					log.Verbosef("Record DNS record %s = %s\n", name, ip)
+				}
+				dnsLock.Unlock()
+			}
+		}
 	}
 
 	return nil

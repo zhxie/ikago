@@ -98,7 +98,7 @@ var (
 	nat         map[string]*natIndicator
 	monitor     *stat.TrafficMonitor
 	dnsLock     sync.RWMutex
-	dns         map[string]net.IP
+	dns         map[string]string
 )
 
 func init() {
@@ -139,7 +139,7 @@ func init() {
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	nat = make(map[string]*natIndicator)
-	dns = make(map[string]net.IP)
+	dns = make(map[string]string)
 }
 
 func main() {
@@ -407,9 +407,9 @@ func main() {
 
 				ipNames := make([]IPName, 0)
 				dnsLock.RLock()
-				for name, ip := range dns {
+				for ip, name := range dns {
 					ipNames = append(ipNames, IPName{
-						IP:   ip.String(),
+						IP:   ip,
 						Name: name,
 					})
 				}
@@ -782,21 +782,6 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("missing nat to %s", embIndicator.DstIP())
 	}
 
-	// Record DNS
-	if embIndicator.DNSIndicator() != nil {
-		if embIndicator.DNSIndicator().IsResponse() {
-			name, ips := embIndicator.DNSIndicator().Answers()
-			if name != "" && len(ips) > 0 {
-				dnsLock.Lock()
-				for _, ip := range ips {
-					dns[name] = ip
-					log.Verbosef("Record DNS record %s = %s\n", name, ip)
-				}
-				dnsLock.Unlock()
-			}
-		}
-	}
-
 	// Decide Loopback or Ethernet
 	if ni.conn.IsLoop() {
 		newLinkLayerType = layers.LayerTypeLoopback
@@ -834,6 +819,21 @@ func handleUpstream(contents []byte) error {
 	// Statistics
 	if monitor != nil {
 		monitor.AddBidirectional(embIndicator.DstIP().String(), embIndicator.SrcIP().String(), stat.DirectionIn, uint(embIndicator.Size()))
+	}
+
+	// Record DNS
+	if embIndicator.DNSIndicator() != nil {
+		if embIndicator.DNSIndicator().IsResponse() {
+			name, ips := embIndicator.DNSIndicator().Answers()
+			if name != "" && len(ips) > 0 {
+				dnsLock.Lock()
+				for _, ip := range ips {
+					dns[ip.String()] = name
+					log.Verbosef("Record DNS record %s = %s\n", name, ip)
+				}
+				dnsLock.Unlock()
+			}
+		}
 	}
 
 	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
