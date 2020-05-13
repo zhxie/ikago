@@ -1,7 +1,6 @@
 package pcap
 
 import (
-	"errors"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -21,16 +20,20 @@ type clientIndicator struct {
 	ack   uint32
 }
 
+const establishDeadline time.Duration = 3 * time.Second
 const keepFragments time.Duration = 30 * time.Second
 
 // Conn is a packet pcap network connection add fake TCP header to all traffic.
 type Conn struct {
+	lock          sync.Mutex
 	conn          *RawConn
 	defrag        Defragmenter
 	srcPort       uint16
 	dstAddr       *net.TCPAddr
 	crypt         crypto.Crypt
 	mtu           int
+	appear        time.Time
+	isConnected   bool
 	isClosed      bool
 	clientsLock   sync.RWMutex
 	clients       map[string]*clientIndicator
@@ -56,14 +59,23 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 		Port: int(srcPort),
 	}
 
-	conn := newConn()
-	conn.srcPort = srcPort
-	conn.dstAddr = dstAddr
-	conn.crypt = crypt
-	conn.mtu = mtu
+	conn, err := dialPassive(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
+	if err != nil {
+		return nil, &net.OpError{
+			Op:     "dial",
+			Net:    "pcap",
+			Source: srcAddr,
+			Addr:   dstAddr,
+			Err:    err,
+		}
+	}
+
+	log.Infof("Connect to server %s\n", dstAddr.String())
+
+	conn.appear = time.Now()
 
 	// Handshake
-	err := conn.handshake(srcDev, dstDev, srcPort, dstAddr)
+	err = conn.handshakeSYN()
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -74,28 +86,15 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 		}
 	}
 
-	filter, err := addr.SrcBPFFilter(dstAddr)
-	if err != nil {
-		return nil, fmt.Errorf("parse filter %s: %w", dstAddr, err)
-	}
-	dstIP := &net.IPAddr{IP: dstAddr.IP}
-	filter2, err := addr.SrcBPFFilter(dstIP)
-	if err != nil {
-		return nil, fmt.Errorf("parse filter %s: %w", dstIP, err)
-	}
+	go func() {
+		time.Sleep(establishDeadline)
 
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("ip && ((tcp && dst port %d && %s) || ((ip[6:2] & 0x1fff) != 0 && %s))", srcAddr.Port, filter, filter2))
-	if err != nil {
-		return nil, &net.OpError{
-			Op:     "dial",
-			Net:    "pcap",
-			Source: srcAddr,
-			Addr:   dstAddr,
-			Err:    fmt.Errorf("create raw connection: %w", err),
+		if !conn.isConnected {
+			log.Errorf("Cannot receive response from server %s, is it down?\n", dstAddr.String())
 		}
-	}
 
-	conn.conn = rawConn
+		return
+	}()
 
 	return conn, nil
 }
@@ -138,17 +137,7 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt,
 	}
 	srcAddrs := addr.MultiTCPAddr{Addrs: addrs}
 
-	handshakeConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn != 0 && dst port %d", srcPort))
-	if err != nil {
-		return nil, &net.OpError{
-			Op:     "dial",
-			Net:    "pcap",
-			Source: srcAddrs,
-			Err:    fmt.Errorf("create handshake connection: %w", err),
-		}
-	}
-
-	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-syn == 0 && dst port %d", srcPort))
+	rawConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && dst port %d", srcPort))
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -159,136 +148,12 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt,
 	}
 
 	conn := newConn()
-	conn.conn = rawConn
 	conn.srcPort = srcPort
 	conn.crypt = crypt
 	conn.mtu = mtu
-
-	// Handle handshaking
-	go func() {
-		for {
-			packet, err := handshakeConn.ReadPacket()
-			if err != nil {
-				if conn.isClosed {
-					return
-				}
-				log.Errorln(&net.OpError{
-					Op:   "listen",
-					Net:  "pcap",
-					Addr: srcAddrs,
-					Err:  fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().Alias(), err),
-				})
-				continue
-			}
-
-			// Parse packet
-			indicator, err := ParsePacket(packet)
-			if err != nil {
-				log.Errorln(&net.OpError{
-					Op:   "handshake",
-					Net:  "pcap",
-					Addr: srcAddrs,
-					Err:  fmt.Errorf("parse packet: %w", err),
-				})
-				continue
-			}
-
-			// Handshaking with client (SYN+ACK)
-			if indicator.TCPLayer().SYN {
-				err := conn.handshakeSYNACK(indicator)
-				if err != nil {
-					log.Errorln(&net.OpError{
-						Op:     "handshake",
-						Net:    "pcap",
-						Source: conn.LocalAddr(),
-						Addr:   indicator.Src(),
-						Err:    err,
-					})
-					continue
-				}
-			}
-		}
-	}()
+	conn.conn = rawConn
 
 	return conn, nil
-}
-
-func (c *Conn) handshake(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr) error {
-	filter, err := addr.SrcBPFFilter(dstAddr)
-	if err != nil {
-		return fmt.Errorf("parse filter %s: %w", dstAddr, err)
-	}
-
-	handshakeConn, err := CreateRawConn(srcDev, dstDev, fmt.Sprintf("tcp && tcp[tcpflags] & tcp-ack != 0 && dst port %d && %s", srcPort, filter))
-	if err != nil {
-		return fmt.Errorf("create raw connection: %w", err)
-	}
-	defer handshakeConn.Close()
-
-	// Handshaking with server (SYN)
-	err = c.handshakeSYN(handshakeConn)
-	if err != nil {
-		return fmt.Errorf("synchronize: %w", err)
-	}
-
-	log.Infof("Connect to server %s\n", dstAddr.String())
-
-	// Latency test
-	start := time.Now()
-
-	type tuple struct {
-		packet gopacket.Packet
-		err    error
-	}
-	ct := make(chan tuple)
-
-	go func() {
-		packet, err := handshakeConn.ReadPacket()
-		if err != nil {
-			ct <- tuple{err: fmt.Errorf("read device %s: %w", handshakeConn.LocalDev().Alias(), err)}
-		}
-
-		ct <- tuple{packet: packet}
-	}()
-	go func() {
-		time.Sleep(3 * time.Second)
-		ct <- tuple{err: errors.New("timeout")}
-	}()
-
-	t := <-ct
-	if t.err != nil {
-		return t.err
-	}
-
-	transportLayer := t.packet.TransportLayer()
-	if transportLayer == nil {
-		return errors.New("missing transport layer")
-	}
-	switch t := transportLayer.LayerType(); t {
-	case layers.LayerTypeTCP:
-		tcpLayer := transportLayer.(*layers.TCP)
-		if tcpLayer.RST {
-			return errors.New("connection reset")
-		}
-		if !tcpLayer.SYN {
-			return errors.New("invalid packet")
-		}
-	default:
-		return fmt.Errorf("transport layer type %s not support", t)
-	}
-
-	// Latency test
-	duration := time.Now().Sub(start)
-
-	// Handshaking with server (ACK)
-	err = c.handshakeACK(t.packet, handshakeConn)
-	if err != nil {
-		return fmt.Errorf("acknowledge: %w", err)
-	}
-
-	log.Infof("Connected to server %s in %.3f ms (RTT)\n", dstAddr.String(), float64(duration.Microseconds())/1000)
-
-	return nil
 }
 
 func (c *Conn) Read(b []byte) (n int, err error) {
@@ -297,18 +162,35 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 	return n, err
 }
 
-func (c *Conn) handshakeSYN(conn *RawConn) error {
+func (c *Conn) handshakeSYN() error {
 	var (
 		transportLayer gopacket.SerializableLayer
 		networkLayer   gopacket.SerializableLayer
 		linkLayer      gopacket.SerializableLayer
 	)
 
-	// Initial client
-	client := &clientIndicator{crypt: c.crypt}
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// Client
+	c.clientsLock.RLock()
+	client, ok := c.clients[c.RemoteAddr().String()]
+	c.clientsLock.RUnlock()
+	if !ok {
+		// Initial TCP Seq
+		client = &clientIndicator{
+			crypt: c.crypt,
+			seq:   0,
+		}
+
+		// Map client
+		c.clientsLock.Lock()
+		c.clients[c.RemoteAddr().String()] = client
+		c.clientsLock.Unlock()
+	}
 
 	// Create layers
-	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, conn, c.dstAddr.IP, c.id, 128, conn.RemoteDev().HardwareAddr())
+	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, c.conn, c.dstAddr.IP, c.id, 128, c.RemoteDev().HardwareAddr())
 	if err != nil {
 		return err
 	}
@@ -323,18 +205,13 @@ func (c *Conn) handshakeSYN(conn *RawConn) error {
 	}
 
 	// Write packet data
-	_, err = conn.Write(data)
+	_, err = c.conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 
 	// TCP Seq
 	client.seq++
-
-	// Map client
-	c.clientsLock.Lock()
-	c.clients[c.RemoteAddr().String()] = client
-	c.clientsLock.Unlock()
 
 	// IPv4 Id
 	if networkLayer.LayerType() == layers.LayerTypeIPv4 {
@@ -346,25 +223,35 @@ func (c *Conn) handshakeSYN(conn *RawConn) error {
 
 func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 	var (
+		err               error
 		newTransportLayer gopacket.SerializableLayer
 		newNetworkLayer   gopacket.SerializableLayer
 		newLinkLayer      gopacket.SerializableLayer
 	)
 
-	if t := indicator.TransportLayer().LayerType(); t != layers.LayerTypeTCP {
-		return fmt.Errorf("transport layer type %s not support", t)
-	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
-	// Initial TCP Seq
-	src := indicator.Src()
-	client := &clientIndicator{
-		crypt: c.crypt,
-		seq:   0,
-		ack:   indicator.TCPLayer().Seq + 1,
+	// Client
+	c.clientsLock.RLock()
+	client, ok := c.clients[indicator.Src().String()]
+	c.clientsLock.RUnlock()
+	if !ok {
+		// Initial TCP Seq
+		client = &clientIndicator{
+			crypt: c.crypt,
+			seq:   0,
+		}
+
+		// Map client
+		c.clientsLock.Lock()
+		c.clients[indicator.Src().String()] = client
+		c.clientsLock.Unlock()
 	}
+	client.ack = indicator.TCPLayer().Seq + 1
 
 	// Create layers
-	newTransportLayer, newNetworkLayer, newLinkLayer, err := CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, c.conn, indicator.SrcIP(), c.id, 64, indicator.SrcHardwareAddr())
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, c.conn, indicator.SrcIP(), c.id, 64, indicator.SrcHardwareAddr())
 	if err != nil {
 		return fmt.Errorf("create layers: %w", err)
 	}
@@ -387,11 +274,6 @@ func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 	// TCP Seq
 	client.seq++
 
-	// Map client
-	c.clientsLock.Lock()
-	c.clients[src.String()] = client
-	c.clientsLock.Unlock()
-
 	// IPv4 Id
 	if newNetworkLayer.LayerType() == layers.LayerTypeIPv4 {
 		c.id++
@@ -400,34 +282,30 @@ func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 	return nil
 }
 
-func (c *Conn) handshakeACK(packet gopacket.Packet, conn *RawConn) error {
+func (c *Conn) handshakeACK(indicator *PacketIndicator) error {
 	var (
-		indicator         *PacketIndicator
+		err               error
 		newTransportLayer gopacket.SerializableLayer
 		newNetworkLayer   gopacket.SerializableLayer
 		newLinkLayer      gopacket.SerializableLayer
 	)
 
-	// Parse packet
-	indicator, err := ParsePacket(packet)
-	if err != nil {
-		return fmt.Errorf("parse packet: %w", err)
-	}
-
-	if t := indicator.TransportLayer().LayerType(); t != layers.LayerTypeTCP {
-		return fmt.Errorf("transport layer type %s not support", t)
-	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	// Client
 	c.clientsLock.RLock()
-	client := c.clients[indicator.Src().String()]
+	client, ok := c.clients[indicator.Src().String()]
 	c.clientsLock.RUnlock()
+	if !ok {
+		return fmt.Errorf("client %s unauthorized", indicator.Src().String())
+	}
 
 	// TCP Ack
 	client.ack = indicator.TCPLayer().Seq + 1
 
 	// Create layers
-	newTransportLayer, newNetworkLayer, newLinkLayer, err = CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, conn, indicator.SrcIP(), c.id, 128, indicator.SrcHardwareAddr())
+	newTransportLayer, newNetworkLayer, newLinkLayer, err = CreateLayers(indicator.DstPort(), indicator.SrcPort(), client.seq, client.ack, c.conn, indicator.SrcIP(), c.id, 128, indicator.SrcHardwareAddr())
 	if err != nil {
 		return fmt.Errorf("create layers: %w", err)
 	}
@@ -442,7 +320,7 @@ func (c *Conn) handshakeACK(packet gopacket.Packet, conn *RawConn) error {
 	}
 
 	// Write packet data
-	_, err = conn.Write(data)
+	_, err = c.conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
@@ -469,6 +347,47 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 			Addr:   a,
 			Err:    err,
 		}
+	}
+
+	// Reply SYN
+	if packet.TransportLayer().(*layers.TCP).SYN {
+		indicator, err := ParsePacket(packet)
+		if err != nil {
+			return 0, a, &net.OpError{
+				Op:     "read",
+				Net:    "pcap",
+				Source: c.LocalAddr(),
+				Addr:   a,
+				Err:    fmt.Errorf("parse packet: %w", err),
+			}
+		}
+
+		// SYN+ACK
+		if indicator.TCPLayer().ACK {
+			if !c.isConnected {
+				t := time.Now()
+				duration := t.Sub(c.appear)
+
+				log.Infof("Connected to server %s in %.3f ms (RTT)\n", a.String(), float64(duration.Microseconds())/1000)
+
+				c.isConnected = true
+			}
+
+			err = c.handshakeACK(indicator)
+		} else {
+			err = c.handshakeSYNACK(indicator)
+		}
+		if err != nil {
+			return 0, a, &net.OpError{
+				Op:     "read",
+				Net:    "pcap",
+				Source: c.LocalAddr(),
+				Addr:   a,
+				Err:    fmt.Errorf("handshake: %w", err),
+			}
+		}
+
+		return 0, a, nil
 	}
 
 	if packet.ApplicationLayer() == nil {
@@ -613,6 +532,9 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			linkLayer      gopacket.SerializableLayer
 			fragments      [][]byte
 		)
+
+		c.lock.Lock()
+		defer c.lock.Unlock()
 
 		// Client
 		c.clientsLock.RLock()

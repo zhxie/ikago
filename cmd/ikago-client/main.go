@@ -765,7 +765,8 @@ func handleUpstream(contents []byte) error {
 
 	// Empty payload
 	if len(contents) <= 0 {
-		return errors.New("empty payload")
+		// return errors.New("empty payload")
+		return nil
 	}
 
 	// Parse embedded packet
