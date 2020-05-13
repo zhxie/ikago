@@ -67,7 +67,10 @@ func ParseICMPv4Layer(layer *layers.ICMPv4) (*ICMPv4Indicator, error) {
 
 		// Parse transport layer
 		embTransportLayer = packet.Layers()[1]
-		if t := embTransportLayer.LayerType(); t == gopacket.LayerTypeFragment {
+		switch t := embTransportLayer.LayerType(); t {
+		case layers.LayerTypeTCP, layers.LayerTypeUDP, layers.LayerTypeICMPv4:
+			break
+		default:
 			return nil, fmt.Errorf("transport layer type %s not support", t)
 		}
 	default:
