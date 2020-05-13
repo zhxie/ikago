@@ -249,6 +249,12 @@ func (c *Conn) handshakeSYN() error {
 		c.id++
 	}
 
+	srcAddr := &net.TCPAddr{
+		IP:   c.LocalDev().IPAddr().IP,
+		Port: int(c.srcPort),
+	}
+	log.Verbosef("Send TCP SYN: %s -> %s\n", srcAddr.String(), c.RemoteAddr().String())
+
 	return nil
 }
 
@@ -310,6 +316,12 @@ func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 		c.id++
 	}
 
+	srcAddr := &net.TCPAddr{
+		IP:   c.LocalDev().IPAddr().IP,
+		Port: int(indicator.DstPort()),
+	}
+	log.Verbosef("Send TCP SYN+ACK: %s <- %s\n", indicator.Src().String(), srcAddr.String())
+
 	return nil
 }
 
@@ -361,6 +373,12 @@ func (c *Conn) handshakeACK(indicator *PacketIndicator) error {
 		c.id++
 	}
 
+	srcAddr := &net.TCPAddr{
+		IP:   c.LocalDev().IPAddr().IP,
+		Port: int(indicator.DstPort()),
+	}
+	log.Verbosef("Send TCP ACK: %s -> %s\n", srcAddr.String(), indicator.Src().String())
+
 	return nil
 }
 
@@ -395,6 +413,8 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 
 		// SYN+ACK
 		if indicator.TCPLayer().ACK {
+			log.Verbosef("Receive TCP SYN+ACK: %s <- %s\n", indicator.Dst().String(), a.String())
+
 			if !c.isConnected {
 				t := time.Now()
 				duration := t.Sub(c.appear)
@@ -407,6 +427,8 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 
 			err = c.handshakeACK(indicator)
 		} else {
+			log.Verbosef("Receive TCP SYN: %s -> %s\n", a.String(), indicator.Dst().String())
+
 			err = c.handshakeSYNACK(indicator)
 		}
 		if err != nil {
