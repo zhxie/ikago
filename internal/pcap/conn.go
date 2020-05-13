@@ -221,7 +221,7 @@ func (c *Conn) handshakeSYN() error {
 	}
 
 	// Create layers
-	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, 0, c.conn, c.dstAddr.IP, c.id, 128, c.RemoteDev().HardwareAddr())
+	transportLayer, networkLayer, linkLayer, err := CreateLayers(c.srcPort, uint16(c.dstAddr.Port), client.seq, client.ack, c.conn, c.dstAddr.IP, c.id, 128, c.RemoteDev().HardwareAddr())
 	if err != nil {
 		return err
 	}
