@@ -712,6 +712,7 @@ type Listener struct {
 	srcPort uint16
 	crypt   crypto.Crypt
 	mtu     int
+	clients map[string]net.Conn
 }
 
 // Listen acts like Listen for pcap networks.
@@ -737,6 +738,7 @@ func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int)
 		srcPort: srcPort,
 		crypt:   crypt,
 		mtu:     mtu,
+		clients: make(map[string]net.Conn),
 	}
 
 	return listener, nil
@@ -762,6 +764,12 @@ func (l *Listener) Accept() (net.Conn, error) {
 			Addr: l.Addr(),
 			Err:  fmt.Errorf("parse packet: %w", err),
 		}
+	}
+
+	_, ok := l.clients[indicator.Src().String()]
+	if ok {
+		// Duplicate
+		return nil, nil
 	}
 
 	conn, err := dialPassive(l.Dev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt, l.mtu)
@@ -792,6 +800,9 @@ func (l *Listener) Accept() (net.Conn, error) {
 			Err:    err,
 		}
 	}
+
+	// Map client
+	l.clients[indicator.Src().String()] = conn
 
 	return conn, nil
 }

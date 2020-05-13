@@ -559,6 +559,9 @@ func open() error {
 					log.Errorln(fmt.Errorf("accept: %w", err))
 					continue
 				}
+				if conn == nil {
+					continue
+				}
 
 				// Tune
 				switch conn.(type) {
