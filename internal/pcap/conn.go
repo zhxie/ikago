@@ -34,6 +34,7 @@ type Conn struct {
 	mtu           int
 	appear        time.Time
 	isConnected   bool
+	isReconnected bool
 	isClosed      bool
 	clientsLock   sync.RWMutex
 	clients       map[string]*clientIndicator
@@ -53,7 +54,7 @@ func newConn() *Conn {
 }
 
 // Dial acts like Dial for pcap networks.
-func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*Conn, error) {
+func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, timeout int) (*Conn, error) {
 	srcAddr := &net.TCPAddr{
 		IP:   srcDev.IPAddr().IP,
 		Port: int(srcPort),
@@ -92,9 +93,39 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 		if !conn.isConnected {
 			log.Errorf("Cannot receive response from server %s, is it down?\n", dstAddr.String())
 		}
-
-		return
 	}()
+
+	// Timeout
+	if timeout > 0 {
+		go func() {
+			for {
+				time.Sleep(time.Duration(timeout) * time.Second)
+
+				if !conn.isClosed {
+					conn.isReconnected = false
+
+					err = conn.handshakeSYN()
+					if err != nil {
+						log.Errorf("%w", &net.OpError{
+							Op:     "dial",
+							Net:    "pcap",
+							Source: srcAddr,
+							Addr:   dstAddr,
+							Err:    fmt.Errorf("handshake: %w", err),
+						})
+					}
+
+					go func() {
+						time.Sleep(establishDeadline)
+
+						if !conn.isReconnected {
+							log.Errorf("Cannot receive response from server %s, is it down?\n", dstAddr.String())
+						}
+					}()
+				}
+			}
+		}()
+	}
 
 	return conn, nil
 }
@@ -372,6 +403,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 
 				c.isConnected = true
 			}
+			c.isReconnected = true
 
 			err = c.handshakeACK(indicator)
 		} else {
@@ -791,8 +823,8 @@ func (l *Listener) Addr() net.Addr {
 }
 
 // DialWithKCP connects to the remote address in the pcap connection with KCP support.
-func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.UDPSession, error) {
-	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
+func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, timeout int, config *config.KCPConfig) (*kcp.UDPSession, error) {
+	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt, mtu, timeout)
 	if err != nil {
 		return nil, err
 	}

@@ -71,10 +71,12 @@ var (
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argSources        = flag.String("r", "", "Sources.")
 	argServer         = flag.String("s", "", "Server.")
+	argTimeout        = flag.Int("timeout", 0, "Timeout period.")
 )
 
 var (
 	publishIP  *net.IPAddr
+	timeout    int
 	upPort     uint16
 	sources    []*net.IPAddr
 	serverIP   net.IP
@@ -185,6 +187,7 @@ func main() {
 			Port:    *argUpPort,
 			Sources: splitArg(*argSources),
 			Server:  *argServer,
+			Timeout: *argTimeout,
 		}
 	}
 
@@ -330,6 +333,12 @@ func main() {
 	}
 	if publishIP != nil {
 		log.Infof("Publish %s\n", publishIP.IP)
+	}
+
+	// Timeout
+	timeout = cfg.Timeout
+	if timeout != 0 {
+		log.Infof("Timeout in %d seconds\n", timeout)
 	}
 
 	// TCP
@@ -565,9 +574,9 @@ func open() error {
 	if isTCP {
 		upConn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", serverIP, serverPort))
 	} else if isKCP {
-		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, kcpConfig)
+		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, timeout, kcpConfig)
 	} else {
-		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu)
+		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, timeout)
 	}
 	if err != nil {
 		return fmt.Errorf("open upstream: %w", err)
