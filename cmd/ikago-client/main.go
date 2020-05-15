@@ -446,6 +446,7 @@ func main() {
 		}()
 
 		log.Infof("Monitor on :%d\n", cfg.Monitor)
+		log.Infoln("You can now observe traffic on http://ikago.ikas.ink")
 	}
 
 	if len(sources) == 1 {
