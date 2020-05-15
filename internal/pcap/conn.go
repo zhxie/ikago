@@ -102,26 +102,16 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 				time.Sleep(time.Duration(timeout) * time.Second)
 
 				if !conn.isClosed {
-					conn.isReconnected = false
-
-					err = conn.handshakeSYN()
+					err = conn.Reconnect()
 					if err != nil {
 						log.Errorf("%w", &net.OpError{
 							Op:     "dial",
 							Net:    "pcap",
 							Source: srcAddr,
 							Addr:   dstAddr,
-							Err:    fmt.Errorf("handshake: %w", err),
+							Err:    fmt.Errorf("reconnect: %w", err),
 						})
 					}
-
-					go func() {
-						time.Sleep(establishDeadline)
-
-						if !conn.isReconnected {
-							log.Errorf("Cannot receive response from server %s, is it down?\n", dstAddr.String())
-						}
-					}()
 				}
 			}
 		}()
@@ -724,6 +714,26 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 
 func (c *Conn) SetWriteDeadline(t time.Time) error {
 	c.writeDeadline = t
+
+	return nil
+}
+
+// Reconnect reconnects the connection by sending TCP SYN.
+func (c *Conn) Reconnect() error {
+	c.isReconnected = false
+
+	err := c.handshakeSYN()
+	if err != nil {
+		return fmt.Errorf("handshake: %w", err)
+	}
+
+	go func() {
+		time.Sleep(establishDeadline)
+
+		if !c.isReconnected {
+			log.Errorf("Cannot receive response from server %s, is it down?\n", c.RemoteAddr().String())
+		}
+	}()
 
 	return nil
 }

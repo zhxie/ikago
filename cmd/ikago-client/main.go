@@ -705,6 +705,19 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 		return fmt.Errorf("write: %w", err)
 	}
 
+	// Reconnect
+	if upConn != nil {
+		switch upConn.(type) {
+		case *pcap.Conn:
+			err = upConn.(*pcap.Conn).Reconnect()
+		default:
+			break
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("reconnect: %w", err)
+	}
+
 	log.Infof("Device %s [%s] joined the network\n", indicator.SrcIP(), net.HardwareAddr(arpLayer.SourceHwAddress))
 	log.Verbosef("Reply an %s request: %s -> %s\n", indicator.NetworkLayer().LayerType(), indicator.SrcIP(), indicator.DstIP())
 
