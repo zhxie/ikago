@@ -706,7 +706,7 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// Reconnect
-	if upConn != nil {
+	if timeout > 0 && upConn != nil {
 		switch upConn.(type) {
 		case *pcap.Conn:
 			err = upConn.(*pcap.Conn).Reconnect()
