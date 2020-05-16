@@ -78,7 +78,7 @@ func Verbosef(format string, v ...interface{}) {
 	if allowVerbose {
 		outLogger.output(s)
 	}
-	if !allowVerbose {
+	if !allowVerbose && logLogger != nil {
 		logLogger.Output(2, s)
 	}
 }
@@ -90,7 +90,7 @@ func Verbose(v ...interface{}) {
 	if allowVerbose {
 		outLogger.output(s)
 	}
-	if !allowVerbose {
+	if !allowVerbose && logLogger != nil {
 		logLogger.Output(2, s)
 	}
 }
@@ -102,7 +102,7 @@ func Verboseln(v ...interface{}) {
 	if allowVerbose {
 		outLogger.output(s)
 	}
-	if !allowVerbose {
+	if !allowVerbose && logLogger != nil {
 		logLogger.Output(2, s)
 	}
 }
