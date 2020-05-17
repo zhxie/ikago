@@ -1,0 +1,12 @@
+/* JSON standards does NOT allow comments. Remove all comments before use. */
+
+// The IkaGo-server configured in this example will listen on port 18081 and send data from the server to the client
+// with MTU 1300. At startup, IkaGo-server will configure firewall rules (recommended), and log to server.log.
+
+{
+  "mtu": 1300,
+  "rule": true,
+  "log": "server.log",
+
+  "port": 18081
+}

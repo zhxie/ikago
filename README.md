@@ -38,6 +38,8 @@ go run ./cmd/ikago-client -r [sources] -s [ip:port]
 go run ./cmd/ikago-server -p [port]
 ```
 
+Examples of configuration file are [here](/configs).
+
 ### Common options
 
 `-list-devices`: (Optional, exclusive) List all valid devices in current computer.

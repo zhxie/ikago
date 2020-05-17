@@ -1,0 +1,22 @@
+/* JSON standards does NOT allow comments. Remove all comments before use. */
+
+// The IkaGo-client configured in this example will connect to IkaGo-server at server:18081 from random port and send
+// data from the client to the server with MTU 1300. At startup, IkaGo-server will configure firewall
+// rules (recommended), and log to client.log. IkaGo-client will proxy all supported traffic with source address
+// 10.6.0.2 or 10.6.0.3, and it will respond to ARP requests to 10.6.0.1. Also, IkaGo-client will host monitoring
+// services on port 18080. Via http://ikago.ikas.ink, you can see the network traffic information of IkaGo-client.
+// On the device being proxied, you should set the IP address to 10.6.0.2 or 10.6.0.3 and the gateway to 10.6.0.1.
+
+{
+  "mtu": 0,
+  "rule": false,
+  "log": "client.log",
+  "monitor": 18080,
+
+  "publish": "10.6.0.1",
+  "sources": [
+    "10.6.0.2",
+    "10.6.0.3"
+  ],
+  "server": "server:18081"
+}
