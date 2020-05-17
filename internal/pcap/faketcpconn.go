@@ -23,8 +23,8 @@ type clientIndicator struct {
 const establishDeadline = 3 * time.Second
 const keepFragments = 30 * time.Second
 
-// Conn is a packet pcap network connection add fake TCP header to all traffic.
-type Conn struct {
+// FakeTCPConn is a packet pcap network connection add fake TCP header to all traffic.
+type FakeTCPConn struct {
 	lock          sync.Mutex
 	conn          *RawConn
 	defrag        Defragmenter
@@ -43,8 +43,8 @@ type Conn struct {
 	writeDeadline time.Time
 }
 
-func newConn() *Conn {
-	conn := &Conn{
+func newConn() *FakeTCPConn {
+	conn := &FakeTCPConn{
 		defrag:  NewEasyDefragmenter(),
 		mtu:     MaxMTU,
 		clients: make(map[string]*clientIndicator),
@@ -53,14 +53,14 @@ func newConn() *Conn {
 	return conn
 }
 
-// Dial acts like Dial for pcap networks.
-func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*Conn, error) {
+// DialFakeTCP establishes FakeTCP connection for pcap networks.
+func DialFakeTCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*FakeTCPConn, error) {
 	srcAddr := &net.TCPAddr{
 		IP:   srcDev.IPAddr().IP,
 		Port: int(srcPort),
 	}
 
-	conn, err := dialPassive(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
+	conn, err := dialFakeTCPPassive(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -98,7 +98,7 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 	return conn, nil
 }
 
-func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*Conn, error) {
+func dialFakeTCPPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*FakeTCPConn, error) {
 	srcAddr := &net.TCPAddr{
 		IP:   srcDev.IPAddr().IP,
 		Port: int(srcPort),
@@ -129,7 +129,7 @@ func dialPassive(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 	return conn, nil
 }
 
-func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int) (*Conn, error) {
+func listenFakeTCPMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int) (*FakeTCPConn, error) {
 	addrs := make([]*net.TCPAddr, 0)
 	for _, ip := range srcDev.IPAddrs() {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
@@ -155,13 +155,13 @@ func listenMulticast(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt,
 	return conn, nil
 }
 
-func (c *Conn) Read(b []byte) (n int, err error) {
+func (c *FakeTCPConn) Read(b []byte) (n int, err error) {
 	n, _, err = c.ReadFrom(b)
 
 	return n, err
 }
 
-func (c *Conn) handshakeSYN() error {
+func (c *FakeTCPConn) handshakeSYN() error {
 	var (
 		transportLayer gopacket.SerializableLayer
 		networkLayer   gopacket.SerializableLayer
@@ -226,7 +226,7 @@ func (c *Conn) handshakeSYN() error {
 	return nil
 }
 
-func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
+func (c *FakeTCPConn) handshakeSYNACK(indicator *PacketIndicator) error {
 	var (
 		err               error
 		newTransportLayer gopacket.SerializableLayer
@@ -293,7 +293,7 @@ func (c *Conn) handshakeSYNACK(indicator *PacketIndicator) error {
 	return nil
 }
 
-func (c *Conn) handshakeACK(indicator *PacketIndicator) error {
+func (c *FakeTCPConn) handshakeACK(indicator *PacketIndicator) error {
 	var (
 		err               error
 		newTransportLayer gopacket.SerializableLayer
@@ -350,11 +350,11 @@ func (c *Conn) handshakeACK(indicator *PacketIndicator) error {
 	return nil
 }
 
-func (c *Conn) Write(b []byte) (n int, err error) {
+func (c *FakeTCPConn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.RemoteAddr())
 }
 
-func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
+func (c *FakeTCPConn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 	packet, a, err := c.readPacketFrom()
 	if err != nil {
 		return 0, a, &net.OpError{
@@ -480,7 +480,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 	return len(contents), a, err
 }
 
-func (c *Conn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
+func (c *FakeTCPConn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 	type tuple struct {
 		packet gopacket.Packet
 		err    error
@@ -549,7 +549,7 @@ func (c *Conn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 	}
 }
 
-func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+func (c *FakeTCPConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	var (
 		dstIP   net.IP
 		dstPort uint16
@@ -660,7 +660,7 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return len(p), nil
 }
 
-func (c *Conn) Close() error {
+func (c *FakeTCPConn) Close() error {
 	c.isClosed = true
 
 	err := c.conn.Close()
@@ -677,24 +677,24 @@ func (c *Conn) Close() error {
 }
 
 // LocalDev returns the local device.
-func (c *Conn) LocalDev() *Device {
+func (c *FakeTCPConn) LocalDev() *Device {
 	return c.conn.LocalDev()
 }
 
-func (c *Conn) LocalAddr() net.Addr {
+func (c *FakeTCPConn) LocalAddr() net.Addr {
 	return &net.UDPAddr{IP: c.LocalDev().IPAddr().IP, Port: int(c.srcPort)}
 }
 
 // RemoteDev returns the remote device.
-func (c *Conn) RemoteDev() *Device {
+func (c *FakeTCPConn) RemoteDev() *Device {
 	return c.conn.RemoteDev()
 }
 
-func (c *Conn) RemoteAddr() net.Addr {
+func (c *FakeTCPConn) RemoteAddr() net.Addr {
 	return c.dstAddr
 }
 
-func (c *Conn) SetDeadline(t time.Time) error {
+func (c *FakeTCPConn) SetDeadline(t time.Time) error {
 	readDeadline := c.readDeadline
 
 	err := c.SetReadDeadline(t)
@@ -711,20 +711,20 @@ func (c *Conn) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *Conn) SetReadDeadline(t time.Time) error {
+func (c *FakeTCPConn) SetReadDeadline(t time.Time) error {
 	c.readDeadline = t
 
 	return nil
 }
 
-func (c *Conn) SetWriteDeadline(t time.Time) error {
+func (c *FakeTCPConn) SetWriteDeadline(t time.Time) error {
 	c.writeDeadline = t
 
 	return nil
 }
 
 // Reconnect reconnects the connection by sending TCP SYN.
-func (c *Conn) Reconnect() error {
+func (c *FakeTCPConn) Reconnect() error {
 	c.isReconnected = false
 
 	err := c.handshakeSYN()
@@ -743,8 +743,8 @@ func (c *Conn) Reconnect() error {
 	return nil
 }
 
-// Listener is a pcap network listener.
-type Listener struct {
+// FakeTCPListener is a pcap network listener in FakeTCP network.
+type FakeTCPListener struct {
 	conn    *RawConn
 	srcPort uint16
 	crypt   crypto.Crypt
@@ -752,8 +752,8 @@ type Listener struct {
 	clients map[string]net.Conn
 }
 
-// Listen acts like Listen for pcap networks.
-func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int) (*Listener, error) {
+// ListenFakeTCP announces on the local network address in FakeTCP network.
+func ListenFakeTCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int) (*FakeTCPListener, error) {
 	addrs := make([]*net.TCPAddr, 0)
 	for _, ip := range srcDev.IPAddrs() {
 		addrs = append(addrs, &net.TCPAddr{IP: ip.IP, Port: int(srcPort)})
@@ -770,7 +770,7 @@ func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int)
 		}
 	}
 
-	listener := &Listener{
+	listener := &FakeTCPListener{
 		conn:    conn,
 		srcPort: srcPort,
 		crypt:   crypt,
@@ -781,7 +781,7 @@ func Listen(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int)
 	return listener, nil
 }
 
-func (l *Listener) Accept() (net.Conn, error) {
+func (l *FakeTCPListener) Accept() (net.Conn, error) {
 	packet, err := l.conn.ReadPacket()
 	if err != nil {
 		return nil, &net.OpError{
@@ -809,7 +809,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, nil
 	}
 
-	conn, err := dialPassive(l.Dev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt, l.mtu)
+	conn, err := dialFakeTCPPassive(l.Dev(), l.conn.RemoteDev(), l.srcPort, indicator.Src().(*net.TCPAddr), l.crypt, l.mtu)
 	if err != nil {
 		return nil, &net.OpError{
 			Op:     "dial",
@@ -844,7 +844,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 	return conn, nil
 }
 
-func (l *Listener) Close() error {
+func (l *FakeTCPListener) Close() error {
 	err := l.conn.Close()
 	if err != nil {
 		return &net.OpError{
@@ -859,20 +859,20 @@ func (l *Listener) Close() error {
 }
 
 // Dev returns the device.
-func (l *Listener) Dev() *Device {
+func (l *FakeTCPListener) Dev() *Device {
 	return l.conn.LocalDev()
 }
 
-func (l *Listener) Addr() net.Addr {
+func (l *FakeTCPListener) Addr() net.Addr {
 	return &net.TCPAddr{
 		IP:   l.Dev().IPAddr().IP,
 		Port: int(l.srcPort),
 	}
 }
 
-// DialWithKCP connects to the remote address in the pcap connection with KCP support.
-func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.UDPSession, error) {
-	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
+// DialFakeTCPWithKCP connects to the remote address in the FakeTCP network with KCP support.
+func DialFakeTCPWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.UDPSession, error) {
+	conn, err := DialFakeTCP(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
 	if err != nil {
 		return nil, err
 	}
@@ -904,9 +904,9 @@ func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 	return sess, nil
 }
 
-// ListenWithKCP listens for incoming packets addressed to the local address in the pcap connection with KCP support.
-func ListenWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.Listener, error) {
-	conn, err := listenMulticast(srcDev, dstDev, srcPort, crypt, mtu)
+// ListenFakeTCPWithKCP listens for incoming packets addressed to the local address in the FakeTCP network with KCP support.
+func ListenFakeTCPWithKCP(srcDev, dstDev *Device, srcPort uint16, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.Listener, error) {
+	conn, err := listenFakeTCPMulticast(srcDev, dstDev, srcPort, crypt, mtu)
 	if err != nil {
 		return nil, err
 	}

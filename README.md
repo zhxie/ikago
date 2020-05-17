@@ -56,14 +56,6 @@ Examples of configuration file are [here](/configs).
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`. This option needs to be set consistently between the client and the server.
 
-`-mtu`: (Optional) MTU. MTU is set in traffic between the client and the server.
-
-`-kcp`: (Optional) Enable KCP. This option needs to be set consistently between the client and the server.
-
-`-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options, available when KCP is enabled. These options need to be set consistently between the client and the server. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
-
-`-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options, available when KCP is enabled. These options need to be set consistently between the client and the server. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
-
 `-rule`: (Optional) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
 
 `-v`: (Optional) Print verbose messages. Either `-v` or `verbose` in configuration file is set `true`, IkaGo will print verbose messages.
@@ -71,6 +63,16 @@ Examples of configuration file are [here](/configs).
 `-log path`: (Optional) Log.
 
 `-monitor port`: (Optional) Port for monitoring. If this value is set, IkaGo will host HTTP server on `localhost:port` and print JSON statistics on it. You can observe observe traffic on [IkaGo-web](http://ikago.ikas.ink).
+
+#### FakeTCP options
+
+`-mtu`: (Optional) MTU. MTU is set in traffic between the client and the server.
+
+`-kcp`: (Optional) Enable KCP. This option needs to be set consistently between the client and the server.
+
+`-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options. These options need to be set consistently between the client and the server. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
+
+`-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options. These options need to be set consistently between the client and the server. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
 
 ### Client options
 

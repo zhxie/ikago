@@ -51,6 +51,10 @@ var (
 	argGateway        = flag.String("gateway", "", "Gateway address.")
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
+	argRule           = flag.Bool("rule", false, "Add firewall rule.")
+	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
+	argLog            = flag.String("log", "", "Log.")
+	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
 	argMTU            = flag.Int("mtu", 0, "MTU.")
 	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
 	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
@@ -63,10 +67,6 @@ var (
 	argKCPInterval    = flag.Int("kcp-interval", kcp.IKCP_INTERVAL, "KCP tuning option interval.")
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
-	argRule           = flag.Bool("rule", false, "Add firewall rule.")
-	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
-	argLog            = flag.String("log", "", "Log.")
-	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argSources        = flag.String("r", "", "Sources.")
@@ -82,7 +82,7 @@ var (
 	listenDevs []*pcap.Device
 	upDev      *pcap.Device
 	gatewayDev *pcap.Device
-	isTCP      bool
+	mode       string
 	crypt      crypto.Crypt
 	mtu        int
 	isKCP      bool
@@ -157,35 +157,33 @@ func main() {
 		}
 		log.Infof("Load configuration from %s\n", *argConfig)
 	} else {
-		cfg = &config.Config{
-			ListenDevs: splitArg(*argListenDevs),
-			UpDev:      *argUpDev,
-			Gateway:    *argGateway,
-			Method:     *argMethod,
-			Password:   *argPassword,
-			MTU:        *argMTU,
-			KCP:        *argKCP,
-			KCPConfig: config.KCPConfig{
-				MTU:         *argKCPMTU,
-				SendWindow:  *argKCPSendWindow,
-				RecvWindow:  *argKCPRecvWindow,
-				DataShard:   *argKCPDataShard,
-				ParityShard: *argKCPParityShard,
-				ACKNoDelay:  *argKCPACKNoDelay,
-				NoDelay:     *argKCPNoDelay,
-				Interval:    *argKCPInterval,
-				Resend:      *argKCPResend,
-				NC:          *argKCPNC,
-			},
-			Rule:    *argRule,
-			Verbose: *argVerbose,
-			Log:     *argLog,
-			Monitor: *argMonitor,
-			Publish: *argPublish,
-			Port:    *argUpPort,
-			Sources: splitArg(*argSources),
-			Server:  *argServer,
-		}
+		cfg = config.NewConfig()
+		cfg.ListenDevs = splitArg(*argListenDevs)
+		cfg.UpDev = *argUpDev
+		cfg.Gateway = *argGateway
+		cfg.Method = *argMethod
+		cfg.Password = *argPassword
+		cfg.Rule = *argRule
+		cfg.Verbose = *argVerbose
+		cfg.Log = *argLog
+		cfg.Monitor = *argMonitor
+		cfg.MTU = *argMTU
+		cfg.KCP = *argKCP
+		cfg.KCPConfig = *config.NewKCPConfig()
+		cfg.KCPConfig.MTU = *argKCPMTU
+		cfg.KCPConfig.SendWindow = *argKCPSendWindow
+		cfg.KCPConfig.RecvWindow = *argKCPRecvWindow
+		cfg.KCPConfig.DataShard = *argKCPDataShard
+		cfg.KCPConfig.ParityShard = *argKCPParityShard
+		cfg.KCPConfig.ACKNoDelay = *argKCPACKNoDelay
+		cfg.KCPConfig.NoDelay = *argKCPNoDelay
+		cfg.KCPConfig.Interval = *argKCPInterval
+		cfg.KCPConfig.Resend = *argKCPResend
+		cfg.KCPConfig.NC = *argKCPNC
+		cfg.Publish = *argPublish
+		cfg.Port = *argUpPort
+		cfg.Sources = splitArg(*argSources)
+		cfg.Server = *argServer
 	}
 
 	// Log
@@ -245,6 +243,9 @@ func main() {
 			log.Fatalln(fmt.Errorf("invalid gateway %s", cfg.Gateway))
 		}
 	}
+	if cfg.Monitor < 0 || cfg.Monitor > 65535 {
+		log.Fatalln(fmt.Errorf("monitor port %d out of range", cfg.Monitor))
+	}
 	if cfg.MTU < 576 || cfg.MTU > pcap.MaxMTU {
 		if cfg.MTU == 0 {
 			cfg.MTU = pcap.MaxMTU
@@ -275,9 +276,6 @@ func main() {
 	}
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
-	}
-	if cfg.Monitor < 0 || cfg.Monitor > 65535 {
-		log.Fatalln(fmt.Errorf("monitor port %d out of range", cfg.Monitor))
 	}
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.Port))
@@ -332,13 +330,16 @@ func main() {
 		log.Infof("Publish %s\n", publishIP.IP)
 	}
 
-	// TCP
-	isTCP = cfg.TCP
-	if isTCP {
-		cfg.Method = "plain"
-		cfg.MTU = 0
-		cfg.KCP = false
-		log.Infoln("Enable standard TCP (experimental)")
+	// Mode
+	switch cfg.Mode {
+	case "faketcp":
+		mode = "faketcp"
+		log.Infoln("Use fake TCP")
+	case "tcp":
+		mode = "tcp"
+		log.Infoln("Use standard TCP (experimental)")
+	default:
+		log.Fatalln(fmt.Errorf("mode %s not support", cfg.Mode))
 	}
 
 	// Crypt
@@ -349,19 +350,6 @@ func main() {
 	method := crypt.Method()
 	if method != crypto.MethodPlain {
 		log.Infof("Encrypt with %s\n", method)
-	}
-
-	// MTU
-	mtu = cfg.MTU
-	if mtu != pcap.MaxMTU {
-		log.Infof("Set MTU to %d Bytes\n", mtu)
-	}
-
-	// KCP
-	isKCP = cfg.KCP
-	kcpConfig = &cfg.KCPConfig
-	if isKCP {
-		log.Infoln("Enable KCP")
 	}
 
 	// Monitor
@@ -438,6 +426,19 @@ func main() {
 
 		log.Infof("Monitor on :%d\n", cfg.Monitor)
 		log.Infoln("You can now observe traffic on http://ikago.ikas.ink")
+	}
+
+	// MTU
+	mtu = cfg.MTU
+	if mtu != pcap.MaxMTU {
+		log.Infof("Set MTU to %d Bytes\n", mtu)
+	}
+
+	// KCP
+	isKCP = cfg.KCP
+	kcpConfig = &cfg.KCPConfig
+	if isKCP {
+		log.Infoln("Enable KCP")
 	}
 
 	if len(sources) == 1 {
@@ -563,12 +564,17 @@ func open() error {
 	}
 
 	// Handle for routing upstream
-	if isTCP {
-		upConn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", serverIP, serverPort))
-	} else if isKCP {
-		upConn, err = pcap.DialWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, kcpConfig)
-	} else {
-		upConn, err = pcap.Dial(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu)
+	switch mode {
+	case "faketcp":
+		if isKCP {
+			upConn, err = pcap.DialFakeTCPWithKCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu, kcpConfig)
+		} else {
+			upConn, err = pcap.DialFakeTCP(upDev, gatewayDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt, mtu)
+		}
+	case "tcp":
+		upConn, err = pcap.DialTCP(upDev, upPort, &net.TCPAddr{IP: serverIP, Port: int(serverPort)}, crypt)
+	default:
+		err = fmt.Errorf("mode %s not support", mode)
 	}
 	if err != nil {
 		return fmt.Errorf("open upstream: %w", err)
@@ -699,8 +705,8 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 	// Reconnect
 	if upConn != nil {
 		switch upConn.(type) {
-		case *pcap.Conn:
-			err = upConn.(*pcap.Conn).Reconnect()
+		case *pcap.FakeTCPConn:
+			err = upConn.(*pcap.FakeTCPConn).Reconnect()
 		default:
 			break
 		}

@@ -4,6 +4,10 @@
   "gateway": "",
   "method": "plain",
   "password": "",
+  "rule": false,
+  "verbose": false,
+  "log": "",
+  "monitor": 0,
   "mtu": 0,
   "kcp": false,
   "kcp-tuning": {
@@ -18,10 +22,6 @@
     "resend": 0,
     "nc": 0
   },
-  "rule": false,
-  "verbose": false,
-  "log": "",
-  "monitor": 0,
 
   "publish": "",
   "port": 0,

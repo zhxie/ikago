@@ -14,16 +14,16 @@ type Config struct {
 	ListenDevs []string  `json:"listen-devices"`
 	UpDev      string    `json:"upstream-device"`
 	Gateway    string    `json:"gateway"`
-	TCP        bool      `json:"tcp"`
+	Mode       string    `json:"mode"`
 	Method     string    `json:"method"`
 	Password   string    `json:"password"`
-	MTU        int       `json:"mtu"`
-	KCP        bool      `json:"kcp"`
-	KCPConfig  KCPConfig `json:"kcp-tuning"`
 	Rule       bool      `json:"rule"`
 	Verbose    bool      `json:"verbose"`
 	Log        string    `json:"log"`
 	Monitor    int       `json:"monitor"`
+	MTU        int       `json:"mtu"`
+	KCP        bool      `json:"kcp"`
+	KCPConfig  KCPConfig `json:"kcp-tuning"`
 	Port       int       `json:"port"`
 	Publish    string    `json:"publish"`
 	Sources    []string  `json:"sources"`
@@ -33,6 +33,7 @@ type Config struct {
 // NewConfig returns a new config.
 func NewConfig() *Config {
 	return &Config{
+		Mode:      "faketcp",
 		Method:    "plain",
 		KCPConfig: *NewKCPConfig(),
 		Sources:   make([]string, 0),
