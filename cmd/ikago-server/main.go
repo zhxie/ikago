@@ -595,7 +595,7 @@ func open() error {
 							}
 							if errors.Is(err, io.EOF) {
 								log.Infof("Disconnect from client %s\n", conn.RemoteAddr())
-								continue
+								return
 							}
 							log.Errorln(fmt.Errorf("read listen: %w", err))
 							continue
