@@ -618,6 +618,9 @@ func open() error {
 			if isClosed {
 				return nil
 			}
+			if errors.Is(err, io.EOF) {
+				log.Fatalf("Connection to server %s is closed, is the server or your network down?\n", upConn.RemoteAddr())
+			}
 			log.Errorln(fmt.Errorf("read upstream: %w", err))
 			continue
 		}

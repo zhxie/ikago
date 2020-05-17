@@ -56,8 +56,8 @@ func (indicator *natIndicator) embSrcIP() net.IP {
 
 const name string = "IkaGo-server"
 
-const keepAlive time.Duration = 30 * time.Second
-const keepFragments time.Duration = 30 * time.Second
+const keepAlive = 30 * time.Second
+const keepFragments = 30 * time.Second
 
 var (
 	version     = ""
@@ -592,6 +592,10 @@ func open() error {
 						if err != nil {
 							if isClosed {
 								return
+							}
+							if errors.Is(err, io.EOF) {
+								log.Infof("Disconnect from client %s\n", conn.RemoteAddr())
+								continue
 							}
 							log.Errorln(fmt.Errorf("read listen: %w", err))
 							continue
