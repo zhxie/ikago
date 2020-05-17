@@ -28,7 +28,6 @@ type Config struct {
 	Publish    string    `json:"publish"`
 	Sources    []string  `json:"sources"`
 	Server     string    `json:"server"`
-	Timeout    int       `json:"timeout"`
 }
 
 // NewConfig returns a new config.

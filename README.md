@@ -80,8 +80,6 @@ go run ./cmd/ikago-server -p [port]
 
 `-s address`: Server.
 
-`-timeout second`: (Optional) Timeout period. On certain occasions, firewalls may recognize packets constructed by IkaGo and block the connection. If this value is set, IkaGo will reconnect server by sending SYN in each period.
-
 ### Server options
 
 `-p port`: Port for listening.

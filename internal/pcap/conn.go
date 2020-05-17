@@ -20,8 +20,8 @@ type clientIndicator struct {
 	ack   uint32
 }
 
-const establishDeadline time.Duration = 3 * time.Second
-const keepFragments time.Duration = 30 * time.Second
+const establishDeadline = 3 * time.Second
+const keepFragments = 30 * time.Second
 
 // Conn is a packet pcap network connection add fake TCP header to all traffic.
 type Conn struct {
@@ -54,7 +54,7 @@ func newConn() *Conn {
 }
 
 // Dial acts like Dial for pcap networks.
-func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, timeout int) (*Conn, error) {
+func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int) (*Conn, error) {
 	srcAddr := &net.TCPAddr{
 		IP:   srcDev.IPAddr().IP,
 		Port: int(srcPort),
@@ -94,28 +94,6 @@ func Dial(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt cr
 			log.Errorf("Cannot receive response from server %s, is it down?\n", dstAddr.String())
 		}
 	}()
-
-	// Timeout
-	if timeout > 0 {
-		go func() {
-			for {
-				time.Sleep(time.Duration(timeout) * time.Second)
-
-				if !conn.isClosed {
-					err = conn.Reconnect()
-					if err != nil {
-						log.Errorf("%w", &net.OpError{
-							Op:     "dial",
-							Net:    "pcap",
-							Source: srcAddr,
-							Addr:   dstAddr,
-							Err:    fmt.Errorf("reconnect: %w", err),
-						})
-					}
-				}
-			}
-		}()
-	}
 
 	return conn, nil
 }
@@ -397,6 +375,28 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 			Source: c.LocalAddr(),
 			Addr:   a,
 			Err:    fmt.Errorf("parse packet: %w", err),
+		}
+	}
+
+	// Check TCP flags
+	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
+		if indicator.IsRST() {
+			log.Errorf("Receive TCP RST: %s <- %s\n", indicator.Dst().String(), a.String())
+
+			// Re-establish connection
+			err := c.Reconnect()
+			if err != nil {
+				return 0, a, &net.OpError{
+					Op:     "read",
+					Net:    "pcap",
+					Source: c.LocalAddr(),
+					Addr:   a,
+					Err:    fmt.Errorf("reconnect: %w", err),
+				}
+			}
+		}
+		if indicator.IsFIN() {
+			log.Infof("Receive TCP FIN: %s <- %s\n", indicator.Dst().String(), a.String())
 		}
 	}
 
@@ -871,8 +871,8 @@ func (l *Listener) Addr() net.Addr {
 }
 
 // DialWithKCP connects to the remote address in the pcap connection with KCP support.
-func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, timeout int, config *config.KCPConfig) (*kcp.UDPSession, error) {
-	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt, mtu, timeout)
+func DialWithKCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Crypt, mtu int, config *config.KCPConfig) (*kcp.UDPSession, error) {
+	conn, err := Dial(srcDev, dstDev, srcPort, dstAddr, crypt, mtu)
 	if err != nil {
 		return nil, err
 	}
