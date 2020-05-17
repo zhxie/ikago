@@ -388,53 +388,56 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 		}
 	}
 
-	// Reply SYN
-	if packet.TransportLayer().(*layers.TCP).SYN {
-		indicator, err := ParsePacket(packet)
-		if err != nil {
-			return 0, a, &net.OpError{
-				Op:     "read",
-				Net:    "pcap",
-				Source: c.LocalAddr(),
-				Addr:   a,
-				Err:    fmt.Errorf("parse packet: %w", err),
-			}
+	// Parse packet
+	indicator, err := ParsePacket(packet)
+	if err != nil {
+		return 0, a, &net.OpError{
+			Op:     "read",
+			Net:    "pcap",
+			Source: c.LocalAddr(),
+			Addr:   a,
+			Err:    fmt.Errorf("parse packet: %w", err),
 		}
-
-		// SYN+ACK
-		if indicator.TCPLayer().ACK {
-			log.Verbosef("Receive TCP SYN+ACK: %s <- %s\n", indicator.Dst().String(), a.String())
-
-			if !c.isConnected {
-				t := time.Now()
-				duration := t.Sub(c.appear)
-
-				log.Infof("Connected to server %s in %.3f ms (RTT)\n", a.String(), float64(duration.Microseconds())/1000)
-
-				c.isConnected = true
-			}
-			c.isReconnected = true
-
-			err = c.handshakeACK(indicator)
-		} else {
-			log.Verbosef("Receive TCP SYN: %s -> %s\n", a.String(), indicator.Dst().String())
-
-			err = c.handshakeSYNACK(indicator)
-		}
-		if err != nil {
-			return 0, a, &net.OpError{
-				Op:     "read",
-				Net:    "pcap",
-				Source: c.LocalAddr(),
-				Addr:   a,
-				Err:    fmt.Errorf("handshake: %w", err),
-			}
-		}
-
-		return 0, a, nil
 	}
 
-	if packet.ApplicationLayer() == nil {
+	// Reply TCP SYN
+	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
+		if indicator.IsSYN() {
+			// SYN+ACK
+			if indicator.IsACK() {
+				log.Verbosef("Receive TCP SYN+ACK: %s <- %s\n", indicator.Dst().String(), a.String())
+
+				if !c.isConnected {
+					t := time.Now()
+					duration := t.Sub(c.appear)
+
+					log.Infof("Connected to server %s in %.3f ms (RTT)\n", a.String(), float64(duration.Microseconds())/1000)
+
+					c.isConnected = true
+				}
+				c.isReconnected = true
+
+				err = c.handshakeACK(indicator)
+			} else {
+				log.Verbosef("Receive TCP SYN: %s -> %s\n", a.String(), indicator.Dst().String())
+
+				err = c.handshakeSYNACK(indicator)
+			}
+			if err != nil {
+				return 0, a, &net.OpError{
+					Op:     "read",
+					Net:    "pcap",
+					Source: c.LocalAddr(),
+					Addr:   a,
+					Err:    fmt.Errorf("handshake: %w", err),
+				}
+			}
+
+			return 0, a, nil
+		}
+	}
+
+	if indicator.Payload() == nil {
 		return 0, a, nil
 	}
 
@@ -453,13 +456,15 @@ func (c *Conn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
 	}
 
 	// TCP Ack, always use the expected one
-	expectedAck := packet.TransportLayer().(*layers.TCP).Seq + uint32(len(packet.ApplicationLayer().LayerContents()))
-	if expectedAck > client.ack || (4294967295-packet.TransportLayer().(*layers.TCP).Seq < uint32(len(packet.ApplicationLayer().LayerContents()))) {
-		client.ack = expectedAck
+	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
+		expectedAck := indicator.TCPLayer().Seq + uint32(len(indicator.Payload()))
+		if expectedAck > client.ack || (4294967295-indicator.TCPLayer().Seq < uint32(len(indicator.Payload()))) {
+			client.ack = expectedAck
+		}
 	}
 
 	// Decrypt
-	contents, err := client.crypt.Decrypt(packet.ApplicationLayer().LayerContents())
+	contents, err := client.crypt.Decrypt(indicator.Payload())
 	if err != nil {
 		return 0, a, &net.OpError{
 			Op:     "read",

@@ -248,6 +248,46 @@ func (indicator *PacketIndicator) DstPort() uint16 {
 	}
 }
 
+// IsRST returns if the packet is a ACK packet.
+func (indicator *PacketIndicator) IsACK() bool {
+	switch t := indicator.TransportLayer().LayerType(); t {
+	case layers.LayerTypeTCP:
+		return indicator.TCPLayer().ACK
+	default:
+		panic(fmt.Errorf("transport layer type %s not support", t))
+	}
+}
+
+// IsRST returns if the packet is a RST packet.
+func (indicator *PacketIndicator) IsRST() bool {
+	switch t := indicator.TransportLayer().LayerType(); t {
+	case layers.LayerTypeTCP:
+		return indicator.TCPLayer().RST
+	default:
+		panic(fmt.Errorf("transport layer type %s not support", t))
+	}
+}
+
+// IsRST returns if the packet is a SYN packet.
+func (indicator *PacketIndicator) IsSYN() bool {
+	switch t := indicator.TransportLayer().LayerType(); t {
+	case layers.LayerTypeTCP:
+		return indicator.TCPLayer().SYN
+	default:
+		panic(fmt.Errorf("transport layer type %s not support", t))
+	}
+}
+
+// IsRST returns if the packet is a FIN packet.
+func (indicator *PacketIndicator) IsFIN() bool {
+	switch t := indicator.TransportLayer().LayerType(); t {
+	case layers.LayerTypeTCP:
+		return indicator.TCPLayer().FIN
+	default:
+		panic(fmt.Errorf("transport layer type %s not support", t))
+	}
+}
+
 // NATSrc returns the source used in NAT.
 func (indicator *PacketIndicator) NATSrc() net.Addr {
 	switch t := indicator.TransportLayer().LayerType(); t {
