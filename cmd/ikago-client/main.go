@@ -311,16 +311,6 @@ func main() {
 	serverIP = serverAddr.IP
 	serverPort = uint16(serverAddr.Port)
 
-	// Add firewall rule
-	if cfg.Rule {
-		err := exec.AddSpecificFirewallRule(serverIP, serverPort)
-		if err != nil {
-			log.Errorln(fmt.Errorf("add firewall rule: %w", err))
-		} else {
-			log.Infoln("Add firewall rule")
-		}
-	}
-
 	// Publish
 	if cfg.Publish != "" {
 		ip := net.ParseIP(cfg.Publish)
@@ -353,6 +343,30 @@ func main() {
 	method := crypt.Method()
 	if method != crypto.MethodPlain {
 		log.Infof("Encrypt with %s\n", method)
+	}
+
+	// Add firewall rule
+	if cfg.Rule {
+		err := exec.DisableIPForwarding()
+		if err != nil {
+			log.Errorln(fmt.Errorf("disable ip forwarding: %w", err))
+		} else {
+			log.Infoln("Disable IP forwarding")
+		}
+
+		switch mode {
+		case "faketcp":
+			err = exec.AddSpecificFirewallRule(serverIP, serverPort)
+			if err != nil {
+				log.Errorln(fmt.Errorf("add firewall rule: %w", err))
+			} else {
+				log.Infoln("Add firewall rule")
+			}
+		case "tcp":
+			break
+		default:
+			log.Fatalln(fmt.Errorf("mode %s not support", cfg.Mode))
+		}
 	}
 
 	// Monitor

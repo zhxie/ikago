@@ -311,16 +311,6 @@ func main() {
 	// Port
 	port = uint16(cfg.Port)
 
-	// Add firewall rule
-	if cfg.Rule {
-		err := exec.AddGlobalFirewallRule()
-		if err != nil {
-			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
-		}
-
-		log.Errorln("Add firewall rule")
-	}
-
 	// Mode
 	switch cfg.Mode {
 	case "faketcp":
@@ -341,6 +331,23 @@ func main() {
 	method := crypt.Method()
 	if method != crypto.MethodPlain {
 		log.Infof("Encrypt with %s\n", method)
+	}
+
+	// Add firewall rule
+	if cfg.Rule {
+		err := exec.DisableIPForwarding()
+		if err != nil {
+			log.Fatalln(fmt.Errorf("disable ip forwarding: %w", err))
+		}
+
+		log.Infoln("Disable IP forwarding")
+
+		err = exec.AddGlobalFirewallRule()
+		if err != nil {
+			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
+		}
+
+		log.Infoln("Add firewall rule")
 	}
 
 	// Monitor

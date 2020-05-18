@@ -14,12 +14,6 @@ func addGlobalFirewallRule() error {
 }
 
 func addSpecificFirewallRule(ip net.IP, port uint16) error {
-	routeCmd := exec.Command("sysctl", "-w", "net.inet.ip.forwarding=0")
-	_, err := routeCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("exec sysctl: %w", err)
-	}
-
 	file, err := os.OpenFile("./pf.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 755)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -35,7 +29,7 @@ func addSpecificFirewallRule(ip net.IP, port uint16) error {
 		return fmt.Errorf("close: %w", err)
 	}
 
-	routeCmd = exec.Command("pfctl", "-f", "./pf.conf")
+	routeCmd := exec.Command("pfctl", "-f", "./pf.conf")
 	_, err = routeCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("exec pfctl: %w", err)
