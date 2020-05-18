@@ -10,6 +10,24 @@ This is the development documentation of IkaGo.
 
 `Transport Layer`: TCP, UDP and ICMPv4 layer.
 
+## Packet Capturing
+
+### Between Client and Server (FakeTCP)
+
+TCP and fragments packets received with the same source's address of the other's will be captured.
+
+### Between Sources and Client
+
+TCP, UDP, ICMPv4 and fragments packets received with the same source's address of `-r` will be captured.
+
+TCP, UDP, ICMPv4 and fragments packets received with the same address of server will be ignored.
+
+### Between Server and Destinations
+
+TCP, UDP, ICMPv4 and fragments packets will be captured.
+
+TCP, UDP, ICMPv4 and fragments packets received with the same port of server's listen port will be ignored.
+
 ## Connection
 
 Clients and server establish a FakeTCP connection at the beginning of transmission. All transmissions will use this connection.
@@ -22,25 +40,27 @@ Neither client nor server replies ACK passively.
 
 ## Transmission
 
-## Between Client and Server
+### Between Client and Server (FakeTCP)
 
 All packets transmitted must contain exactly a link layer, a network layer and a transport layer.
 
-Packets transmitted between clients and server will not be verified.
-
 **Transmission between clients and server must be in IPv4.**
 
-Transmission size information displayed in verbose log in the client is the size of application layer in **reassembled** packets from the server.
+**Packets transmitted between clients and server will be reassembled**, but the fragmentation information will be kept and restored in server and clients.
 
-Transmission size information displayed in verbose log in the server is the size of application layer in **reassembled** packets from the client.
+Packets transmitted between clients and server will not be verified.
 
-### Packet Structure
+Transmission size information displayed in verbose log in the client is the size of application layer in reassembled packets from the server.
+
+Transmission size information displayed in verbose log in the server is the size of application layer in reassembled packets from the client.
+
+#### Packet Structure
 
 <p align="center">
   <img src="/assets/packet.jpg" alt="diagram">
 </p>
 
-## Between Sources and Client, Server and Destinations
+### Between Sources and Client, Server and Destinations
 
 All packets transmitted must contain exactly a link layer, a network layer and a transport layer.
 
