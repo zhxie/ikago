@@ -16,6 +16,7 @@ import (
 	"ikago/internal/pcap"
 	"ikago/internal/stat"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -280,10 +281,10 @@ func main() {
 	if cfg.KCPConfig.MTU > 1500 {
 		log.Fatalln(fmt.Errorf("kcp mtu %d out of range", cfg.KCPConfig.MTU))
 	}
-	if cfg.KCPConfig.SendWindow <= 0 || cfg.KCPConfig.SendWindow > 4294967295 {
+	if cfg.KCPConfig.SendWindow <= 0 || cfg.KCPConfig.SendWindow > math.MaxInt32 {
 		log.Fatalln(fmt.Errorf("kcp send window %d out of range", cfg.KCPConfig.SendWindow))
 	}
-	if cfg.KCPConfig.RecvWindow <= 0 || cfg.KCPConfig.RecvWindow > 4294967295 {
+	if cfg.KCPConfig.RecvWindow <= 0 || cfg.KCPConfig.RecvWindow > math.MaxInt32 {
 		log.Fatalln(fmt.Errorf("kcp receive window %d out of range", cfg.KCPConfig.RecvWindow))
 	}
 	if cfg.KCPConfig.DataShard < 0 {

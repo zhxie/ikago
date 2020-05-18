@@ -2,12 +2,11 @@ name: Go
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
-
   build:
     name: Build
     runs-on: ${{ matrix.os }}
@@ -17,34 +16,43 @@ jobs:
           - ubuntu-latest
           - macos-latest
     steps:
+      - name: Set up Go 1.13
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.13
+        id: go
 
-    - name: Set up Go 1.13
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.13
-      id: go
-    
-    - name: Set up libpcap-dev
-      if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get install libpcap-dev -y
+      - name: Set up libpcap-dev
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          PCAPV: 1.8.1
+        run: |
+          sudo apt-get install  libpcap-dev flex bison byacc gcc-arm-linux-gnueabi -y
+          cd /tmp
+          wget http://www.tcpdump.org/release/libpcap-$PCAPV.tar.gz
+          tar xvf libpcap-$PCAPV.tar.gz
+          cd libpcap-$PCAPV
+          export CC=arm-linux-gnueabi-gcc
+          ./configure --host=arm-linux --with-pcap=linux
+          make
 
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
 
-    - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
-        if [ -f Gopkg.toml ]; then
-            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-            dep ensure
-        fi
+      - name: Get dependencies
+        run: go mod download
 
-    - name: Build
-      run: |
-        ./build.sh
+      - name: Build-ARM
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          PCAPV: 1.8.1
+        run: ./build.sh arm64
 
-    - name: Upload a Build Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: ikago_latest_${{ runner.os }}
-        path: ikago-*
+      - name: Build-AMD
+        run: ./build.sh
+
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ikago_latest_${{ runner.os }}
+          path: ikago-*
