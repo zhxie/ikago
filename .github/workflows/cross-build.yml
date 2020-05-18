@@ -10,7 +10,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
 
       - name: Set up Go 1.13
@@ -51,5 +51,5 @@ jobs:
       - name: Upload a build artifact
         uses: actions/upload-artifact@v2
         with:
-          name: ikago_latest_linux_arm
+          name: ikago_latest_${{ runner.os }}_arm
           path: ikago-*
