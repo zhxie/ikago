@@ -52,6 +52,8 @@ Examples of configuration file are [here](/configs).
 
 `-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
 
+`-mode`: (Optional) Mode, can be `faketcp`, `tcp`. Default as `tcp`. This option needs to be set consistently between the client and the server. You may have to configure your firewall by using `-rule` or follow the [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below in some modes.
+
 `-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. This option needs to be set consistently between the client and the server. For more about encryption, please refer to the [development documentation](/dev.md).
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`. This option needs to be set consistently between the client and the server.
@@ -90,24 +92,24 @@ Examples of configuration file are [here](/configs).
 
 ## Troubleshoot
 
-1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet or even drop the packet. You may configure `iptables` in Linux, `pfctl` in macOS and FreeBSD, or `netsh` in Windows with the following rules to solve the problem:
+1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet or even drop the packet. **You may configure `iptables` in Linux, `pfctl` in macOS and FreeBSD**, or `netsh` in Windows (You may not need to) with the following rules to solve the problem. **If you are using mode `tcp`, you may not need to configure the firewall, but you still have to disable IP forward.**
    ```
    // Linux
    // IkaGo-server
    sysctl -w net.ipv4.ip_forward=0
    iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
-   // IkaGo-client with proxy ARP
+   // IkaGo-client with proxy ARP and FakeTCP
    sysctl -w net.ipv4.ip_forward=0
    iptables -A OUTPUT -s server_ip/32 -p tcp --dport server_port -j DROP
 
    // macOS, FreeBSD
-   // IkaGo-client with proxy ARP
+   // IkaGo-client with proxy ARP and FakeTCP
    sysctl -w net.inet.ip.forwarding=0
    echo "block drop proto tcp from any to server_ip port server_port" >> ./pf.conf
    pfctl -f ./pf.conf
    pfctl -e
 
-   // Windows (You may not have to)
+   // Windows (You may not need to)
    // IkaGo-client with proxy ARP
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=in remoteip=server_ip/32 remoteport=server_port action=block
    netsh advfirewall firewall add rule name=IkaGo-client protocol=TCP dir=out remoteip=server_ip/32 remoteport=server_port action=block
@@ -120,7 +122,7 @@ Examples of configuration file are [here](/configs).
    // Linux
    sudo setcap cap_net_raw+ep path_to_ikago
    ```
-   before opening IkaGo. If you run IkaGO with non-root, `-rule` will not work, please add firewall rules described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) manually.
+   before opening IkaGo. If you run IkaGo with non-root, `-rule` will not work, please add firewall rules described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) manually.
 
 ## Limitations
 

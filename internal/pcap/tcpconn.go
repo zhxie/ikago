@@ -3,6 +3,7 @@ package pcap
 import (
 	"fmt"
 	"ikago/internal/crypto"
+	"ikago/internal/log"
 	"net"
 	"time"
 )
@@ -19,6 +20,10 @@ func DialTCP(dev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Cry
 		Port: int(srcPort),
 	}
 
+	log.Infof("Connect to server %s\n", dstAddr.String())
+
+	t := time.Now()
+
 	conn, err := net.DialTCP("tcp4", srcAddr, dstAddr)
 	if err != nil {
 		return nil, &net.OpError{
@@ -29,6 +34,10 @@ func DialTCP(dev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Cry
 			Err:    err,
 		}
 	}
+
+	duration := time.Now().Sub(t)
+
+	log.Infof("Connected to server %s in %.3f ms (RTT)\n", dstAddr.String(), float64(duration.Microseconds())/1000)
 
 	return &TCPConn{
 		conn:  conn,

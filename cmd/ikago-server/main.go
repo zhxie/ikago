@@ -74,6 +74,7 @@ var (
 	argListenDevs     = flag.String("listen-devices", "", "Devices for listening.")
 	argUpDev          = flag.String("upstream-device", "", "Device for routing upstream to.")
 	argGateway        = flag.String("gateway", "", "Gateway address.")
+	argMode           = flag.String("mode", "faketcp", "Mode.")
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
 	argRule           = flag.Bool("rule", false, "Add firewall rule.")
@@ -192,6 +193,7 @@ func main() {
 		cfg.ListenDevs = splitArg(*argListenDevs)
 		cfg.UpDev = *argUpDev
 		cfg.Gateway = *argGateway
+		cfg.Mode = *argMode
 		cfg.Method = *argMethod
 		cfg.Password = *argPassword
 		cfg.Rule = *argRule
@@ -323,10 +325,10 @@ func main() {
 	switch cfg.Mode {
 	case "faketcp":
 		mode = "faketcp"
-		log.Infoln("Use fake TCP")
+		log.Infoln("Use FakeTCP")
 	case "tcp":
 		mode = "tcp"
-		log.Infoln("Use standard TCP (experimental)")
+		log.Infoln("Use standard TCP")
 	default:
 		log.Fatalln(fmt.Errorf("mode %s not support", cfg.Mode))
 	}
@@ -417,17 +419,25 @@ func main() {
 		log.Infoln("You can now observe traffic on http://ikago.ikas.ink")
 	}
 
-	// MTU
-	mtu = cfg.MTU
-	if mtu != pcap.MaxMTU {
-		log.Infof("Set MTU to %d Bytes\n", mtu)
-	}
+	// Mode-related options
+	switch mode {
+	case "faketcp":
+		// MTU
+		mtu = cfg.MTU
+		if mtu != pcap.MaxMTU {
+			log.Infof("Set MTU to %d Bytes\n", mtu)
+		}
 
-	// KCP
-	isKCP = cfg.KCP
-	kcpConfig = &cfg.KCPConfig
-	if isKCP {
-		log.Infoln("Enable KCP")
+		// KCP
+		isKCP = cfg.KCP
+		kcpConfig = &cfg.KCPConfig
+		if isKCP {
+			log.Infoln("Enable KCP")
+		}
+	case "tcp":
+		break
+	default:
+		log.Fatalln(fmt.Errorf("mode %s not support", mode))
 	}
 
 	log.Infof("Proxy from :%d\n", cfg.Port)

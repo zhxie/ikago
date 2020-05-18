@@ -2,6 +2,7 @@
   "listen-devices": [],
   "upstream-device": "",
   "gateway": "",
+  "mode": "faketcp",
   "method": "plain",
   "password": "",
   "rule": false,
