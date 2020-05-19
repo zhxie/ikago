@@ -810,7 +810,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 func handleUpstream(contents []byte) error {
 	var (
-		embIndicators    []*pcap.PacketIndicator
+		contentss        [][]byte
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
 		data             []byte
@@ -823,14 +823,20 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Destick
-	embIndicators, err := destick.Append(contents)
+	contentss, err := destick.Append(contents)
 	if err != nil {
 		return fmt.Errorf("destick: %w", err)
 	}
 
 	// TODO: Use flag instead of return when error occurred
 	// TODO: Merge desticker to pcap.TCPConn
-	for _, embIndicator := range embIndicators {
+	for _, contents := range contentss {
+		// Parse embedded packet
+		embIndicator, err := pcap.ParseEmbPacket(contents)
+		if err != nil {
+			return fmt.Errorf("parse embedded packet: %w", err)
+		}
+
 		// Check map
 		natLock.RLock()
 		ni, ok := nat[embIndicator.DstIP().String()]

@@ -7,55 +7,64 @@ import (
 
 // Desticker is a machine concatenate and separate TCP sticky data.
 type Desticker struct {
-	data     []byte
-	deadline time.Duration
-	appear   time.Time
+	data      []byte
+	deadline  time.Duration
+	appear    time.Time
+	indicator *PacketIndicator
 }
 
 // NewDesticker returns a new desticker.
 func NewDesticker() *Desticker {
-	return &Desticker{data: make([]byte, 0)}
+	return &Desticker{data: make([]byte, 0), appear: time.Now()}
 }
 
 // Append adds a sticky data to the Desticker.
-func (d *Desticker) Append(data []byte) ([]*PacketIndicator, error) {
-	indicators := make([]*PacketIndicator, 0)
+func (d *Desticker) Append(data []byte) ([][]byte, error) {
+	datas := make([][]byte, 0)
 
 	// Discard old data
 	if d.deadline > 0 && time.Now().Sub(d.appear) > d.deadline {
 		log.Verboseln("Discard previous data")
 
 		d.data = make([]byte, 0)
+		d.indicator = nil
 	}
 
 	// Append data
 	d.data = append(d.data, data...)
 
 	for length := len(d.data); length > 0; {
-		// Parse embedded packet
-		indicator, err := ParseEmbPacket(d.data)
-		if err != nil {
-			break
-		}
-		if indicator != nil {
-			if uint16(len(d.data)) > indicator.IPv4Layer().Length {
-				d.data = d.data[indicator.IPv4Layer().Length:]
-			} else if uint16(len(d.data)) == indicator.IPv4Layer().Length {
-				d.data = make([]byte, 0)
+		if d.indicator != nil {
+			if len(d.data) >= int(d.indicator.IPv4Layer().Length) {
+				datas = append(datas, d.data[:d.indicator.IPv4Layer().Length])
+
+				if len(d.data) > int(d.indicator.IPv4Layer().Length) {
+					d.data = d.data[d.indicator.IPv4Layer().Length:]
+				} else {
+					d.data = make([]byte, 0)
+				}
+				d.indicator = nil
 			} else {
-				// TODO: Optimize by recording indicator lacking data
+				break
+			}
+		} else {
+			// Parse embedded packet
+			indicator, err := ParseEmbPacket(d.data)
+			if err != nil {
 				break
 			}
 
-			indicators = append(indicators, indicator)
+			if indicator != nil {
+				d.indicator = indicator
+			}
 		}
 	}
 
-	if len(indicators) > 0 {
+	if len(datas) > 0 {
 		d.appear = time.Now()
 	}
 
-	return indicators, nil
+	return datas, nil
 }
 
 // SetDeadline sets the deadline associated with the sticky data.
