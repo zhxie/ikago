@@ -128,9 +128,15 @@ Examples of configuration file are [here](/configs).
 
 1. IPv6 is not supported because the dependency package [gopacket](https://github.com/google/gopacket) does not fully implement the serialization of the IPv6 extension header.
 
+## Known Issues
+
+1. When using mode TCP, sticky packets problems may occur in TCP connections. If encryption is enabled at the same time, IkaGo may not be able to destick these packets.
+
 ## Todo
 
 - [ ] Retransmission and out of order packets detection
+- [ ] Change sending packets to destinations procedures in IkaGo-server from pcap to standard connection
+- [ ] Build own application layer protocol to realize functions like delay detection
 
 ## License
 

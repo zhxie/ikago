@@ -8,9 +8,24 @@ import (
 	"time"
 )
 
+const keepSticky = 30 * time.Second
+
 type TCPConn struct {
-	conn  *net.TCPConn
-	crypt crypto.Crypt
+	conn    *net.TCPConn
+	crypt   crypto.Crypt
+	destick *Desticker
+	stash   [][]byte
+	stashId int
+}
+
+func newTCPConn() *TCPConn {
+	conn := &TCPConn{
+		destick: NewDesticker(),
+		stash:   make([][]byte, 0),
+	}
+	conn.destick.SetDeadline(keepSticky)
+
+	return conn
 }
 
 // DialTCP acts like DialTCP for pcap networks.
@@ -39,33 +54,59 @@ func DialTCP(dev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Cry
 
 	log.Infof("Connected to server %s in %.3f ms (RTT)\n", dstAddr.String(), float64(duration.Microseconds())/1000)
 
-	return &TCPConn{
-		conn:  conn,
-		crypt: crypt,
-	}, nil
+	tcpConn := newTCPConn()
+	tcpConn.conn = conn
+	tcpConn.crypt = crypt
+
+	return tcpConn, nil
 }
 
 func (c *TCPConn) Read(b []byte) (n int, err error) {
-	p := make([]byte, 65535)
-	n, err = c.conn.Read(p)
-	if err != nil {
-		return 0, err
-	}
-
-	dp, err := c.crypt.Decrypt(p[:n])
-	if err != nil {
-		return 0, &net.OpError{
-			Op:     "read",
-			Net:    "pcap",
-			Source: c.LocalAddr(),
-			Addr:   c.RemoteAddr(),
-			Err:    fmt.Errorf("decrypt: %w", err),
+	// If stashed packets exist, read from stash, otherwise, read from conn
+	if c.stash == nil || len(c.stash) <= c.stashId {
+		p := make([]byte, 65535)
+		n, err = c.conn.Read(p)
+		if err != nil {
+			return 0, err
 		}
+
+		dp, err := c.crypt.Decrypt(p[:n])
+		if err != nil {
+			return 0, &net.OpError{
+				Op:     "read",
+				Net:    "pcap",
+				Source: c.LocalAddr(),
+				Addr:   c.RemoteAddr(),
+				Err:    fmt.Errorf("decrypt: %w", err),
+			}
+		}
+
+		// Destick
+		packets, err := c.destick.Append(dp)
+		if err != nil {
+			return 0, &net.OpError{
+				Op:     "read",
+				Net:    "pcap",
+				Source: c.LocalAddr(),
+				Addr:   c.RemoteAddr(),
+				Err:    fmt.Errorf("destick: %w", err),
+			}
+		}
+
+		if len(packets) == 0 {
+			return 0, nil
+		}
+
+		c.stash = packets
+		c.stashId = 0
 	}
 
-	copy(b, dp)
+	// Read stashed packet
+	copy(b, c.stash[c.stashId])
 
-	return n, nil
+	c.stashId++
+
+	return len(c.stash[c.stashId - 1]), nil
 }
 
 func (c *TCPConn) Write(b []byte) (n int, err error) {
@@ -142,10 +183,11 @@ func (l *TCPListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return &TCPConn{
-		conn:  conn,
-		crypt: l.crypt,
-	}, nil
+	tcpConn := newTCPConn()
+	tcpConn.conn = conn
+	tcpConn.crypt = l.crypt
+
+	return tcpConn, nil
 }
 
 func (l *TCPListener) Close() error {

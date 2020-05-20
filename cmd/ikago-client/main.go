@@ -36,8 +36,6 @@ type natIndicator struct {
 
 const name string = "IkaGo-client"
 
-const keepSticky = 30 * time.Second
-
 var (
 	version     = ""
 	build       = ""
@@ -98,7 +96,6 @@ var (
 	listenConns []*pcap.RawConn
 	upConn      net.Conn
 	c           chan pcap.ConnPacket
-	destick     *pcap.Desticker
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
 	monitor     *stat.TrafficMonitor
@@ -143,8 +140,6 @@ func init() {
 
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
-	destick = pcap.NewDesticker()
-	destick.SetDeadline(keepSticky)
 	nat = make(map[string]*natIndicator)
 	dns = make(map[string]string)
 }
@@ -810,7 +805,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 func handleUpstream(contents []byte) error {
 	var (
-		contentss        [][]byte
+		embIndicator     *pcap.PacketIndicator
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
 		data             []byte
@@ -822,86 +817,76 @@ func handleUpstream(contents []byte) error {
 		return nil
 	}
 
-	// Destick
-	contentss, err := destick.Append(contents)
+	// Parse embedded packet
+	embIndicator, err := pcap.ParseEmbPacket(contents)
 	if err != nil {
-		return fmt.Errorf("destick: %w", err)
+		return fmt.Errorf("parse embedded packet: %w", err)
 	}
 
-	// TODO: Use flag instead of return when error occurred
-	// TODO: Merge desticker to pcap.TCPConn
-	for _, contents := range contentss {
-		// Parse embedded packet
-		embIndicator, err := pcap.ParseEmbPacket(contents)
-		if err != nil {
-			return fmt.Errorf("parse embedded packet: %w", err)
-		}
+	// Check map
+	natLock.RLock()
+	ni, ok := nat[embIndicator.DstIP().String()]
+	natLock.RUnlock()
+	if !ok {
+		return fmt.Errorf("missing nat to %s", embIndicator.DstIP())
+	}
 
-		// Check map
-		natLock.RLock()
-		ni, ok := nat[embIndicator.DstIP().String()]
-		natLock.RUnlock()
-		if !ok {
-			return fmt.Errorf("missing nat to %s", embIndicator.DstIP())
-		}
+	// Decide Loopback or Ethernet
+	if ni.conn.IsLoop() {
+		newLinkLayerType = layers.LayerTypeLoopback
+	} else {
+		newLinkLayerType = layers.LayerTypeEthernet
+	}
 
-		// Decide Loopback or Ethernet
-		if ni.conn.IsLoop() {
-			newLinkLayerType = layers.LayerTypeLoopback
-		} else {
-			newLinkLayerType = layers.LayerTypeEthernet
-		}
+	// Create new link layer
+	switch newLinkLayerType {
+	case layers.LayerTypeLoopback:
+		newLinkLayer = pcap.CreateLoopbackLayer()
+	case layers.LayerTypeEthernet:
+		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr(), ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
+	default:
+		return fmt.Errorf("link layer type %s not support", newLinkLayerType)
+	}
+	if err != nil {
+		return fmt.Errorf("create link layer: %w", err)
+	}
 
-		// Create new link layer
-		switch newLinkLayerType {
-		case layers.LayerTypeLoopback:
-			newLinkLayer = pcap.CreateLoopbackLayer()
-		case layers.LayerTypeEthernet:
-			newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr(), ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
-		default:
-			return fmt.Errorf("link layer type %s not support", newLinkLayerType)
-		}
-		if err != nil {
-			return fmt.Errorf("create link layer: %w", err)
-		}
+	// Serialize layers
+	data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
+		gopacket.Payload(embIndicator.NetworkLayer().LayerContents()),
+		gopacket.Payload(embIndicator.NetworkPayload()))
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
 
-		// Serialize layers
-		data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
-			gopacket.Payload(embIndicator.NetworkLayer().LayerContents()),
-			gopacket.Payload(embIndicator.NetworkPayload()))
-		if err != nil {
-			return fmt.Errorf("serialize: %w", err)
-		}
+	// Write packet data
+	_, err = ni.conn.Write(data)
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
 
-		// Write packet data
-		_, err = ni.conn.Write(data)
-		if err != nil {
-			return fmt.Errorf("write: %w", err)
-		}
+	// Statistics
+	if monitor != nil {
+		monitor.AddBidirectional(embIndicator.DstIP().String(), embIndicator.SrcIP().String(), stat.DirectionIn, uint(embIndicator.Size()))
+	}
 
-		// Statistics
-		if monitor != nil {
-			monitor.AddBidirectional(embIndicator.DstIP().String(), embIndicator.SrcIP().String(), stat.DirectionIn, uint(embIndicator.Size()))
-		}
-
-		// Record DNS
-		if embIndicator.DNSIndicator() != nil {
-			if embIndicator.DNSIndicator().IsResponse() {
-				name, ips := embIndicator.DNSIndicator().Answers()
-				if name != "" && len(ips) > 0 {
-					dnsLock.Lock()
-					for _, ip := range ips {
-						dns[ip.String()] = name
-						log.Verbosef("Record DNS record %s = %s\n", name, ip)
-					}
-					dnsLock.Unlock()
+	// Record DNS
+	if embIndicator.DNSIndicator() != nil {
+		if embIndicator.DNSIndicator().IsResponse() {
+			name, ips := embIndicator.DNSIndicator().Answers()
+			if name != "" && len(ips) > 0 {
+				dnsLock.Lock()
+				for _, ip := range ips {
+					dns[ip.String()] = name
+					log.Verbosef("Record DNS record %s = %s\n", name, ip)
 				}
+				dnsLock.Unlock()
 			}
 		}
-
-		log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-			embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
 	}
+
+	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
+		embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
 
 	return nil
 }

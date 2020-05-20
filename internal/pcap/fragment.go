@@ -120,6 +120,7 @@ func (indicator *fragIndicator) concatenate() (*PacketIndicator, error) {
 
 // Defragmenter is a machine defragments packets.
 type Defragmenter interface {
+	// TODO: Receive []byte instead of *PacketIndicator
 	// Append adds a fragment to the defragmenter.
 	Append(ind *PacketIndicator) (*PacketIndicator, error)
 	// SetDeadline sets the deadline associated with the fragments.

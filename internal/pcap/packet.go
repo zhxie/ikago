@@ -23,8 +23,6 @@ type ConnBytes struct {
 	Bytes []byte
 	// Conn is the connection of the bytes.
 	Conn net.Conn
-	// Destick is the desticker of the connection.
-	Destick *Desticker
 }
 
 // NATGuide describes simplified information about a NAT.
