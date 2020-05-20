@@ -14,11 +14,27 @@ func CreatePlainCrypt() *PlainCrypt {
 }
 
 func (c *PlainCrypt) Encrypt(data []byte) ([]byte, error) {
-	return data, nil
+	result := make([]byte, len(data))
+
+	copy(result, data)
+
+	return result, nil
+}
+
+func (c *PlainCrypt) EncryptInPlace(_ []byte) error {
+	return nil
 }
 
 func (c *PlainCrypt) Decrypt(data []byte) ([]byte, error) {
-	return data, nil
+	result := make([]byte, len(data))
+
+	copy(result, data)
+
+	return result, nil
+}
+
+func (c *PlainCrypt) DecryptInPlace(_ []byte) error {
+	return nil
 }
 
 func (c *PlainCrypt) Method() Method {

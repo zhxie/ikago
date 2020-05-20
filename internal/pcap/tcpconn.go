@@ -13,6 +13,7 @@ const keepSticky = 30 * time.Second
 type TCPConn struct {
 	conn    *net.TCPConn
 	crypt   crypto.Crypt
+	buffer  []byte
 	destick *Desticker
 	stash   [][]byte
 	stashId int
@@ -20,6 +21,7 @@ type TCPConn struct {
 
 func newTCPConn() *TCPConn {
 	conn := &TCPConn{
+		buffer:  make([]byte, 65535),
 		destick: NewDesticker(),
 		stash:   make([][]byte, 0),
 	}
@@ -64,13 +66,12 @@ func DialTCP(dev *Device, srcPort uint16, dstAddr *net.TCPAddr, crypt crypto.Cry
 func (c *TCPConn) Read(b []byte) (n int, err error) {
 	// If stashed packets exist, read from stash, otherwise, read from conn
 	if c.stash == nil || len(c.stash) <= c.stashId {
-		p := make([]byte, 65535)
-		n, err = c.conn.Read(p)
+		n, err = c.conn.Read(c.buffer)
 		if err != nil {
 			return 0, err
 		}
 
-		dp, err := c.crypt.Decrypt(p[:n])
+		dp, err := c.crypt.Decrypt(c.buffer[:n])
 		if err != nil {
 			return 0, &net.OpError{
 				Op:     "read",
@@ -106,7 +107,7 @@ func (c *TCPConn) Read(b []byte) (n int, err error) {
 
 	c.stashId++
 
-	return len(c.stash[c.stashId - 1]), nil
+	return len(c.stash[c.stashId-1]), nil
 }
 
 func (c *TCPConn) Write(b []byte) (n int, err error) {

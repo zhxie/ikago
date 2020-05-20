@@ -40,12 +40,34 @@ func (c *AESCFBCrypt) Encrypt(data []byte) ([]byte, error) {
 	return result, nil
 }
 
+func (c *AESCFBCrypt) EncryptInPlace(data []byte) error {
+	encrypted, err := c.Encrypt(data)
+	if err != nil {
+		return err
+	}
+
+	copy(data, encrypted)
+
+	return nil
+}
+
 func (c *AESCFBCrypt) Decrypt(data []byte) ([]byte, error) {
 	result := make([]byte, len(data))
 
 	c.decrypter.XORKeyStream(data, result)
 
 	return result, nil
+}
+
+func (c *AESCFBCrypt) DecryptInPlace(data []byte) error {
+	decrypted, err := c.Decrypt(data)
+	if err != nil {
+		return err
+	}
+
+	copy(data, decrypted)
+
+	return nil
 }
 
 func (c *AESCFBCrypt) Method() Method {

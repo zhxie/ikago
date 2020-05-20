@@ -39,7 +39,7 @@ func (m Method) String() string {
 	}
 }
 
-// Crypt describes crypt of encryption.
+// Crypt describes a crypt of encryption.
 type Crypt interface {
 	// Encrypt returns the encrypted data.
 	Encrypt([]byte) ([]byte, error)
@@ -49,6 +49,15 @@ type Crypt interface {
 	Method() Method
 	// Cost returns the size of cost.
 	Cost() int
+}
+
+// StreamCrypt describes a crypt of encryption using stream encryption.
+type StreamCrypt interface {
+	Crypt
+	// EncryptInPlace encrypts data in place.
+	EncryptInPlace([]byte) error
+	// DecryptInPlace decrypts data in plcae.
+	DecryptInPlace([]byte) error
 }
 
 // ParseCrypt returns a crypt by given method and password.
