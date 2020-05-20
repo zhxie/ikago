@@ -92,7 +92,7 @@ func DialFakeTCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 		time.Sleep(establishDeadline)
 
 		if !conn.isConnected {
-			log.Errorf("Cannot receive response from server %s, is it down?\n", dstAddr.String())
+			log.Errorf("Cannot receive response from server %s, is your network down?\n", dstAddr.String())
 		}
 	}()
 

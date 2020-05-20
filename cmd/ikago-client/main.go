@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/sparrc/go-ping"
 	"github.com/xtaci/kcp-go"
 	"ikago/internal/addr"
 	"ikago/internal/config"
@@ -35,6 +36,8 @@ type natIndicator struct {
 }
 
 const name string = "IkaGo-client"
+
+const pingDeadline = 2 * time.Second
 
 var (
 	version     = ""
@@ -95,10 +98,13 @@ var (
 	isClosed    bool
 	listenConns []*pcap.RawConn
 	upConn      net.Conn
+	pinger      *ping.Pinger
 	c           chan pcap.ConnPacket
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
 	monitor     *stat.TrafficMonitor
+	pingTime    int64
+	pingSeq     int
 	dnsLock     sync.RWMutex
 	dns         map[string]string
 )
@@ -141,6 +147,7 @@ func init() {
 	listenConns = make([]*pcap.RawConn, 0)
 	c = make(chan pcap.ConnPacket, 1000)
 	nat = make(map[string]*natIndicator)
+	pingTime = -1
 	dns = make(map[string]string)
 }
 
@@ -384,11 +391,13 @@ func main() {
 					Version string               `json:"version"`
 					Time    int                  `json:"time"`
 					Monitor *stat.TrafficMonitor `json:"monitor"`
+					Ping    int64                `json:"ping"`
 				}{
 					Name:    name,
 					Version: versionInfo,
 					Time:    int(time.Now().Sub(startTime).Seconds()),
 					Monitor: monitor,
+					Ping:    pingTime,
 				})
 				if err != nil {
 					log.Errorln(fmt.Errorf("monitor: %w", err))
@@ -605,6 +614,33 @@ func open() error {
 		return fmt.Errorf("open upstream: %w", err)
 	}
 
+	// Ping
+	pinger, err = ping.NewPinger(serverIP.String())
+	pinger.SetPrivileged(true)
+	pinger.OnRecv = func(packet *ping.Packet) {
+		if packet != nil {
+			pingTime = packet.Rtt.Milliseconds()
+			pingSeq = packet.Seq
+
+			log.Verbosef("Receive ICMP Echo Reply: %s <- %s (%d ms)\n", upDev.IPAddr().IP, serverIP, packet.Rtt.Milliseconds())
+
+			// Timeout
+			go func() {
+				time.Sleep(pingDeadline)
+				if packet.Seq == pingSeq {
+					pingTime = -1
+
+					log.Errorf("Cannot receive ICMP Echo Reply from server %s, is your network down?\n", serverIP)
+				}
+			}()
+		}
+	}
+	if err != nil {
+		log.Errorln(fmt.Errorf("ping: %w", err))
+	} else {
+		pinger.Run()
+	}
+
 	// Start handling
 	for i := 0; i < len(listenConns); i++ {
 		conn := listenConns[i]
@@ -669,6 +705,9 @@ func closeAll() {
 	}
 	if upConn != nil {
 		upConn.Close()
+	}
+	if pinger != nil {
+		pinger.Stop()
 	}
 }
 
