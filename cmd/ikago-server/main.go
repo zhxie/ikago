@@ -622,8 +622,8 @@ func open() error {
 						newB := make([]byte, n)
 						copy(newB, b[:n])
 						c <- pcap.ConnBytes{
-							Bytes:   newB,
-							Conn:    conn,
+							Bytes: newB,
+							Conn:  conn,
 						}
 					}
 				}()
@@ -643,6 +643,7 @@ func open() error {
 	}()
 
 	for {
+		// TODO: unsafe
 		packet, err := upConn.ReadPacket()
 		if err != nil {
 			if isClosed {
@@ -675,7 +676,7 @@ func closeAll() {
 
 func handleListen(contents []byte, conn net.Conn) error {
 	var (
-		embIndicator     *pcap.PacketIndicator
+		embIndicator      *pcap.PacketIndicator
 		upValue           uint16
 		newTransportLayer gopacket.Layer
 		newNetworkLayer   gopacket.NetworkLayer

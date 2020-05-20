@@ -611,6 +611,7 @@ func open() error {
 
 		go func() {
 			for {
+				// TODO: unsafe
 				packet, err := conn.ReadPacket()
 				if err != nil {
 					if isClosed {

@@ -120,7 +120,7 @@ Examples of configuration file are [here](/configs).
 3. IkaGo requires root permission in some OS by default. But you can run IkaGo with non-root running this command
    ```
    // Linux
-   sudo setcap cap_net_raw+ep path_to_ikago
+   setcap cap_net_raw+ep path_to_ikago
    ```
    before opening IkaGo. If you run IkaGo with non-root, `-rule` will not work, please add firewall rules described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) manually.
 
@@ -134,9 +134,9 @@ Examples of configuration file are [here](/configs).
 
 ## Todo
 
-- [ ] Retransmission and out of order packets detection
 - [ ] Change sending packets to destinations procedures in IkaGo-server from pcap to standard connection
 - [ ] Build own application layer protocol to realize functions like delay detection
+- [ ] Discover the way handling packets concurrently
 
 ## License
 

@@ -33,6 +33,10 @@ type RawConn struct {
 	handle *pcap.Handle
 }
 
+func newRawConn() *RawConn {
+	return &RawConn{}
+}
+
 func createPureRawConn(dev, filter string) (*RawConn, error) {
 	handle, err := pcap.OpenLive(dev, maxSnapLen, true, pcap.BlockForever)
 	if err != nil {
@@ -44,9 +48,10 @@ func createPureRawConn(dev, filter string) (*RawConn, error) {
 		return nil, err
 	}
 
-	return &RawConn{
-		handle: handle,
-	}, nil
+	conn := newRawConn()
+	conn.handle = handle
+
+	return conn, nil
 }
 
 // CreateRawConn creates a raw connection between devices with BPF filter.
@@ -75,6 +80,7 @@ func (c *RawConn) Read(b []byte) (n int, err error) {
 
 // ReadPacket reads packet from the connection.
 func (c *RawConn) ReadPacket() (gopacket.Packet, error) {
+	// TODO: Read into a long buffer instead of creating buffer each time (Change to a no copy implementation)
 	b := make([]byte, maxSnapLen)
 
 	_, err := c.Read(b)
