@@ -9,6 +9,7 @@ import (
 	"ikago/internal/config"
 	"ikago/internal/crypto"
 	"ikago/internal/log"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -354,136 +355,10 @@ func (c *FakeTCPConn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.RemoteAddr())
 }
 
-func (c *FakeTCPConn) ReadFrom(p []byte) (n int, a net.Addr, err error) {
-	packet, a, err := c.readPacketFrom()
-	if err != nil {
-		return 0, a, &net.OpError{
-			Op:     "read",
-			Net:    "pcap",
-			Source: c.LocalAddr(),
-			Addr:   a,
-			Err:    err,
-		}
-	}
-
-	// Parse packet
-	indicator, err := ParsePacket(packet)
-	if err != nil {
-		return 0, a, &net.OpError{
-			Op:     "read",
-			Net:    "pcap",
-			Source: c.LocalAddr(),
-			Addr:   a,
-			Err:    fmt.Errorf("parse packet: %w", err),
-		}
-	}
-
-	// Check TCP flags
-	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
-		if indicator.IsRST() {
-			log.Errorf("Receive TCP RST: %s <- %s\n", indicator.Dst().String(), a.String())
-
-			// Re-establish connection
-			err := c.Reconnect()
-			if err != nil {
-				return 0, a, &net.OpError{
-					Op:     "read",
-					Net:    "pcap",
-					Source: c.LocalAddr(),
-					Addr:   a,
-					Err:    fmt.Errorf("reconnect: %w", err),
-				}
-			}
-		}
-		if indicator.IsFIN() {
-			log.Infof("Receive TCP FIN: %s <- %s\n", indicator.Dst().String(), a.String())
-		}
-	}
-
-	// Reply TCP SYN
-	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
-		if indicator.IsSYN() {
-			// SYN+ACK
-			if indicator.IsACK() {
-				log.Verbosef("Receive TCP SYN+ACK: %s <- %s\n", indicator.Dst().String(), a.String())
-
-				if !c.isConnected {
-					t := time.Now()
-					duration := t.Sub(c.appear)
-
-					log.Infof("Connected to server %s in %.3f ms (RTT)\n", a.String(), float64(duration.Microseconds())/1000)
-
-					c.isConnected = true
-				}
-				c.isReconnected = true
-
-				err = c.handshakeACK(indicator)
-			} else {
-				log.Verbosef("Receive TCP SYN: %s -> %s\n", a.String(), indicator.Dst().String())
-
-				err = c.handshakeSYNACK(indicator)
-			}
-			if err != nil {
-				return 0, a, &net.OpError{
-					Op:     "read",
-					Net:    "pcap",
-					Source: c.LocalAddr(),
-					Addr:   a,
-					Err:    fmt.Errorf("handshake: %w", err),
-				}
-			}
-
-			return 0, a, nil
-		}
-	}
-
-	if indicator.Payload() == nil {
-		return 0, a, nil
-	}
-
-	// Client
-	c.clientsLock.RLock()
-	client, ok := c.clients[a.String()]
-	c.clientsLock.RUnlock()
-	if !ok {
-		return 0, a, &net.OpError{
-			Op:     "read",
-			Net:    "pcap",
-			Source: c.LocalAddr(),
-			Addr:   a,
-			Err:    fmt.Errorf("client %s unauthorized", a.String()),
-		}
-	}
-
-	// TCP Ack, always use the expected one
-	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
-		expectedAck := indicator.TCPLayer().Seq + uint32(len(indicator.Payload()))
-		if expectedAck > client.ack || (4294967295-indicator.TCPLayer().Seq < uint32(len(indicator.Payload()))) {
-			client.ack = expectedAck
-		}
-	}
-
-	// Decrypt
-	contents, err := client.crypt.Decrypt(indicator.Payload())
-	if err != nil {
-		return 0, a, &net.OpError{
-			Op:     "read",
-			Net:    "pcap",
-			Source: c.LocalAddr(),
-			Addr:   a,
-			Err:    fmt.Errorf("decrypt: %w", err),
-		}
-	}
-
-	copy(p, contents)
-
-	return len(contents), a, err
-}
-
-func (c *FakeTCPConn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
+func (c *FakeTCPConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	type tuple struct {
-		packet gopacket.Packet
-		err    error
+		indicator *PacketIndicator
+		err       error
 	}
 
 	ch := make(chan tuple)
@@ -509,7 +384,7 @@ func (c *FakeTCPConn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 				return
 			}
 			if indicator != nil {
-				ch <- tuple{packet: indicator.packet}
+				ch <- tuple{indicator: indicator}
 				return
 			}
 		}
@@ -527,26 +402,136 @@ func (c *FakeTCPConn) readPacketFrom() (gopacket.Packet, net.Addr, error) {
 
 	tu := <-ch
 	if tu.err != nil {
-		return nil, nil, tu.err
+		return 0, nil, &net.OpError{
+			Op:     "read",
+			Net:    "pcap",
+			Source: c.LocalAddr(),
+			Err:    err,
+		}
 	}
 
-	// Parse packet
-	indicator, err := ParsePacket(tu.packet)
+	indicator := tu.indicator
+	if indicator.TransportLayer() == nil {
+		addr = &net.IPAddr{IP: indicator.SrcIP()}
+	} else {
+		switch t := indicator.TransportLayer().LayerType(); t {
+		case layers.LayerTypeTCP:
+			addr = &net.UDPAddr{
+				IP:   indicator.SrcIP(),
+				Port: int(indicator.SrcPort()),
+			}
+		case layers.LayerTypeUDP:
+			addr = indicator.Src()
+		default:
+			return 0, nil, &net.OpError{
+				Op:     "read",
+				Net:    "pcap",
+				Source: c.LocalAddr(),
+				Err:    fmt.Errorf("transport layer type %s not support", t),
+			}
+		}
+	}
+
+	// Check TCP flags
+	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
+		if indicator.IsRST() {
+			log.Errorf("Receive TCP RST: %s <- %s\n", indicator.Dst().String(), addr.String())
+
+			// Re-establish connection
+			err := c.Reconnect()
+			if err != nil {
+				return 0, addr, &net.OpError{
+					Op:     "read",
+					Net:    "pcap",
+					Source: c.LocalAddr(),
+					Addr:   addr,
+					Err:    fmt.Errorf("reconnect: %w", err),
+				}
+			}
+		}
+		if indicator.IsFIN() {
+			log.Infof("Receive TCP FIN: %s <- %s\n", indicator.Dst().String(), addr.String())
+		}
+	}
+
+	// Reply TCP SYN
+	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
+		if indicator.IsSYN() {
+			// SYN+ACK
+			if indicator.IsACK() {
+				log.Verbosef("Receive TCP SYN+ACK: %s <- %s\n", indicator.Dst().String(), addr.String())
+
+				if !c.isConnected {
+					t := time.Now()
+					duration := t.Sub(c.appear)
+
+					log.Infof("Connected to server %s in %.3f ms (RTT)\n", addr.String(), float64(duration.Microseconds())/1000)
+
+					c.isConnected = true
+				}
+				c.isReconnected = true
+
+				err = c.handshakeACK(indicator)
+			} else {
+				log.Verbosef("Receive TCP SYN: %s -> %s\n", addr.String(), indicator.Dst().String())
+
+				err = c.handshakeSYNACK(indicator)
+			}
+			if err != nil {
+				return 0, addr, &net.OpError{
+					Op:     "read",
+					Net:    "pcap",
+					Source: c.LocalAddr(),
+					Addr:   addr,
+					Err:    fmt.Errorf("handshake: %w", err),
+				}
+			}
+
+			return 0, addr, nil
+		}
+	}
+
+	if indicator.Payload() == nil {
+		return 0, addr, nil
+	}
+
+	// Client
+	c.clientsLock.RLock()
+	client, ok := c.clients[addr.String()]
+	c.clientsLock.RUnlock()
+	if !ok {
+		return 0, addr, &net.OpError{
+			Op:     "read",
+			Net:    "pcap",
+			Source: c.LocalAddr(),
+			Addr:   addr,
+			Err:    fmt.Errorf("client %s unauthorized", addr.String()),
+		}
+	}
+
+	// TCP Ack, always use the expected one
+	if indicator.TransportLayer() != nil && indicator.TransportLayer().LayerType() == layers.LayerTypeTCP {
+		expectedAck := indicator.TCPLayer().Seq + uint32(len(indicator.Payload()))
+		if expectedAck > client.ack || (math.MaxUint32-indicator.TCPLayer().Seq < uint32(len(indicator.Payload()))) {
+			client.ack = expectedAck
+		}
+	}
+
+	// Decrypt
+	contents, err := client.crypt.Decrypt(indicator.Payload())
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse packet: %w", err)
+		return 0, addr, &net.OpError{
+			Op:     "read",
+			Net:    "pcap",
+			Source: c.LocalAddr(),
+			Addr:   addr,
+			Err:    fmt.Errorf("decrypt: %w", err),
+		}
 	}
 
-	switch t := indicator.TransportLayer().LayerType(); t {
-	case layers.LayerTypeTCP:
-		return tu.packet, &net.UDPAddr{
-			IP:   indicator.SrcIP(),
-			Port: int(indicator.SrcPort()),
-		}, nil
-	case layers.LayerTypeUDP:
-		return tu.packet, indicator.Src(), nil
-	default:
-		return nil, indicator.Src(), fmt.Errorf("transport layer type %s not support", t)
-	}
+	copy(p, contents)
+
+	return len(contents), addr, err
 }
 
 func (c *FakeTCPConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
