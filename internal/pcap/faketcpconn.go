@@ -74,8 +74,6 @@ func DialFakeTCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 
 	log.Infof("Connect to server %s\n", dstAddr.String())
 
-	conn.appear = time.Now()
-
 	// Handshake
 	err = conn.handshakeSYN()
 	if err != nil {
@@ -87,6 +85,8 @@ func DialFakeTCP(srcDev, dstDev *Device, srcPort uint16, dstAddr *net.TCPAddr, c
 			Err:    fmt.Errorf("handshake: %w", err),
 		}
 	}
+
+	conn.appear = time.Now()
 
 	go func() {
 		time.Sleep(establishDeadline)
