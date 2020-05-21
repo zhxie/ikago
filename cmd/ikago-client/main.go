@@ -642,7 +642,9 @@ func open() error {
 
 	// Ping
 	if pinger != nil {
-		pinger.Run()
+		go func() {
+			pinger.Run()
+		}()
 	}
 
 	// Start handling
