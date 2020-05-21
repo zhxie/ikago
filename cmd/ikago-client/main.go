@@ -628,7 +628,7 @@ func open() error {
 			go func() {
 				time.Sleep(pingDeadline)
 				if packet.Seq == pingSeq {
-					pingTime = -1
+					pingTime = -2
 
 					log.Errorf("Cannot receive ICMP Echo Reply from server %s, is your network down?\n", serverIP)
 				}

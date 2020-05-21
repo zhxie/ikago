@@ -132,11 +132,13 @@ Examples of configuration file are [here](/configs).
 
 1. When using mode TCP, sticky packets problems may occur in TCP connections. If encryption is enabled at the same time, IkaGo may not be able to destick these packets.
 
+2. Applications like VMWare Workstation on Windows may implement their own IP forwarding and forward packets that should be handled by IkaGo, resulting in abnormal operations in IkaGo.
+
 ## Todo
 
 - [ ] Change sending packets to destinations procedures in IkaGo-server from pcap to standard connection
 - [ ] Build own application layer protocol to realize functions like delay detection
-- [ ] Discover the way handling packets concurrently
+- [ ] Discover the way handling packets concurrently to optimize performance
 
 ## License
 
