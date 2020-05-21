@@ -358,64 +358,63 @@ func main() {
 
 		monitor = stat.NewTrafficMonitor()
 
-		go func() {
-			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-				b, err := json.Marshal(&struct {
-					Name    string               `json:"name"`
-					Version string               `json:"version"`
-					Time    int                  `json:"time"`
-					Monitor *stat.TrafficMonitor `json:"monitor"`
-				}{
-					Name:    name,
-					Version: versionInfo,
-					Time:    int(time.Now().Sub(startTime).Seconds()),
-					Monitor: monitor,
+		// Host HTTP server
+		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+			b, err := json.Marshal(&struct {
+				Name    string               `json:"name"`
+				Version string               `json:"version"`
+				Time    int                  `json:"time"`
+				Monitor *stat.TrafficMonitor `json:"monitor"`
+			}{
+				Name:    name,
+				Version: versionInfo,
+				Time:    int(time.Now().Sub(startTime).Seconds()),
+				Monitor: monitor,
+			})
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+				return
+			}
+
+			// Handle CORS
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+
+			_, err = io.WriteString(w, string(b))
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+			}
+		})
+		http.HandleFunc("/dns", func(w http.ResponseWriter, req *http.Request) {
+			type IPName struct {
+				IP   string `json:"ip"`
+				Name string `json:"name"`
+			}
+
+			ipNames := make([]IPName, 0)
+			dnsLock.RLock()
+			for ip, name := range dns {
+				ipNames = append(ipNames, IPName{
+					IP:   ip,
+					Name: name,
 				})
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-					return
-				}
+			}
+			dnsLock.RUnlock()
 
-				// Handle CORS
-				w.Header().Set("Access-Control-Allow-Origin", "*")
+			b, err := json.Marshal(ipNames)
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+				return
+			}
 
-				_, err = io.WriteString(w, string(b))
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-				}
-			})
+			// Handle CORS
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 
-			http.HandleFunc("/dns", func(w http.ResponseWriter, req *http.Request) {
-				type IPName struct {
-					IP   string `json:"ip"`
-					Name string `json:"name"`
-				}
-
-				ipNames := make([]IPName, 0)
-				dnsLock.RLock()
-				for ip, name := range dns {
-					ipNames = append(ipNames, IPName{
-						IP:   ip,
-						Name: name,
-					})
-				}
-				dnsLock.RUnlock()
-
-				b, err := json.Marshal(ipNames)
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-					return
-				}
-
-				// Handle CORS
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-
-				_, err = io.WriteString(w, string(b))
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-				}
-			})
-
+			_, err = io.WriteString(w, string(b))
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+			}
+		})
+		go func() {
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
 				log.Errorln(fmt.Errorf("monitor: %w", err))

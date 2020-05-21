@@ -98,13 +98,13 @@ var (
 	isClosed    bool
 	listenConns []*pcap.RawConn
 	upConn      net.Conn
-	pinger      *ping.Pinger
 	c           chan pcap.ConnPacket
 	natLock     sync.RWMutex
 	nat         map[string]*natIndicator
-	monitor     *stat.TrafficMonitor
 	pingTime    int64
 	pingSeq     int
+	pinger      *ping.Pinger
+	monitor     *stat.TrafficMonitor
 	dnsLock     sync.RWMutex
 	dns         map[string]string
 )
@@ -384,71 +384,97 @@ func main() {
 
 		monitor = stat.NewTrafficMonitor()
 
-		go func() {
-			http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-				b, err := json.Marshal(&struct {
-					Name    string               `json:"name"`
-					Version string               `json:"version"`
-					Time    int                  `json:"time"`
-					Monitor *stat.TrafficMonitor `json:"monitor"`
-					Ping    int64                `json:"ping"`
-				}{
-					Name:    name,
-					Version: versionInfo,
-					Time:    int(time.Now().Sub(startTime).Seconds()),
-					Monitor: monitor,
-					Ping:    pingTime,
+		// Host HTTP server
+		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+			b, err := json.Marshal(&struct {
+				Name    string               `json:"name"`
+				Version string               `json:"version"`
+				Time    int                  `json:"time"`
+				Monitor *stat.TrafficMonitor `json:"monitor"`
+				Ping    int64                `json:"ping"`
+			}{
+				Name:    name,
+				Version: versionInfo,
+				Time:    int(time.Now().Sub(startTime).Seconds()),
+				Monitor: monitor,
+				Ping:    pingTime,
+			})
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+				return
+			}
+
+			// Handle CORS
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+
+			_, err = io.WriteString(w, string(b))
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+			}
+		})
+		http.HandleFunc("/dns", func(w http.ResponseWriter, req *http.Request) {
+			type IPName struct {
+				IP   string `json:"ip"`
+				Name string `json:"name"`
+			}
+
+			ipNames := make([]IPName, 0)
+			dnsLock.RLock()
+			for ip, name := range dns {
+				ipNames = append(ipNames, IPName{
+					IP:   ip,
+					Name: name,
 				})
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-					return
-				}
+			}
+			dnsLock.RUnlock()
 
-				// Handle CORS
-				w.Header().Set("Access-Control-Allow-Origin", "*")
+			b, err := json.Marshal(ipNames)
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+				return
+			}
 
-				_, err = io.WriteString(w, string(b))
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-				}
-			})
+			// Handle CORS
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 
-			http.HandleFunc("/dns", func(w http.ResponseWriter, req *http.Request) {
-				type IPName struct {
-					IP   string `json:"ip"`
-					Name string `json:"name"`
-				}
-
-				ipNames := make([]IPName, 0)
-				dnsLock.RLock()
-				for ip, name := range dns {
-					ipNames = append(ipNames, IPName{
-						IP:   ip,
-						Name: name,
-					})
-				}
-				dnsLock.RUnlock()
-
-				b, err := json.Marshal(ipNames)
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-					return
-				}
-
-				// Handle CORS
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-
-				_, err = io.WriteString(w, string(b))
-				if err != nil {
-					log.Errorln(fmt.Errorf("monitor: %w", err))
-				}
-			})
-
+			_, err = io.WriteString(w, string(b))
+			if err != nil {
+				log.Errorln(fmt.Errorf("monitor: %w", err))
+			}
+		})
+		go func() {
 			err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Monitor), nil)
 			if err != nil {
 				log.Errorln(fmt.Errorf("monitor: %w", err))
 			}
 		}()
+
+		// Ping
+		pinger, err = ping.NewPinger(serverIP.String())
+		if err != nil {
+			log.Errorln(fmt.Errorf("ping: %w", err))
+		}
+		if pinger != nil {
+			pinger.SetPrivileged(true)
+			pinger.OnRecv = func(packet *ping.Packet) {
+				if packet != nil {
+					pingTime = packet.Rtt.Milliseconds()
+					pingSeq = packet.Seq
+
+					log.Verbosef("Receive ICMP Echo Reply: %s <- %s (%d ms)\n", upDev.IPAddr().IP, serverIP, packet.Rtt.Milliseconds())
+
+					// Timeout
+					go func() {
+						time.Sleep(pingDeadline)
+						if packet.Seq == pingSeq {
+							pingTime = -2
+
+							log.Errorf("Cannot receive ICMP Echo Reply from server %s, is your network down?\n", serverIP)
+						}
+					}()
+				}
+			}
+		}
 
 		log.Infof("Monitor on :%d\n", cfg.Monitor)
 		log.Infoln("You can now observe traffic on http://ikago.ikas.ink")
@@ -615,29 +641,7 @@ func open() error {
 	}
 
 	// Ping
-	pinger, err = ping.NewPinger(serverIP.String())
-	pinger.SetPrivileged(true)
-	pinger.OnRecv = func(packet *ping.Packet) {
-		if packet != nil {
-			pingTime = packet.Rtt.Milliseconds()
-			pingSeq = packet.Seq
-
-			log.Verbosef("Receive ICMP Echo Reply: %s <- %s (%d ms)\n", upDev.IPAddr().IP, serverIP, packet.Rtt.Milliseconds())
-
-			// Timeout
-			go func() {
-				time.Sleep(pingDeadline)
-				if packet.Seq == pingSeq {
-					pingTime = -2
-
-					log.Errorf("Cannot receive ICMP Echo Reply from server %s, is your network down?\n", serverIP)
-				}
-			}()
-		}
-	}
-	if err != nil {
-		log.Errorln(fmt.Errorf("ping: %w", err))
-	} else {
+	if pinger != nil {
 		pinger.Run()
 	}
 
