@@ -68,7 +68,7 @@ func CreateRawConn(srcDev, dstDev *Device, filter string) (*RawConn, error) {
 }
 
 func (c *RawConn) Read(b []byte) (n int, err error) {
-	d, _, err := c.handle.ReadPacketData()
+	d, _, err := c.handle.ZeroCopyReadPacketData()
 	if err != nil {
 		return 0, err
 	}
@@ -80,7 +80,6 @@ func (c *RawConn) Read(b []byte) (n int, err error) {
 
 // ReadPacket reads packet from the connection.
 func (c *RawConn) ReadPacket() (gopacket.Packet, error) {
-	// TODO: Read into a long buffer instead of creating buffer each time (Change to a no copy implementation)
 	b := make([]byte, maxSnapLen)
 
 	_, err := c.Read(b)

@@ -653,7 +653,6 @@ func open() error {
 
 		go func() {
 			for {
-				// TODO: unsafe
 				packet, err := conn.ReadPacket()
 				if err != nil {
 					if isClosed {
@@ -887,7 +886,7 @@ func handleUpstream(contents []byte) error {
 	// Create new link layer
 	switch newLinkLayerType {
 	case layers.LayerTypeLoopback:
-		newLinkLayer = pcap.CreateLoopbackLayer()
+		newLinkLayer, err = pcap.CreateLoopbackLayer(embIndicator.NetworkLayer().(gopacket.NetworkLayer))
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = pcap.CreateEthernetLayer(ni.conn.LocalDev().HardwareAddr(), ni.srcHardwareAddr, embIndicator.NetworkLayer().(gopacket.NetworkLayer))
 	default:

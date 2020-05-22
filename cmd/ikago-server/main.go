@@ -642,7 +642,6 @@ func open() error {
 	}()
 
 	for {
-		// TODO: unsafe
 		packet, err := upConn.ReadPacket()
 		if err != nil {
 			if isClosed {
@@ -862,7 +861,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 	// Create new link layer
 	switch newLinkLayerType {
 	case layers.LayerTypeLoopback:
-		newLinkLayer = pcap.CreateLoopbackLayer()
+		newLinkLayer, err = pcap.CreateLoopbackLayer(newNetworkLayer)
 	case layers.LayerTypeEthernet:
 		newLinkLayer, err = pcap.CreateEthernetLayer(upConn.LocalDev().HardwareAddr(), upConn.RemoteDev().HardwareAddr(), newNetworkLayer)
 	default:

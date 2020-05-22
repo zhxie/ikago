@@ -51,13 +51,22 @@ type Crypt interface {
 	Cost() int
 }
 
-// StreamCrypt describes a crypt of encryption using stream encryption.
+// StreamCrypt describes a crypt which can be used in stream encryption, which means the plaintext and the ciphertext have a same size.
 type StreamCrypt interface {
 	Crypt
 	// EncryptInPlace encrypts data in place.
 	EncryptInPlace([]byte) error
-	// DecryptInPlace decrypts data in plcae.
+	// DecryptInPlace decrypts data in place.
 	DecryptInPlace([]byte) error
+}
+
+// NoCopyCrypt describes a stream crypt does not create new space in encryption and decryption.
+type NoCopyCrypt interface {
+	StreamCrypt
+	// EncryptNoCopy encrypts data in place. This is a no copy version of EncryptInPlace.
+	EncryptNoCopy([]byte) error
+	// DecryptNoCopy decrypts data in place. This is a no copy version of DecryptInPlace.
+	DecryptNoCopy([]byte) error
 }
 
 // ParseCrypt returns a crypt by given method and password.

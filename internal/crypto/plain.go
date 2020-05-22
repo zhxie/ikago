@@ -25,6 +25,10 @@ func (c *PlainCrypt) EncryptInPlace(_ []byte) error {
 	return nil
 }
 
+func (c *PlainCrypt) EncryptNoCopy(_ []byte) error {
+	return nil
+}
+
 func (c *PlainCrypt) Decrypt(data []byte) ([]byte, error) {
 	result := make([]byte, len(data))
 
@@ -34,6 +38,10 @@ func (c *PlainCrypt) Decrypt(data []byte) ([]byte, error) {
 }
 
 func (c *PlainCrypt) DecryptInPlace(_ []byte) error {
+	return nil
+}
+
+func (c *PlainCrypt) DecryptNoCopy(_ []byte) error {
 	return nil
 }
 

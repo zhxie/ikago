@@ -96,8 +96,18 @@ func FlagIPv4Layer(layer *layers.IPv4, df, mf bool, offset uint16) {
 }
 
 // CreateLoopbackLayer returns a loopback layer.
-func CreateLoopbackLayer() *layers.Loopback {
-	return &layers.Loopback{}
+func CreateLoopbackLayer(networkLayer gopacket.NetworkLayer) (*layers.Loopback, error) {
+	loopbackLayer := &layers.Loopback{}
+
+	// Protocol
+	switch t := networkLayer.LayerType(); t {
+	case layers.LayerTypeIPv4:
+		loopbackLayer.Family = layers.ProtocolFamilyIPv4
+	default:
+		return nil, fmt.Errorf("network layer type %s not support", t)
+	}
+
+	return loopbackLayer, nil
 }
 
 // CreateEthernetLayer returns an Ethernet layer.
@@ -173,7 +183,7 @@ func CreateLayers(srcPort, dstPort uint16, seq, ack uint32, conn *RawConn, dstIP
 	// Create new link layer
 	switch linkLayerType {
 	case layers.LayerTypeLoopback:
-		linkLayer = CreateLoopbackLayer()
+		linkLayer, err = CreateLoopbackLayer(networkLayer.(gopacket.NetworkLayer))
 	case layers.LayerTypeEthernet:
 		linkLayer, err = CreateEthernetLayer(conn.LocalDev().HardwareAddr(), dstHardwareAddr, networkLayer.(gopacket.NetworkLayer))
 	default:

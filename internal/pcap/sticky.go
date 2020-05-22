@@ -18,9 +18,9 @@ func NewDesticker() *Desticker {
 	return &Desticker{data: make([]byte, 0), appear: time.Now()}
 }
 
-// Append adds a sticky data to the Desticker.
+// Append adds a sticky data to the Desticker. This is a copy method.
 func (d *Desticker) Append(data []byte) ([][]byte, error) {
-	datas := make([][]byte, 0)
+	packets := make([][]byte, 0)
 
 	// Discard old data
 	if d.deadline > 0 && time.Now().Sub(d.appear) > d.deadline {
@@ -36,7 +36,7 @@ func (d *Desticker) Append(data []byte) ([][]byte, error) {
 	for length := len(d.data); length > 0; {
 		if d.indicator != nil {
 			if len(d.data) >= int(d.indicator.IPv4Layer().Length) {
-				datas = append(datas, d.data[:d.indicator.IPv4Layer().Length])
+				packets = append(packets, d.data[:d.indicator.IPv4Layer().Length])
 
 				if len(d.data) > int(d.indicator.IPv4Layer().Length) {
 					d.data = d.data[d.indicator.IPv4Layer().Length:]
@@ -60,11 +60,11 @@ func (d *Desticker) Append(data []byte) ([][]byte, error) {
 		}
 	}
 
-	if len(datas) > 0 {
+	if len(packets) > 0 {
 		d.appear = time.Now()
 	}
 
-	return datas, nil
+	return packets, nil
 }
 
 // SetDeadline sets the deadline associated with the sticky data.
