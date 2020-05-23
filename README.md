@@ -26,7 +26,9 @@
 
 ## Dependencies
 
-1. pcap like [Npcap](http://www.npcap.org/) or WinPcap in Windows, libpcap in macOS, Linux and others.
+1. [Npcap](http://www.npcap.org/) or WinPcap in Windows, libpcap in macOS, Linux and others.
+
+2. （Optional, recommended) pf in macOS, iptables and ethtool in Linux for automatic firewall rule addition.
 
 ## Usage
 
@@ -58,7 +60,7 @@ Examples of configuration file are [here](/configs).
 
 `-password password`: (Optional) Password of encryption, must be set only when method is not `plain`. This option needs to be set consistently between the client and the server.
 
-`-rule`: (Optional) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
+`-rule`: (Optional, recommended) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
 
 `-v`: (Optional) Print verbose messages. Either `-v` or `verbose` in configuration file is set `true`, IkaGo will print verbose messages.
 
@@ -78,7 +80,7 @@ Examples of configuration file are [here](/configs).
 
 ### Client options
 
-`-publish addresses`: (Optional) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
+`-publish addresses`: (Optional, recommended) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
 
 `-p port`: (Optional) Port for routing upstream. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
@@ -92,7 +94,7 @@ Examples of configuration file are [here](/configs).
 
 ## Troubleshoot
 
-1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet or even drop the packet. **You may configure `iptables` in Linux, `pfctl` in macOS and FreeBSD**, or `netsh` in Windows (You may not need to) with the following rules to solve the problem. **If you are using mode `tcp`, you may not need to configure the firewall, but you still have to disable IP forward.**
+1. Because IkaGo use pcap to handle packets, it will not notify the OS if IkaGo is listening to any ports, all the connections are built manually. Some OS may operate with the packet in advance, while they have no information of the packet in there TCP stacks, and respond with a RST packet or even drop the packet. **You may configure iptables in Linux, pf in macOS and FreeBSD**, or Windows Firewall in Windows (You may not need to) with the following rules to solve the problem. **If you are using mode `tcp`, you may not need to configure the firewall, but you still have to disable IP forward.**
    ```
    // Linux
    // IkaGo-server
