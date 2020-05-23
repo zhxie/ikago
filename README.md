@@ -124,6 +124,12 @@ Examples of configuration file are [here](/configs).
    ```
    before opening IkaGo. If you run IkaGo with non-root, `-rule` will not work, please add firewall rules described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) manually.
 
+4. IkaGo acts as a router and handles segments and fragments. Generic receive offload (GRO) enabled by default in some OS may increase network performance, but affect the normal operation of IkaGo because it breaks the end-to-end principle. You can disable GRO manually.
+   ```
+   // Linux
+   sudo ethtool --offload network_interface_like_eth0 gro off
+   ```
+
 ## Limitations
 
 1. IPv6 is not supported because the dependency package [gopacket](https://github.com/google/gopacket) does not fully implement the serialization of the IPv6 extension header.

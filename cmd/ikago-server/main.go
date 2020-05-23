@@ -333,23 +333,6 @@ func main() {
 		log.Infof("Encrypt with %s\n", method)
 	}
 
-	// Add firewall rule
-	if cfg.Rule {
-		err := exec.DisableIPForwarding()
-		if err != nil {
-			log.Fatalln(fmt.Errorf("disable ip forwarding: %w", err))
-		}
-
-		log.Infoln("Disable IP forwarding")
-
-		err = exec.AddGlobalFirewallRule()
-		if err != nil {
-			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
-		}
-
-		log.Infoln("Add firewall rule")
-	}
-
 	// Monitor
 	if cfg.Monitor != 0 {
 		if cfg.Monitor == int(port) {
@@ -482,6 +465,43 @@ func main() {
 	}
 	if gatewayDev == nil {
 		log.Fatalln(errors.New("cannot determine gateway device"))
+	}
+
+	// Add firewall rule
+	if cfg.Rule {
+		var (
+			devs map[string]bool
+		)
+
+		devs = make(map[string]bool)
+
+		err := exec.DisableIPForwarding()
+		if err != nil {
+			log.Fatalln(fmt.Errorf("disable ip forwarding: %w", err))
+		}
+
+		log.Infoln("Disable IP forwarding")
+
+		err = exec.AddGlobalFirewallRule()
+		if err != nil {
+			log.Fatalln(fmt.Errorf("add firewall rule: %w", err))
+		}
+
+		log.Infoln("Add firewall rule")
+
+		for _, dev := range listenDevs {
+			devs[dev.Alias()] = true
+		}
+		devs[upDev.Alias()] = true
+
+		for dev := range devs {
+			err := exec.DisableGRO(dev)
+			if err != nil {
+				log.Fatalln(fmt.Errorf("disable gro: %w", err))
+			}
+		}
+
+		log.Infoln("Disable GRO")
 	}
 
 	// Wait signals

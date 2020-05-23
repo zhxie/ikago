@@ -8,6 +8,6 @@ func addGlobalFirewallRule() error {
 	return nil
 }
 
-func addSpecificFirewallRule(ip net.IP, port uint16) error {
+func addSpecificFirewallRule(_ net.IP, _ uint16) error {
 	return nil
 }
