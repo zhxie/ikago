@@ -11,23 +11,24 @@ import (
 
 // Config describes the configuration of IkaGo.
 type Config struct {
-	ListenDevs []string  `json:"listen-devices"`
-	UpDev      string    `json:"upstream-device"`
-	Gateway    string    `json:"gateway"`
-	Mode       string    `json:"mode"`
-	Method     string    `json:"method"`
-	Password   string    `json:"password"`
-	Rule       bool      `json:"rule"`
-	Verbose    bool      `json:"verbose"`
-	Log        string    `json:"log"`
-	Monitor    int       `json:"monitor"`
-	MTU        int       `json:"mtu"`
-	KCP        bool      `json:"kcp"`
-	KCPConfig  KCPConfig `json:"kcp-tuning"`
-	Port       int       `json:"port"`
-	Publish    string    `json:"publish"`
-	Sources    []string  `json:"sources"`
-	Server     string    `json:"server"`
+	ListenDevs  []string  `json:"listen-devices"`
+	UpDev       string    `json:"upstream-device"`
+	Gateway     string    `json:"gateway"`
+	Mode        string    `json:"mode"`
+	Method      string    `json:"method"`
+	Password    string    `json:"password"`
+	Rule        bool      `json:"rule"`
+	Verbose     bool      `json:"verbose"`
+	Log         string    `json:"log"`
+	Monitor     int       `json:"monitor"`
+	MTU         int       `json:"mtu"`
+	KCP         bool      `json:"kcp"`
+	KCPConfig   KCPConfig `json:"kcp-tuning"`
+	Port        int       `json:"port"`
+	Publish     string    `json:"publish"`
+	Sources     []string  `json:"sources"`
+	Server      string    `json:"server"`
+	Destination string    `json:"destination"`
 }
 
 // NewConfig returns a new config.
@@ -35,6 +36,7 @@ func NewConfig() *Config {
 	return &Config{
 		Mode:      "faketcp",
 		Method:    "plain",
+		MTU:       1500,
 		KCPConfig: *NewKCPConfig(),
 		Sources:   make([]string, 0),
 	}

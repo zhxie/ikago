@@ -60,7 +60,7 @@ var (
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
 	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
-	argMTU            = flag.Int("mtu", 0, "MTU.")
+	argMTU            = flag.Int("mtu", 1500, "MTU.")
 	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
 	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
 	argKCPSendWindow  = flag.Int("kcp-sndwnd", kcp.IKCP_WND_SND, "KCP tuning option sndwnd.")
@@ -257,11 +257,7 @@ func main() {
 		log.Fatalln(fmt.Errorf("monitor port %d out of range", cfg.Monitor))
 	}
 	if cfg.MTU < 576 || cfg.MTU > pcap.MaxMTU {
-		if cfg.MTU == 0 {
-			cfg.MTU = pcap.MaxMTU
-		} else {
-			log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
-		}
+		log.Fatalln(fmt.Errorf("mtu %d out of range", cfg.MTU))
 	}
 	if cfg.KCPConfig.MTU > 1500 {
 		log.Fatalln(fmt.Errorf("kcp mtu %d out of range", cfg.KCPConfig.MTU))
@@ -461,7 +457,7 @@ func main() {
 	case "faketcp":
 		// MTU
 		mtu = cfg.MTU
-		if mtu != pcap.MaxMTU {
+		if mtu != pcap.MaxEthernetMTU {
 			log.Infof("Set MTU to %d Bytes\n", mtu)
 		}
 

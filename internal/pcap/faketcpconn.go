@@ -47,7 +47,7 @@ type FakeTCPConn struct {
 func newConn() *FakeTCPConn {
 	conn := &FakeTCPConn{
 		defrag:  NewEasyDefragmenter(),
-		mtu:     MaxMTU,
+		mtu:     MaxEthernetMTU,
 		clients: make(map[string]*clientIndicator),
 	}
 	conn.defrag.SetDeadline(keepFragments)

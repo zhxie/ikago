@@ -18,23 +18,25 @@ func (err *timeoutError) Timeout() bool {
 }
 
 // MaxMTU is the max transmission and receive unit in pcap raw conn.
-const MaxMTU = 1500
+const MaxMTU = 65535
+const MaxEthernetMTU = 1500
 
 // IPv4MaxSize is the max size of an IPv4 packet.
 const IPv4MaxSize = 65535
 
 // maxSnapLen is the max size of each packet in pcap raw conn.
-const maxSnapLen = 1600
+const maxSnapLen = 65535
 
 // RawConn is a raw network connection.
 type RawConn struct {
 	srcDev *Device
 	dstDev *Device
 	handle *pcap.Handle
+	buffer []byte
 }
 
 func newRawConn() *RawConn {
-	return &RawConn{}
+	return &RawConn{buffer: make([]byte, maxSnapLen)}
 }
 
 func createPureRawConn(dev, filter string) (*RawConn, error) {
@@ -80,12 +82,13 @@ func (c *RawConn) Read(b []byte) (n int, err error) {
 
 // ReadPacket reads packet from the connection.
 func (c *RawConn) ReadPacket() (gopacket.Packet, error) {
-	b := make([]byte, maxSnapLen)
-
-	_, err := c.Read(b)
+	n, err := c.Read(c.buffer)
 	if err != nil {
 		return nil, err
 	}
+
+	b := make([]byte, n)
+	copy(b, c.buffer[:n])
 
 	packet := gopacket.NewPacket(b, c.handle.LinkType(), gopacket.NoCopy)
 
