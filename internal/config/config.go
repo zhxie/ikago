@@ -18,12 +18,13 @@ type Config struct {
 	Method      string    `json:"method"`
 	Password    string    `json:"password"`
 	Rule        bool      `json:"rule"`
+	Monitor     int       `json:"monitor"`
 	Verbose     bool      `json:"verbose"`
 	Log         string    `json:"log"`
-	Monitor     int       `json:"monitor"`
 	MTU         int       `json:"mtu"`
 	KCP         bool      `json:"kcp"`
 	KCPConfig   KCPConfig `json:"kcp-tuning"`
+	Fragment    int       `json:"fragment"`
 	Port        int       `json:"port"`
 	Publish     string    `json:"publish"`
 	Sources     []string  `json:"sources"`
@@ -38,6 +39,7 @@ func NewConfig() *Config {
 		Method:    "plain",
 		MTU:       1500,
 		KCPConfig: *NewKCPConfig(),
+		Fragment:  1500,
 		Sources:   make([]string, 0),
 	}
 }

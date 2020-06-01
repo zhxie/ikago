@@ -238,77 +238,73 @@ func (defrag *StrictDefragmenter) SetDeadline(t time.Duration) {
 }
 
 // CreateFragmentPackets creates fragments by given layers and fragment size.
-func CreateFragmentPackets(linkLayer, networkLayer, transportLayer, payload gopacket.Layer, fragment int) ([][]byte, error) {
+func CreateFragmentPackets(linkLayer, networkLayer, transportLayer gopacket.Layer, payload gopacket.Payload, fragment int) ([][]byte, error) {
+	if transportLayer != nil && transportLayer.LayerType() == layers.LayerTypeTCP {
+		return CreateTCPSegmentPackets(linkLayer, networkLayer.(gopacket.NetworkLayer), transportLayer.(*layers.TCP), payload, fragment)
+	}
+
+	switch t := networkLayer.LayerType(); t {
+	case layers.LayerTypeIPv4:
+		networkPayload, err := Serialize(transportLayer.(gopacket.SerializableLayer), payload)
+		if err != nil {
+			return nil, fmt.Errorf("serialize: %w", err)
+		}
+
+		return CreateIPv4FragmentPackets(linkLayer, networkLayer.(*layers.IPv4), networkPayload, fragment)
+	default:
+		return nil, fmt.Errorf("network layer type %s not support", t)
+	}
+}
+
+// CreateIPFragmentPackets creates IPv4 fragments by given layers and fragment size.
+func CreateIPv4FragmentPackets(linkLayer gopacket.Layer, ipv4Layer *layers.IPv4, payload gopacket.Payload, fragment int) ([][]byte, error) {
 	var (
-		err                 error
-		networkLayerData    []byte
-		networkLayerPayload []byte
-		fragments           [][]byte
+		err           error
+		ipv4LayerData []byte
+		fragments     [][]byte
 	)
 
 	// Serialize intermediate headers
-	networkLayerData, err = Serialize(networkLayer.(gopacket.SerializableLayer))
+	ipv4LayerData, err = Serialize(ipv4Layer)
 	if err != nil {
 		return nil, fmt.Errorf("serialize: %w", err)
 	}
-	if transportLayer == nil {
-		networkLayerPayload, err = Serialize(networkLayer.(gopacket.SerializableLayer),
-			payload.(gopacket.SerializableLayer))
-	} else {
-		networkLayerPayload, err = Serialize(networkLayer.(gopacket.SerializableLayer),
-			transportLayer.(gopacket.SerializableLayer),
-			payload.(gopacket.SerializableLayer))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("serialize: %w", err)
-	}
-	networkLayerPayload = networkLayerPayload[len(networkLayerData):]
 
 	fragments = make([][]byte, 0)
 
 	// Fragment
-	if len(networkLayerData)+len(networkLayerPayload) > fragment {
-		var newNetworkLayer gopacket.NetworkLayer
-
-		// Create new network layer
-		switch t := networkLayer.LayerType(); t {
-		case layers.LayerTypeIPv4:
-			newIPv4Layer := networkLayer.(*layers.IPv4)
-			temp := *newIPv4Layer
-			newNetworkLayer = &temp
-		default:
-			return nil, fmt.Errorf("network layer type %s not support", t)
-		}
+	if len(ipv4LayerData)+len(payload) > fragment {
+		// Create new IPv4 layer
+		temp := *ipv4Layer
+		newIPv4Layer := &temp
 
 		// Create fragments
-		for i := 0; i < len(networkLayerPayload); {
+		for i := 0; i < len(payload); {
 			var (
 				err  error
 				data []byte
 			)
-			length := min(fragment-len(networkLayerData), len(networkLayerPayload)-i)
-			remain := len(networkLayerPayload) - i - length
+			length := min(fragment-len(ipv4LayerData), len(payload)-i)
+			remain := len(payload) - i - length
 
 			// Align
 			if remain > 0 {
 				length = length / 8 * 8
-				remain = len(networkLayerPayload) - i - length
+				remain = len(payload) - i - length
 			}
 
 			// Leave at least 8 Bytes for last fragment
 			if remain > 0 && remain < 8 {
 				length = length - 8
-				remain = len(networkLayerPayload) - i - length
+				remain = len(payload) - i - length
 			}
 
-			switch t := newNetworkLayer.LayerType(); t {
+			switch t := newIPv4Layer.LayerType(); t {
 			case layers.LayerTypeIPv4:
-				ipv4Layer := newNetworkLayer.(*layers.IPv4)
-
 				if remain <= 0 {
-					FlagIPv4Layer(ipv4Layer, false, false, uint16(i/8))
+					FlagIPv4Layer(newIPv4Layer, false, false, uint16(i/8))
 				} else {
-					FlagIPv4Layer(ipv4Layer, false, true, uint16(i/8))
+					FlagIPv4Layer(newIPv4Layer, false, true, uint16(i/8))
 				}
 			default:
 				return nil, fmt.Errorf("network layer type %s not support", t)
@@ -316,12 +312,9 @@ func CreateFragmentPackets(linkLayer, networkLayer, transportLayer, payload gopa
 
 			// Serialize layers
 			if linkLayer == nil {
-				data, err = Serialize(newNetworkLayer.(gopacket.SerializableLayer),
-					gopacket.Payload(networkLayerPayload[i:i+length]))
+				data, err = Serialize(newIPv4Layer, payload[i:i+length])
 			} else {
-				data, err = Serialize(linkLayer.(gopacket.SerializableLayer),
-					newNetworkLayer.(gopacket.SerializableLayer),
-					gopacket.Payload(networkLayerPayload[i:i+length]))
+				data, err = Serialize(linkLayer.(gopacket.SerializableLayer), newIPv4Layer, payload[i:i+length])
 			}
 			if err != nil {
 				return nil, fmt.Errorf("serialize: %w", err)
@@ -339,12 +332,111 @@ func CreateFragmentPackets(linkLayer, networkLayer, transportLayer, payload gopa
 
 		// Serialize layers
 		if linkLayer == nil {
-			data, err = Serialize(networkLayer.(gopacket.SerializableLayer),
-				gopacket.Payload(networkLayerPayload))
+			data, err = Serialize(ipv4Layer, payload)
 		} else {
-			data, err = Serialize(linkLayer.(gopacket.SerializableLayer),
-				networkLayer.(gopacket.SerializableLayer),
-				gopacket.Payload(networkLayerPayload))
+			data, err = Serialize(linkLayer.(gopacket.SerializableLayer), ipv4Layer, payload)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("serialize: %w", err)
+		}
+
+		fragments = append(fragments, data)
+	}
+
+	return fragments, nil
+}
+
+// CreateTCPSegmentPackets creates TCP segments by given layers and fragment size.
+func CreateTCPSegmentPackets(linkLayer gopacket.Layer, networkLayer gopacket.NetworkLayer, tcpLayer *layers.TCP, payload gopacket.Payload, fragment int) ([][]byte, error) {
+	var (
+		err              error
+		networkLayerData []byte
+		tcpLayerData     []byte
+		fragments        [][]byte
+	)
+
+	// Serialize intermediate headers
+	networkLayerData, err = Serialize(networkLayer.(gopacket.SerializableLayer))
+	if err != nil {
+		return nil, fmt.Errorf("serialize: %w", err)
+	}
+	tcpLayerData, err = SerializeRaw(tcpLayer)
+	if err != nil {
+		return nil, fmt.Errorf("serialize: %w", err)
+	}
+
+	fragments = make([][]byte, 0)
+
+	// Fragment
+	if len(networkLayerData)+len(tcpLayerData)+len(payload) > fragment {
+		var n uint16 = 0
+
+		// Create fragments
+		for i := 0; i < len(payload); {
+			var (
+				err             error
+				newNetworkLayer gopacket.NetworkLayer
+				newTCPLayer     *layers.TCP
+				data            []byte
+			)
+			length := min(fragment-len(networkLayerData)-len(tcpLayerData), len(payload)-i)
+
+			// Create new network layer
+			switch t := networkLayer.LayerType(); t {
+			case layers.LayerTypeIPv4:
+				ipv4Layer := networkLayer.(*layers.IPv4)
+				temp := *ipv4Layer
+				newNetworkLayer = &temp
+
+				newNetworkLayer.(*layers.IPv4).Id = newNetworkLayer.(*layers.IPv4).Id + n
+			case layers.LayerTypeIPv6:
+				ipv6Layer := networkLayer.(*layers.IPv6)
+				temp := *ipv6Layer
+				newNetworkLayer = &temp
+			default:
+				return nil, fmt.Errorf("network layer type %s not support", t)
+			}
+
+			// Create new TCP layer
+			tempTCPLayer := *tcpLayer
+			newTCPLayer = &tempTCPLayer
+			newTCPLayer.Seq = newTCPLayer.Seq + uint32(i)
+
+			// Set network layer for transport layer
+			err = newTCPLayer.SetNetworkLayerForChecksum(newNetworkLayer)
+			if err != nil {
+				return nil, fmt.Errorf("set network layer for checksum: %w", err)
+			}
+
+			// Serialize layers
+			if linkLayer == nil {
+				data, err = Serialize(newNetworkLayer.(gopacket.SerializableLayer), newTCPLayer, payload[i:i+length])
+			} else {
+				data, err = Serialize(linkLayer.(gopacket.SerializableLayer),
+					newNetworkLayer.(gopacket.SerializableLayer),
+					tcpLayer,
+					payload[i:i+length])
+			}
+			if err != nil {
+				return nil, fmt.Errorf("serialize: %w", err)
+			}
+
+			fragments = append(fragments, data)
+
+			i = i + length
+			n++
+		}
+	} else {
+		var (
+			err  error
+			data []byte
+		)
+
+		// Serialize layers
+		if linkLayer == nil {
+			data, err = Serialize(networkLayer.(gopacket.SerializableLayer), tcpLayer, payload)
+		} else {
+			data, err = Serialize(linkLayer.(gopacket.SerializableLayer), networkLayer.(gopacket.SerializableLayer), tcpLayer, payload)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("serialize: %w", err)

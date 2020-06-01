@@ -57,10 +57,10 @@ var (
 	argMethod         = flag.String("method", "plain", "Method of encryption.")
 	argPassword       = flag.String("password", "", "Password of encryption.")
 	argRule           = flag.Bool("rule", false, "Add firewall rule.")
+	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
 	argVerbose        = flag.Bool("v", false, "Print verbose messages.")
 	argLog            = flag.String("log", "", "Log.")
-	argMonitor        = flag.Int("monitor", 0, "Port for monitoring.")
-	argMTU            = flag.Int("mtu", 1500, "MTU.")
+	argMTU            = flag.Int("mtu", pcap.MaxEthernetMTU, "MTU.")
 	argKCP            = flag.Bool("kcp", false, "Enable KCP.")
 	argKCPMTU         = flag.Int("kcp-mtu", kcp.IKCP_MTU_DEF, "KCP tuning option mtu.")
 	argKCPSendWindow  = flag.Int("kcp-sndwnd", kcp.IKCP_WND_SND, "KCP tuning option sndwnd.")
@@ -73,6 +73,7 @@ var (
 	argKCPResend      = flag.Int("kcp-resend", 0, "KCP tuning option resend.")
 	argKCPNC          = flag.Int("kcp-nc", 0, "KCP tuning option nc.")
 	argPublish        = flag.String("publish", "", "ARP publishing address.")
+	argFragment       = flag.Int("fragment", pcap.MaxEthernetMTU, "Fragmentation size for listening.")
 	argUpPort         = flag.Int("p", 0, "Port for routing upstream.")
 	argSources        = flag.String("r", "", "Sources.")
 	argServer         = flag.String("s", "", "Server.")
@@ -80,6 +81,7 @@ var (
 
 var (
 	publishIP  *net.IPAddr
+	fragment   int
 	upPort     uint16
 	sources    []*net.IPAddr
 	serverIP   net.IP
@@ -174,9 +176,9 @@ func main() {
 		cfg.Method = *argMethod
 		cfg.Password = *argPassword
 		cfg.Rule = *argRule
+		cfg.Monitor = *argMonitor
 		cfg.Verbose = *argVerbose
 		cfg.Log = *argLog
-		cfg.Monitor = *argMonitor
 		cfg.MTU = *argMTU
 		cfg.KCP = *argKCP
 		cfg.KCPConfig = *config.NewKCPConfig()
@@ -191,6 +193,7 @@ func main() {
 		cfg.KCPConfig.Resend = *argKCPResend
 		cfg.KCPConfig.NC = *argKCPNC
 		cfg.Publish = *argPublish
+		cfg.Fragment = *argFragment
 		cfg.Port = *argUpPort
 		cfg.Sources = splitArg(*argSources)
 		cfg.Server = *argServer
@@ -241,12 +244,6 @@ func main() {
 	}
 
 	// Verify parameters
-	if len(cfg.Sources) <= 0 {
-		log.Fatalln("Please provide sources by -r addresses.")
-	}
-	if cfg.Server == "" {
-		log.Fatalln("Please provide server by -s address.")
-	}
 	if cfg.Gateway != "" {
 		gateway = net.ParseIP(cfg.Gateway)
 		if gateway == nil {
@@ -283,47 +280,53 @@ func main() {
 	if cfg.KCPConfig.NC < 0 {
 		log.Fatalln(fmt.Errorf("kcp nc %d out of range", cfg.KCPConfig.NC))
 	}
+	if cfg.Fragment < 576 || cfg.Fragment > pcap.MaxMTU {
+		log.Fatalln(fmt.Errorf("fragment %d out of range", cfg.Fragment))
+	}
 	if cfg.Port < 0 || cfg.Port > 65535 {
 		log.Fatalln(fmt.Errorf("upstream port %d out of range", cfg.Port))
 	}
-
-	// Randomize upstream port
-	if cfg.Port == 0 {
-		s := rand.NewSource(time.Now().UnixNano())
-		for cfg.Port == 0 || cfg.Port == cfg.Monitor {
-			r := rand.New(s)
-			cfg.Port = 49152 + r.Intn(16384)
-		}
+	if len(cfg.Sources) <= 0 {
+		log.Fatalln("Please provide sources by -r addresses.")
 	}
-	upPort = uint16(cfg.Port)
-
-	// Sources
-	for _, source := range cfg.Sources {
-		ip := net.ParseIP(source)
-		if ip == nil {
-			log.Fatalln(fmt.Errorf("invalid source %s", source))
-		}
-		sources = append(sources, &net.IPAddr{IP: ip})
+	if cfg.Server == "" {
+		log.Fatalln("Please provide server by -s address.")
 	}
 
-	// Server
-	serverAddr, err := addr.ParseTCPAddr(cfg.Server)
+	// Find devices
+	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
 	if err != nil {
-		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
+		log.Fatalln(fmt.Errorf("find listen devices: %w", err))
 	}
-	serverIP = serverAddr.IP
-	serverPort = uint16(serverAddr.Port)
+	if len(cfg.ListenDevs) <= 0 {
+		// Remove loopback devices by default
+		result := make([]*pcap.Device, 0)
 
-	// Publish
-	if cfg.Publish != "" {
-		ip := net.ParseIP(cfg.Publish)
-		if ip == nil {
-			log.Errorln(fmt.Errorf("invalid publish %s", cfg.Publish))
+		for _, dev := range listenDevs {
+			if dev.IsLoop() {
+				continue
+			}
+			result = append(result, dev)
 		}
-		publishIP = &net.IPAddr{IP: ip}
+
+		listenDevs = result
 	}
-	if publishIP != nil {
-		log.Infof("Publish %s\n", publishIP.IP)
+	if len(listenDevs) <= 0 {
+		log.Fatalln(errors.New("cannot determine listen device"))
+	}
+
+	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev, gateway)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", err))
+	}
+	if upDev == nil && gatewayDev == nil {
+		log.Fatalln(errors.New("cannot determine upstream device and gateway device"))
+	}
+	if upDev == nil {
+		log.Fatalln(errors.New("cannot determine upstream device"))
+	}
+	if gatewayDev == nil {
+		log.Fatalln(errors.New("cannot determine gateway device"))
 	}
 
 	// Mode
@@ -421,108 +424,11 @@ func main() {
 			}
 		}()
 
-		// Ping
-		pinger, err = ping.NewPinger(serverIP.String())
-		if err != nil {
-			log.Errorln(fmt.Errorf("ping: %w", err))
-		}
-		if pinger != nil {
-			pinger.SetPrivileged(true)
-			pinger.OnRecv = func(packet *ping.Packet) {
-				if packet != nil {
-					pingTime = packet.Rtt.Milliseconds()
-					pingSeq = packet.Seq
-
-					log.Verbosef("Receive ICMP Echo Reply: %s <- %s (%d ms)\n", upDev.IPAddr().IP, serverIP, packet.Rtt.Milliseconds())
-
-					// Timeout
-					go func() {
-						time.Sleep(pingDeadline)
-						if packet.Seq == pingSeq {
-							pingTime = -2
-
-							log.Errorf("Cannot receive ICMP Echo Reply from server %s, is your network down?\n", serverIP)
-						}
-					}()
-				}
-			}
-		}
-
 		log.Infof("Monitor on :%d\n", cfg.Monitor)
 		log.Infoln("You can now observe traffic on http://ikago.ikas.ink")
 	}
 
-	// Mode-related options
-	switch mode {
-	case "faketcp":
-		// MTU
-		mtu = cfg.MTU
-		if mtu != pcap.MaxEthernetMTU {
-			log.Infof("Set MTU to %d Bytes\n", mtu)
-		}
-
-		// KCP
-		isKCP = cfg.KCP
-		kcpConfig = &cfg.KCPConfig
-		if isKCP {
-			log.Infoln("Enable KCP")
-		}
-	case "tcp":
-		break
-	default:
-		log.Fatalln(fmt.Errorf("mode %s not support", mode))
-	}
-
-	if len(sources) == 1 {
-		log.Infof("Proxy %s through :%d to %s\n", sources[0], upPort, serverAddr)
-	} else {
-		log.Infoln("Proxy:")
-		for i, f := range sources {
-			if i != len(sources)-1 {
-				log.Infof("  %s\n", f)
-			} else {
-				log.Infof("  %s through :%d to %s\n", f, upPort, serverAddr)
-			}
-		}
-	}
-
-	// Find devices
-	listenDevs, err = pcap.FindListenDevs(cfg.ListenDevs)
-	if err != nil {
-		log.Fatalln(fmt.Errorf("find listen devices: %w", err))
-	}
-	if len(cfg.ListenDevs) <= 0 {
-		// Remove loopback devices by default
-		result := make([]*pcap.Device, 0)
-
-		for _, dev := range listenDevs {
-			if dev.IsLoop() {
-				continue
-			}
-			result = append(result, dev)
-		}
-
-		listenDevs = result
-	}
-	if len(listenDevs) <= 0 {
-		log.Fatalln(errors.New("cannot determine listen device"))
-	}
-
-	upDev, gatewayDev, err = pcap.FindUpstreamDevAndGatewayDev(cfg.UpDev, gateway)
-	if err != nil {
-		log.Fatalln(fmt.Errorf("find upstream device and gateway device: %w", err))
-	}
-	if upDev == nil && gatewayDev == nil {
-		log.Fatalln(errors.New("cannot determine upstream device and gateway device"))
-	}
-	if upDev == nil {
-		log.Fatalln(errors.New("cannot determine upstream device"))
-	}
-	if gatewayDev == nil {
-		log.Fatalln(errors.New("cannot determine gateway device"))
-	}
-
-	// Add firewall rule
+	// Add rule
 	if cfg.Rule {
 		var (
 			ok   bool
@@ -540,21 +446,6 @@ func main() {
 			log.Infoln("Disable IP forwarding")
 		}
 
-		// Firewall
-		switch mode {
-		case "faketcp":
-			err = exec.AddSpecificFirewallRule(serverIP, serverPort)
-			if err != nil {
-				log.Errorln(fmt.Errorf("add firewall rule: %w", err))
-			} else {
-				log.Infoln("Add firewall rule")
-			}
-		case "tcp":
-			break
-		default:
-			log.Fatalln(fmt.Errorf("mode %s not support", cfg.Mode))
-		}
-
 		// GRO
 		for _, dev := range listenDevs {
 			devs[dev.Alias()] = true
@@ -570,6 +461,99 @@ func main() {
 		}
 		if ok {
 			log.Infoln("Disable GRO")
+		}
+	}
+
+	// Mode-related options
+	switch mode {
+	case "faketcp":
+		// MTU
+		mtu = cfg.MTU
+		log.Infof("Set MTU to %d Bytes\n", mtu)
+
+		// KCP
+		isKCP = cfg.KCP
+		kcpConfig = &cfg.KCPConfig
+		if isKCP {
+			log.Infoln("Enable KCP")
+		}
+	case "tcp":
+		break
+	default:
+		log.Fatalln(fmt.Errorf("mode %s not support", mode))
+	}
+
+	// Publish
+	if cfg.Publish != "" {
+		ip := net.ParseIP(cfg.Publish)
+		if ip == nil {
+			log.Errorln(fmt.Errorf("invalid publish %s", cfg.Publish))
+		}
+		publishIP = &net.IPAddr{IP: ip}
+	}
+	if publishIP != nil {
+		log.Infof("Publish %s\n", publishIP.IP)
+	}
+
+	// Fragment
+	fragment = cfg.Fragment
+	log.Infof("Set fragment to %d Bytes\n", fragment)
+
+	// Randomize upstream port
+	if cfg.Port == 0 {
+		s := rand.NewSource(time.Now().UnixNano())
+		for cfg.Port == 0 || cfg.Port == cfg.Monitor {
+			r := rand.New(s)
+			cfg.Port = 49152 + r.Intn(16384)
+		}
+	}
+	upPort = uint16(cfg.Port)
+
+	// Sources
+	for _, source := range cfg.Sources {
+		ip := net.ParseIP(source)
+		if ip == nil {
+			log.Fatalln(fmt.Errorf("invalid source %s", source))
+		}
+		sources = append(sources, &net.IPAddr{IP: ip})
+	}
+
+	// Server
+	serverAddr, err := addr.ParseTCPAddr(cfg.Server)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("parse server %s: %w", cfg.Server, err))
+	}
+	serverIP = serverAddr.IP
+	serverPort = uint16(serverAddr.Port)
+
+	// Add firewall rule (delay)
+	if cfg.Rule {
+		// Firewall
+		switch mode {
+		case "faketcp":
+			err = exec.AddSpecificFirewallRule(serverIP, serverPort)
+			if err != nil {
+				log.Errorln(fmt.Errorf("add firewall rule: %w", err))
+			} else {
+				log.Infoln("Add firewall rule")
+			}
+		case "tcp":
+			break
+		default:
+			log.Fatalln(fmt.Errorf("mode %s not support", cfg.Mode))
+		}
+	}
+
+	if len(sources) == 1 {
+		log.Infof("Proxy %s through :%d to %s\n", sources[0], upPort, serverAddr)
+	} else {
+		log.Infoln("Proxy:")
+		for i, f := range sources {
+			if i != len(sources)-1 {
+				log.Infof("  %s\n", f)
+			} else {
+				log.Infof("  %s through :%d to %s\n", f, upPort, serverAddr)
+			}
 		}
 	}
 
@@ -664,6 +648,33 @@ func open() error {
 	}
 
 	// Ping
+	if monitor != nil {
+		pinger, err = ping.NewPinger(serverIP.String())
+		if err != nil {
+			log.Errorln(fmt.Errorf("ping: %w", err))
+		}
+		if pinger != nil {
+			pinger.SetPrivileged(true)
+			pinger.OnRecv = func(packet *ping.Packet) {
+				if packet != nil {
+					pingTime = packet.Rtt.Milliseconds()
+					pingSeq = packet.Seq
+
+					log.Verbosef("Receive ICMP Echo Reply: %s <- %s (%d ms)\n", upDev.IPAddr().IP, serverIP, packet.Rtt.Milliseconds())
+
+					// Timeout
+					go func() {
+						time.Sleep(pingDeadline)
+						if packet.Seq == pingSeq {
+							pingTime = -2
+
+							log.Errorf("Cannot receive ICMP Echo Reply from server %s, is your network down?\n", serverIP)
+						}
+					}()
+				}
+			}
+		}
+	}
 	if pinger != nil {
 		go func() {
 			pinger.Run()
@@ -876,7 +887,7 @@ func handleUpstream(contents []byte) error {
 		embIndicator     *pcap.PacketIndicator
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
-		data             []byte
+		fragments        [][]byte
 	)
 
 	// Empty payload
@@ -919,18 +930,26 @@ func handleUpstream(contents []byte) error {
 		return fmt.Errorf("create link layer: %w", err)
 	}
 
-	// Serialize layers
-	data, err = pcap.SerializeRaw(newLinkLayer.(gopacket.SerializableLayer),
-		gopacket.Payload(embIndicator.NetworkLayer().LayerContents()),
-		gopacket.Payload(embIndicator.NetworkPayload()))
+	// Fragment
+	fragments, err = pcap.CreateFragmentPackets(newLinkLayer, embIndicator.NetworkLayer(), embIndicator.TransportLayer(), gopacket.Payload(embIndicator.Payload()), fragment)
 	if err != nil {
-		return fmt.Errorf("serialize: %w", err)
+		return fmt.Errorf("fragment: %w", err)
 	}
 
 	// Write packet data
-	_, err = ni.conn.Write(data)
-	if err != nil {
-		return fmt.Errorf("write: %w", err)
+	for i, fragment := range fragments {
+		_, err = ni.conn.Write(fragment)
+		if err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+
+		if i == len(fragments)-1 {
+			log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
+				embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
+		} else {
+			log.Verbosef("Redirect an inbound %s packet: %s <- %s (...)\n",
+				embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String())
+		}
 	}
 
 	// Statistics
@@ -952,9 +971,6 @@ func handleUpstream(contents []byte) error {
 			}
 		}
 	}
-
-	log.Verbosef("Redirect an inbound %s packet: %s <- %s (%d Bytes)\n",
-		embIndicator.TransportProtocol(), embIndicator.Dst().String(), embIndicator.Src().String(), embIndicator.Size())
 
 	return nil
 }

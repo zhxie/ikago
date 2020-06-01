@@ -8,9 +8,9 @@
 // On the device being proxied, you should set the IP address to 10.6.0.2 or 10.6.0.3 and the gateway to 10.6.0.1.
 
 {
+  "monitor": 18080,
   "rule": false,
   "log": "client.log",
-  "monitor": 18080,
   "mtu": 1400,
 
   "publish": "10.6.0.1",

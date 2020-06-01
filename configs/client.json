@@ -6,10 +6,10 @@
   "method": "plain",
   "password": "",
   "rule": false,
+  "monitor": 0,
   "verbose": false,
   "log": "",
-  "monitor": 0,
-  "mtu": 0,
+  "mtu": 1500,
   "kcp": false,
   "kcp-tuning": {
     "mtu": 1400,
@@ -25,6 +25,7 @@
   },
 
   "publish": "",
+  "fragment": 1500,
   "port": 0,
   "sources": [
     "192.168.1.2"

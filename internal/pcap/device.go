@@ -103,7 +103,7 @@ func FindAllDevs() ([]*Device, error) {
 			isLoop = true
 		}
 
-		// Ignore not up and not loopback interfaces
+		// Ignore down and loopback interfaces
 		if inter.Flags&net.FlagUp == 0 && !isLoop {
 			continue
 		}

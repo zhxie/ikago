@@ -66,8 +66,6 @@ All packets transmitted must contain exactly a link layer, a network layer and a
 
 **Transmission between sources and clients, server and destinations must be in IPv4.**
 
-**Packets sent and received by clients and server will not be fragmented.**
-
 IPv4 options will not be processed.
 
 Transmission size information displayed in verbose log in the client is the size of network, transport and application layer in packets from sources.

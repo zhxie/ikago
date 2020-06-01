@@ -46,7 +46,7 @@ Examples of configuration file are [here](/configs).
 
 `-list-devices`: (Optional, exclusive) List all valid devices in current computer.
 
-`-c`: (Optional, exclusive) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments except `-v`, it will automatically read the configuration file `config.json` in the working directory if it exists.
+`-c path`: (Optional, exclusive) Configuration file. Examples of configuration file are [here](/configs). If IkaGo does not receive any arguments except `-v`, it will automatically read the configuration file `config.json` in the working directory if it exists.
 
 `-listen-devices devices`: (Optional) Devices for listening, use comma to separate multiple devices. If this value is not set, all valid devices excluding loopback devices will be used. For example, `-listen-devices eth0,wifi0,lo`.
 
@@ -54,7 +54,7 @@ Examples of configuration file are [here](/configs).
 
 `-gateway address`: (Optional) Gateway address. If this value is not set, the first gateway address in the routing table will be used.
 
-`-mode`: (Optional) Mode, can be `faketcp`, `tcp`. Default as `tcp`. This option needs to be set consistently between the client and the server. You may have to configure your firewall by using `-rule` or follow the [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below in some modes.
+`-mode mode`: (Optional) Mode, can be `faketcp`, `tcp`. Default as `tcp`. This option needs to be set consistently between the client and the server. You may have to configure your firewall by using `-rule` or follow the [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below in some modes.
 
 `-method method`: (Optional) Method of encryption, can be `plain`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-poly1305` or `xchacha20-poly1305`. Default as `plain`. This option needs to be set consistently between the client and the server. For more about encryption, please refer to the [development documentation](/dev.md).
 
@@ -62,25 +62,27 @@ Examples of configuration file are [here](/configs).
 
 `-rule`: (Optional, recommended) Add firewall rule. In some OS, firewall rules need to be added to ensure the operation of IkaGo. Rules are described in [troubleshoot](https://github.com/zhxie/ikago#troubleshoot) below.
 
+`-monitor port`: (Optional) Port for monitoring. If this value is set, IkaGo will host HTTP server on `localhost:port` and print JSON statistics on it. You can observe observe traffic on [IkaGo-web](http://ikago.ikas.ink).
+
 `-v`: (Optional) Print verbose messages. Either `-v` or `verbose` in configuration file is set `true`, IkaGo will print verbose messages.
 
 `-log path`: (Optional) Log.
 
-`-monitor port`: (Optional) Port for monitoring. If this value is set, IkaGo will host HTTP server on `localhost:port` and print JSON statistics on it. You can observe observe traffic on [IkaGo-web](http://ikago.ikas.ink).
-
 #### FakeTCP options
 
-`-mtu`: (Optional) MTU. MTU is set in traffic between the client and the server.
+`-mtu size`: (Optional) MTU. MTU is set in traffic between the client and the server.
 
 `-kcp`: (Optional) Enable KCP. This option needs to be set consistently between the client and the server.
 
-`-kcp-mtu`, `-kcp-sndwnd`, `-kcp-rcvwnd`, `-kcp-datashard`, `-kcp-parityshard`, `-kcp-acknodelay`: (Optional) KCP tuning options. These options need to be set consistently between the client and the server. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
+`-kcp-mtu size`, `-kcp-sndwnd size`, `-kcp-rcvwnd size`, `-kcp-datashard size`, `-kcp-parityshard size`, `-kcp-acknodelay`: (Optional) KCP tuning options. These options need to be set consistently between the client and the server. Please refer to the [kcp-go](https://godoc.org/github.com/xtaci/kcp-go).
 
-`-kcp-nodelay`, `-kcp-interval`, `kcp-resend`, `kcp-nc`: (Optional) KCP tuning options. These options need to be set consistently between the client and the server. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
+`-kcp-nodelay`, `-kcp-interval size`, `kcp-resend size`, `kcp-nc size`: (Optional) KCP tuning options. These options need to be set consistently between the client and the server. Please refer to the [kcp](https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration).
 
 ### Client options
 
 `-publish addresses`: (Optional, recommended) ARP publishing address. If this value is set, IkaGo will reply ARP request as it owns the specified address which is not on the network, also called proxy ARP.
+
+`-fragment size`: (Optional) Fragmentation size for listening. If this value is set, packets sending from the client to sources will be fragmented by the given size.
 
 `-p port`: (Optional) Port for routing upstream. If this value is not set or set as `0`, a random port from 49152 to 65535 will be used.
 
@@ -89,6 +91,8 @@ Examples of configuration file are [here](/configs).
 `-s address`: Server.
 
 ### Server options
+
+`-fragment size`: (Optional) Fragmentation size for routing upstream. If this value is set, packets sending from the server to destinations will be fragmented by the given size.
 
 `-p port`: Port for listening.
 

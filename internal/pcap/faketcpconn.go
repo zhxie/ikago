@@ -594,7 +594,7 @@ func (c *FakeTCPConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		}
 
 		// Fragment
-		fragments, err = CreateFragmentPackets(linkLayer.(gopacket.Layer), networkLayer.(gopacket.Layer), transportLayer.(gopacket.Layer), gopacket.Payload(contents), c.mtu)
+		fragments, err = CreateFragmentPackets(linkLayer.(gopacket.Layer), networkLayer.(gopacket.Layer), transportLayer.(gopacket.Layer), contents, c.mtu)
 		if err != nil {
 			ch <- fmt.Errorf("fragment: %w", err)
 			return
@@ -614,7 +614,12 @@ func (c *FakeTCPConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 		// IPv4 Id
 		if networkLayer.LayerType() == layers.LayerTypeIPv4 {
-			c.id++
+			switch transportLayer.LayerType() {
+			case layers.LayerTypeTCP:
+				c.id = c.id + uint16(len(fragments))
+			default:
+				c.id++
+			}
 		}
 
 		ch <- nil
