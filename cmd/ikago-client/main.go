@@ -850,7 +850,12 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	}
 
 	// Record source hardware address
-	hardwareAddr = indicator.SrcHardwareAddr()
+	switch t := indicator.LinkLayer().LayerType(); t {
+	case layers.LayerTypeEthernet:
+		hardwareAddr = indicator.SrcHardwareAddr()
+	default:
+		hardwareAddr, _ = net.ParseMAC("00:00:00:00:00:00")
+	}
 
 	data = make([]byte, 0)
 	data = append(data, packet.NetworkLayer().LayerContents()...)
