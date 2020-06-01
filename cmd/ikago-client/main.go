@@ -893,8 +893,8 @@ func handleUpstream(contents []byte) error {
 	var (
 		err              error
 		embIndicator     *pcap.PacketIndicator
-		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
+		newLinkLayer     gopacket.Layer
 		fragments        [][]byte
 	)
 
@@ -966,16 +966,18 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Record DNS
-	if embIndicator.DNSIndicator() != nil {
-		if embIndicator.DNSIndicator().IsResponse() {
-			name, ips := embIndicator.DNSIndicator().Answers()
-			if name != "" && len(ips) > 0 {
-				dnsLock.Lock()
-				for _, ip := range ips {
-					dns[ip.String()] = name
-					log.Verbosef("Record DNS record %s = %s\n", name, ip)
+	if monitor != nil {
+		if embIndicator.DNSIndicator() != nil {
+			if embIndicator.DNSIndicator().IsResponse() {
+				name, ips := embIndicator.DNSIndicator().Answers()
+				if name != "" && len(ips) > 0 {
+					dnsLock.Lock()
+					for _, ip := range ips {
+						dns[ip.String()] = name
+						log.Verbosef("Record DNS record %s = %s\n", name, ip)
+					}
+					dnsLock.Unlock()
 				}
-				dnsLock.Unlock()
 			}
 		}
 	}

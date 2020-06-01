@@ -737,7 +737,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 				return errors.New("missing nat")
 			}
 
-			upValue, err := dist(embIndicator.TransportLayer().LayerType())
+			upValue, err = dist(embIndicator.TransportLayer().LayerType())
 			if err != nil {
 				return fmt.Errorf("distribute: %w", err)
 			}
@@ -992,13 +992,11 @@ func handleListen(contents []byte, conn net.Conn) error {
 
 func handleUpstream(packet gopacket.Packet) error {
 	var (
-		err               error
-		indicator         *pcap.PacketIndicator
-		frags             []*pcap.PacketIndicator
-		ni                *natIndicator
-		embTransportLayer gopacket.Layer
-		embNetworkLayer   gopacket.NetworkLayer
-		data              []byte
+		err       error
+		indicator *pcap.PacketIndicator
+		frags     []*pcap.PacketIndicator
+		ni        *natIndicator
+		data      []byte
 	)
 
 	// Parse packet
@@ -1042,6 +1040,11 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	for _, frag := range frags {
+		var (
+			embTransportLayer gopacket.Layer
+			embNetworkLayer   gopacket.NetworkLayer
+		)
+
 		// Create embedded transport layer
 		if frag.TransportLayer() != nil {
 			switch t := frag.TransportLayer().LayerType(); t {
@@ -1197,16 +1200,18 @@ func handleUpstream(packet gopacket.Packet) error {
 	}
 
 	// Record DNS
-	if indicator.DNSIndicator() != nil {
-		if indicator.DNSIndicator().IsResponse() {
-			name, ips := indicator.DNSIndicator().Answers()
-			if name != "" && len(ips) > 0 {
-				dnsLock.Lock()
-				for _, ip := range ips {
-					dns[ip.String()] = name
-					log.Verbosef("Record DNS record %s = %s\n", name, ip)
+	if monitor != nil {
+		if indicator.DNSIndicator() != nil {
+			if indicator.DNSIndicator().IsResponse() {
+				name, ips := indicator.DNSIndicator().Answers()
+				if name != "" && len(ips) > 0 {
+					dnsLock.Lock()
+					for _, ip := range ips {
+						dns[ip.String()] = name
+						log.Verbosef("Record DNS record %s = %s\n", name, ip)
+					}
+					dnsLock.Unlock()
 				}
-				dnsLock.Unlock()
 			}
 		}
 	}
