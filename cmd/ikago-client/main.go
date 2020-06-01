@@ -830,12 +830,14 @@ func publish(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 	var (
+		err          error
+		indicator    *pcap.PacketIndicator
 		hardwareAddr net.HardwareAddr
 		data         []byte
 	)
 
 	// Parse packet
-	indicator, err := pcap.ParsePacket(packet)
+	indicator, err = pcap.ParsePacket(packet)
 	if err != nil {
 		return fmt.Errorf("parse packet: %w", err)
 	}
@@ -889,6 +891,7 @@ func handleListen(packet gopacket.Packet, conn *pcap.RawConn) error {
 
 func handleUpstream(contents []byte) error {
 	var (
+		err              error
 		embIndicator     *pcap.PacketIndicator
 		newLinkLayer     gopacket.Layer
 		newLinkLayerType gopacket.LayerType
@@ -902,7 +905,7 @@ func handleUpstream(contents []byte) error {
 	}
 
 	// Parse embedded packet
-	embIndicator, err := pcap.ParseEmbPacket(contents)
+	embIndicator, err = pcap.ParseEmbPacket(contents)
 	if err != nil {
 		return fmt.Errorf("parse embedded packet: %w", err)
 	}

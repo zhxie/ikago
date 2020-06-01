@@ -698,6 +698,7 @@ func closeAll() {
 
 func handleListen(contents []byte, conn net.Conn) error {
 	var (
+		err               error
 		embIndicator      *pcap.PacketIndicator
 		upValue           uint16
 		newTransportLayer gopacket.Layer
@@ -706,8 +707,6 @@ func handleListen(contents []byte, conn net.Conn) error {
 		newLinkLayerType  gopacket.LayerType
 		newLinkLayer      gopacket.Layer
 		fragments         [][]byte
-		guide             pcap.NATGuide
-		ni                *natIndicator
 	)
 
 	// Empty payload
@@ -717,7 +716,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 	}
 
 	// Parse embedded packet
-	embIndicator, err := pcap.ParseEmbPacket(contents)
+	embIndicator, err = pcap.ParseEmbPacket(contents)
 	if err != nil {
 		return fmt.Errorf("parse embedded packet: %w", err)
 	}
@@ -733,14 +732,12 @@ func handleListen(contents []byte, conn net.Conn) error {
 		}
 		upValue, ok = patMap[q]
 		if !ok {
-			var err error
-
 			// if ICMPv4 error is not in NAT, drop it
 			if t := embIndicator.TransportLayer().LayerType(); t == layers.LayerTypeICMPv4 && !embIndicator.ICMPv4Indicator().IsQuery() {
 				return errors.New("missing nat")
 			}
 
-			upValue, err = dist(embIndicator.TransportLayer().LayerType())
+			upValue, err := dist(embIndicator.TransportLayer().LayerType())
 			if err != nil {
 				return fmt.Errorf("distribute: %w", err)
 			}
@@ -920,7 +917,11 @@ func handleListen(contents []byte, conn net.Conn) error {
 	// NAT
 	if embIndicator.TransportLayer() != nil {
 		// Record the source and the source device of the packet
-		var addNAT bool
+		var (
+			guide  pcap.NATGuide
+			addNAT bool
+		)
+
 		switch t := embIndicator.TransportLayer().LayerType(); t {
 		case layers.LayerTypeTCP:
 			a := net.TCPAddr{
@@ -957,7 +958,7 @@ func handleListen(contents []byte, conn net.Conn) error {
 			return fmt.Errorf("transport layer type %s not support", t)
 		}
 		if addNAT {
-			ni = &natIndicator{
+			ni := &natIndicator{
 				src:    conn.RemoteAddr(),
 				embSrc: embIndicator.NATSrc(),
 				conn:   conn,
