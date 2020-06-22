@@ -28,7 +28,7 @@
 
 1. [Npcap](http://www.npcap.org/) or WinPcap in Windows, libpcap in macOS, Linux and others.
 
-2. （Optional, recommended) pf in macOS, iptables and ethtool in Linux for automatic firewall rule addition.
+2. (Optional, recommended) pf in macOS, iptables and ethtool in Linux for automatic firewall rule addition.
 
 ## Usage
 
@@ -151,10 +151,6 @@ Examples of configuration file are [here](/configs).
 - [ ] Change sending packets to destinations procedures in IkaGo-server from pcap to standard connection
 - [ ] Build own application layer protocol to realize functions like delay detection
 - [ ] Discover the way handling packets concurrently to optimize performance
-
-## What's Next
-
-- A related project called pcap2socks is under development, which is the proxy ARP and pcap part of IkaGo, and the upstream data will be connected to a SOCKS5 client. pcap2socks may be more flexible and owns a better performance than IkaGo using third-party proxy solution.
 
 ## License
 
