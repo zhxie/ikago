@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"ikago/internal/log"
+	"github.com/zhxie/ikago/internal/log"
 	"strings"
 	"time"
 )

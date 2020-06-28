@@ -2,8 +2,8 @@ package pcap
 
 import (
 	"fmt"
-	"ikago/internal/crypto"
-	"ikago/internal/log"
+	"github.com/zhxie/ikago/internal/crypto"
+	"github.com/zhxie/ikago/internal/log"
 	"net"
 	"time"
 )

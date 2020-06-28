@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"ikago/internal/addr"
+	"github.com/zhxie/ikago/internal/addr"
 	"net"
 )
 

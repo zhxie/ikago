@@ -1,7 +1,7 @@
 package pcap
 
 import (
-	"ikago/internal/log"
+	"github.com/zhxie/ikago/internal/log"
 	"time"
 )
 

@@ -1,4 +1,4 @@
-module ikago
+module github.com/zhxie/ikago
 
 go 1.13
 

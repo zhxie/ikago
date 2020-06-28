@@ -6,7 +6,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/ip4defrag"
 	"github.com/google/gopacket/layers"
-	"ikago/internal/log"
+	"github.com/zhxie/ikago/internal/log"
 	"sort"
 	"time"
 )
