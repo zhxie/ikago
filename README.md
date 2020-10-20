@@ -4,6 +4,8 @@
 
 *IkaGo is designed to accelerate games in game consoles.*
 
+*If you have a SOCKS5 proxy, use [pcap2socks](https://github.com/zhxie/pcap2socks) for better performance.*
+
 <p align="center">
   <img src="/assets/squid.jpg" alt="an Inkling going through a grate">
 </p>
