@@ -23,7 +23,7 @@
 - **Proxy ARP**: Reply ARP request as it owns the specified address which is not on the network.
 - **Multiplexing and Multiple**: One client can handle multiple connections from different devices. And one server can serve multiple clients.
 - **Cross Platform**: Works well with Windows, macOS, Linux and others in theory.
-- **Monitor**: Observe traffic on [IkaGo-web](http://ikago.ikas.ink)
+- **Monitor**: Observe traffic on [IkaGo-web](https://zhxie.github.io/ikago-web)
 - **Full Cone NAT**
 - **Encryption**
 - **KCP Support**

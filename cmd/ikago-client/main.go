@@ -425,7 +425,7 @@ func main() {
 		}()
 
 		log.Infof("Monitor on :%d\n", cfg.Monitor)
-		log.Infoln("You can now observe traffic on http://ikago.ikas.ink")
+		log.Infoln("You can now observe traffic on https://zhxie.github.io/ikago-web")
 	}
 
 	// Add rule
